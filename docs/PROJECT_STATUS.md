@@ -1,3 +1,9 @@
+## 2026-11-24 — Resume idempotency and safe rollback
+
+- Resume now shares the dispatch mutex, has its own acceptance grace (separate from manual dispatch), and manual dispatch is suppressed immediately after an accepted Resume.
+- If a workflow run is already active, Resume clears Pause but does not enqueue a second workflow. If preflight/launch fails definitively, Pause is restored; if the dispatch outcome is ambiguous, the request is marked non-retryable for the visibility window and the operator must inspect run history.
+- Regression tests cover lock contention, existing active runs, duplicate Resume, cross-action duplicate dispatch, Pause rollback, and ambiguous outcomes.
+
 ## 2026-11-24 — reconciliation after mainline UI/cancel merges
 
 - Current main: ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1.
