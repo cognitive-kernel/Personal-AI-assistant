@@ -2299,12 +2299,12 @@ def test_autonomous_run_administration_routes_are_registered():
 
 def test_workflow_log_sanitizer_redacts_common_credentials():
     source = (
-        "Authorization: Bearer bearer-secret-value\\n"
-        "Authorization: Basic dXNlcjpwYXNzd29yZA==\\n"
-        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\\n"
-        "sk-proj-0123456789abcdefghijklmnopqrstuv\\n"
-        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken\\n"
-        "password=hunter2 api_key=secret-value\\n"
+        "Authorization: Bearer bearer-secret-value\n"
+        "Authorization: Basic dXNlcjpwYXNzd29yZA==\n"
+        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\n"
+        "sk-proj-0123456789abcdefghijklmnopqrstuv\n"
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken\n"
+        "password=hunter2 api_key=secret-value\n"
     )
     result = agent._sanitize_workflow_log(source)
     assert "bearer-secret-value" not in result
