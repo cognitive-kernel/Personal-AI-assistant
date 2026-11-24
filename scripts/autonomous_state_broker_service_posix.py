@@ -17,6 +17,7 @@ import socket
 import stat
 import threading
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -338,6 +339,122 @@ class RestrictedStateBroker:
             "diagnostics": entries,
         }
 
+    def _dispatch_admission_state(self) -> dict[str, Any]:
+        path = self.state_dir / "workflow-dispatch-admission.json"
+        info = self._regular_file(path)
+        if info is None:
+            return {"schema_version": 1, "last_accepted_at": 0.0, "pending": None}
+        if info.st_size > 4096:
+            raise BrokerFailure(503, "dispatch_admission_state_invalid")
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, UnicodeError) as exc:
+            raise BrokerFailure(503, "dispatch_admission_state_invalid") from exc
+        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+            raise BrokerFailure(503, "dispatch_admission_state_invalid")
+        last = payload.get("last_accepted_at")
+        if isinstance(last, bool) or not isinstance(last, (int, float)) or not math.isfinite(last) or last < 0:
+            raise BrokerFailure(503, "dispatch_admission_state_invalid")
+        pending = payload.get("pending")
+        if pending is not None:
+            if not isinstance(pending, dict):
+                raise BrokerFailure(503, "dispatch_admission_state_invalid")
+            request_id = pending.get("request_id")
+            created_at = pending.get("created_at")
+            expires_at = pending.get("lease_expires_at")
+            if (
+                not isinstance(request_id, str)
+                or len(request_id) != 32
+                or any(ch not in "0123456789abcdef" for ch in request_id)
+                or isinstance(created_at, bool)
+                or not isinstance(created_at, (int, float))
+                or not math.isfinite(created_at)
+                or isinstance(expires_at, bool)
+                or not isinstance(expires_at, (int, float))
+                or not math.isfinite(expires_at)
+                or created_at < 0
+                or expires_at <= created_at
+            ):
+                raise BrokerFailure(503, "dispatch_admission_state_invalid")
+        return {"schema_version": 1, "last_accepted_at": float(last), "pending": pending}
+
+    def _write_dispatch_admission_state(self, payload: dict[str, Any]) -> None:
+        target = self.state_dir / "workflow-dispatch-admission.json"
+        temporary = self.state_dir / (".workflow-dispatch-admission-" + uuid.uuid4().hex + ".tmp")
+        encoded = json.dumps(payload, separators=(",", ":"), allow_nan=False).encode("utf-8") + b"\\n"
+        flags = os.O_CREAT | os.O_EXCL | os.O_WRONLY
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        descriptor = os.open(temporary, flags, 0o600)
+        try:
+            view = memoryview(encoded)
+            while view:
+                written = os.write(descriptor, view)
+                if written <= 0:
+                    raise OSError("Could not write dispatch admission state.")
+                view = view[written:]
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        try:
+            os.replace(temporary, target)
+            directory_fd = os.open(self.state_dir, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+    def dispatch_admission(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        from app.autonomous_engineering_state_broker_contract import validate_dispatch_admission_request
+
+        try:
+            request = validate_dispatch_admission_request("POST", path, body)
+        except ValueError as exc:
+            raise BrokerFailure(400, "invalid_dispatch_admission_request") from exc
+
+        def perform() -> dict[str, Any]:
+            state = self._dispatch_admission_state()
+            now = time.time()
+            pending = state["pending"]
+            last_accepted = state["last_accepted_at"]
+            if path.endswith("/acquire"):
+                if pending is not None:
+                    if now < pending["lease_expires_at"]:
+                        raise BrokerFailure(409, "dispatch_admission_conflict")
+                    # A crashed caller may have dispatched before losing its
+                    # response. Treat an expired lease as ambiguous, not free.
+                    last_accepted = max(last_accepted, float(pending["created_at"]))
+                    pending = None
+                if last_accepted and (now < last_accepted or now - last_accepted < 30.0):
+                    raise BrokerFailure(409, "dispatch_admission_conflict")
+                state = {
+                    "schema_version": 1,
+                    "last_accepted_at": last_accepted,
+                    "pending": {
+                        "request_id": request["request_id"],
+                        "created_at": now,
+                        "lease_expires_at": now + 120.0,
+                    },
+                }
+                self._write_dispatch_admission_state(state)
+                return {"acquired": True, "last_accepted_at": last_accepted, "lease_seconds": 120}
+            if pending is None or pending.get("request_id") != request["request_id"]:
+                raise BrokerFailure(409, "dispatch_admission_lease_not_owned")
+            if request["accepted"]:
+                last_accepted = now
+            state = {"schema_version": 1, "last_accepted_at": last_accepted, "pending": None}
+            self._write_dispatch_admission_state(state)
+            return {"completed": True, "last_accepted_at": last_accepted}
+
+        try:
+            return self._with_state_lock(perform)
+        except BrokerFailure:
+            raise
+        except OSError as exc:
+            raise BrokerFailure(503, "dispatch_admission_state_unavailable") from exc
+
     def cleanup(self) -> dict[str, Any]:
         def perform() -> dict[str, Any]:
             # The watcher owns this lock for its full lifetime. Hold it across
@@ -507,6 +624,16 @@ class RestrictedStateBroker:
                     }
                 raise
             raise BrokerFailure(404, "not_found")
+        dispatch_paths = {"/v1/dispatch-admission/acquire", "/v1/dispatch-admission/complete"}
+        if path in dispatch_paths:
+            if method != "POST" or not isinstance(body, dict):
+                raise BrokerFailure(400, "invalid_dispatch_admission_request")
+            try:
+                return 200, self.dispatch_admission(path, body)
+            except BrokerFailure as exc:
+                if exc.status == 409:
+                    return 409, {"conflict": True, "message": exc.code, "blockers": [exc.code]}
+                raise
         if "body" in request:
             raise BrokerFailure(400, "request_body_not_supported")
         if method == "GET" and path == "/v1/health":
