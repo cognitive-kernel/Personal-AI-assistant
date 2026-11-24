@@ -621,6 +621,8 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
                 encoding="utf-8",
             )
         report.unlink(missing_ok=True)
+        attempt_status_path = report.with_suffix(report.suffix + ".status.json")
+        attempt_status_path.unlink(missing_ok=True)
         record(
             args.run_id, args.run_attempt, "coding",
             f"وظیفهٔ {task}؛ تلاش {attempt}",
@@ -643,14 +645,56 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             if report_only_retry:
                 command.extend(["--timeout-seconds", str(max(1, attempt_timeout_seconds))])
             with timed_stage(f"codex_attempt_{attempt}"):
-                result = run(command, timeout_seconds=min(attempt_timeout_seconds + 30, remaining))
+                result = run(
+                    command,
+                    capture=True,
+                    timeout_seconds=min(attempt_timeout_seconds + 30, remaining),
+                )
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
             codex_elapsed_seconds += time.monotonic() - codex_attempt_started
+        captured_output = _sanitize_run_diagnostic_text(result.stdout or "")
+        captured_error = _sanitize_run_diagnostic_text(result.stderr or "")
+        if captured_output:
+            print(captured_output[-_MAX_RUN_DIAGNOSTIC_CHARS:], flush=True)
+        if captured_error:
+            print(captured_error[-_MAX_RUN_DIAGNOSTIC_CHARS:], file=sys.stderr, flush=True)
+        attempt_status: dict[str, Any] = {}
+        try:
+            status_payload = json.loads(attempt_status_path.read_text(encoding="utf-8"))
+            if isinstance(status_payload, dict) and status_payload.get("schema_version") == 1:
+                attempt_status = status_payload
+        except (OSError, ValueError):
+            attempt_status = {}
+        if attempt_status and attempt_status.get("final_agent_message_present") is False:
+            turn_completed = attempt_status.get("turn_completed") is True
+            turn_failed = attempt_status.get("turn_failed") is True
+            event_count = attempt_status.get("jsonl_event_count")
+            summary = (
+                "Codex emitted no final agent message; "
+                f"turn_completed={turn_completed}, turn_failed={turn_failed}, "
+                f"jsonl_event_count={event_count if isinstance(event_count, int) else 'unknown'}."
+            )
+            detail = captured_error or captured_output
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="codex_terminal_event", category="no_last_agent_message",
+                summary=summary,
+                detail=detail,
+            )
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"وظیفهٔ {task} برای بازیابی نگه داشته شد",
+                "Codex پیام نهایی عامل را تولید نکرد؛ علت رویدادهای پایانی ثبت شد و checkpoint حفظ شد",
+                status="failed",
+            )
+            raise RuntimeError(
+                summary + " The task/checkpoint is preserved; inspect context exhaustion, incomplete tool calls, and terminal JSONL events before retrying."
+            )
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
-            diagnostic_detail = report_detail or _sanitize_run_diagnostic_text(
-                (result.stderr or result.stdout or "")[-_MAX_RUN_DIAGNOSTIC_CHARS:]
+            diagnostic_detail = _sanitize_run_diagnostic_text(
+                "\\n".join(part for part in (report_detail, captured_error, captured_output) if part)
             )
             diagnostic_summary = f"Codex process exited with code {result.returncode}."
             persist_run_diagnostic(
