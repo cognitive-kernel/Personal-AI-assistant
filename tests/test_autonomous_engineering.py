@@ -2793,6 +2793,8 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in cycle_policy
     assert "_live_pause_enabled(settings_token, repo)" in cycle_policy
     assert "_live_execution_mode(settings_token, repo)" in cycle_policy
+    assert "def _settings_api(" in cycle_policy
+    assert 'return api(settings_token, repo, "GET", path)' in cycle_policy
 
 
 def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
