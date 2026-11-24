@@ -505,3 +505,27 @@ def test_posix_broker_fails_closed_when_dispatch_admission_state_is_corrupt(posi
             "POST", "/v1/dispatch-admission/acquire",
             body={"request_id": "d" * 32},
         )
+
+
+
+def test_posix_broker_recovers_expired_dispatch_reservation_with_fresh_grace(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    now = time.time()
+    (state_dir / "workflow-dispatch-admission.json").write_text(json.dumps({
+        "schema_version": 1,
+        "last_accepted_at": 0.0,
+        "pending": {
+            "request_id": "e" * 32,
+            "created_at": now - 121.0,
+            "lease_expires_at": now - 1.0,
+        },
+    }), encoding="utf-8")
+    with pytest.raises(broker.StateBrokerConflict) as conflict:
+        broker.request(
+            "POST", "/v1/dispatch-admission/acquire",
+            body={"request_id": "f" * 32},
+        )
+    assert "dispatch_recently_accepted" in conflict.value.blockers
+    recovered = json.loads((state_dir / "workflow-dispatch-admission.json").read_text(encoding="utf-8"))
+    assert recovered["pending"] is None
+    assert recovered["last_accepted_at"] >= now - 1.0
