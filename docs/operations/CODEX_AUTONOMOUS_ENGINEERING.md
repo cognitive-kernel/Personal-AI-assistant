@@ -6,6 +6,14 @@ This workflow replaces the paid OpenAI API dependency with the local Codex CLI c
 
 The worker is event-driven and periodic. It is not a model process generating code continuously for 24 hours. Each Codex task attempt is capped at 30 minutes, and Codex inference/recovery is capped at two attempts and 45 minutes of actual Codex runtime. Local tests and exact-head GitHub validation use a separate 90-minute total task lifecycle budget, so verification time does not consume the inference budget. A missing/invalid completion marker triggers one bounded report-finalization retry of the same task: the controller first instructs Codex to inspect the existing plan, diff, and report and avoid repeating completed implementation or broad tests. The existing worktree and checkpoint are preserved. These are task-execution bounds, not a guarantee that setup, tests, and GitHub validation all finish within 45 minutes.
 
+## Elevated State Broker setup lock and abandoned recovery
+
+The elevated State Broker installer owns a machine-wide named mutex before it inspects Runner services or changes service/ACL state. If Windows reports that a previous owner abandoned the mutex, the installer records a protected recovery marker at `HKLM\\SOFTWARE\\PersonalAIAssistant\\StateBroker\\SetupAbandoned` and refuses to continue unless the operator explicitly supplies `-AcknowledgeAbandonedSetup`.
+
+The marker is checked on every invocation, including repeated calls from the same interactive PowerShell session. It remains present if the acknowledged repair fails and is removed only after the complete setup, Runner restart, and live Broker health verification succeed. This prevents recursive mutex ownership from bypassing the recovery decision.
+
+After inspecting the State Broker service, its health, and shared-state ACL integrity, an operator can explicitly acknowledge recovery by running the standalone installer with `-AcknowledgeAbandonedSetup`. The installer may request UAC elevation. This acknowledgement does not delete task/checkpoint data, reset the database, or modify Runner registration beyond the normal verified setup path.
+
 ## No paid API key
 
 - No `OPENAI_API_KEY` secret is used or required.
