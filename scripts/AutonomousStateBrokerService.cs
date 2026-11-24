@@ -1502,8 +1502,12 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             };
                         }
                         // An expired caller may have dispatched before it died.
-                        lastAccepted = Math.Max(lastAccepted, createdAt);
+                        // Start a fresh grace interval from lease recovery.
+                        lastAccepted = Math.Max(lastAccepted, now);
                         pending = null;
+                        WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(new Dictionary<string, object> {
+                            { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
+                        })));
                     }
                     if (lastAccepted > 0 && (now < lastAccepted || now - lastAccepted < 30.0))
                     {
