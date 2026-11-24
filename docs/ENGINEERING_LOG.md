@@ -1,3 +1,19 @@
+## 2026-11-24 — import the production mutex module in the integration-test coordinator
+
+### CI finding
+- The Windows integration probe successfully reached its final clean-reacquisition assertion after proving proxy-parent termination, holder-process lock retention, abandoned-owner detection, and explicit acknowledgement.
+- The coordinator process had not imported the production lock module itself; only its spawned child processes imported it. Its final call to `Enter-AutonomousStateBrokerSetupMutex` therefore failed with “term is not recognized.”
+
+### Correction
+- Import the same production `AutonomousStateBrokerSetupLock.psm1` module in the coordinator immediately after resolving and validating the module path.
+- Added a contract assertion that the coordinator imports the module before running the process-level test.
+
+### Validation boundary
+- Exact-head Windows Storage must rerun the process integration test through the final reacquisition and complete the subsequent live LocalService broker/ACL tests.
+- No production service, ACL, Runner registration, task, checkpoint, database, or durable user state was changed.
+
+---
+
 ## 2026-11-24 — regenerate a stale but manifest-valid Windows broker package on trusted PRs
 
 ### CI finding
