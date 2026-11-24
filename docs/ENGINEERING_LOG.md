@@ -1,3 +1,18 @@
+## 2026-11-24 — verify cross-process workflow dispatch admission
+
+### Audit result
+- The API's in-process lock protects concurrent browser tabs in one local API process. Cross-process duplicate suppression is enforced by the schedule-gate's live GitHub workflow-run query and by the single-slot Runner concurrency group; manual dispatch is rejected before durable task persistence when another run is active or queued.
+- The durable task writer independently rechecks active workflow runs while holding the shared cross-process state lock, so the schedule-gate is not the only guard.
+
+### Regression
+- Added a workflow contract test asserting the current-run exclusion, active-state set, manual-dispatch rejection, no-state-change message, and non-cancelling single-slot concurrency group.
+
+### Validation boundary
+- No extra dispatch lock or persistent admission marker was added: it would duplicate the authoritative workflow and durable-state guards without improving the single-slot safety contract.
+- Exact-head CI is required.
+
+---
+
 ## 2026-11-24 — fail closed when GitHub 404 may mean repository access is missing
 
 ### Root cause
