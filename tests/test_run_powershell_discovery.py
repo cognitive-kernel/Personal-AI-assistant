@@ -8,6 +8,12 @@ import run
 
 
 def _mock_windows(monkeypatch, candidates):
+    import sys
+
+    # These tests cover PATH discovery only. A real Windows runner may have
+    # additional registered Core installations; isolate those in the dedicated
+    # registry-discovery test below.
+    monkeypatch.setitem(sys.modules, "winreg", None)
     monkeypatch.setattr(run.platform, "system", lambda: "Windows")
     monkeypatch.setattr(run.shutil, "which", lambda name: candidates.get(name))
 
@@ -197,6 +203,9 @@ def test_powershell_discovery_accepts_older_core_when_capability_probe_succeeds(
 
 
 def test_windows_discovery_supports_a_desktop_only_host(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "winreg", None)
     desktop = r"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
     monkeypatch.setattr(run.platform, "system", lambda: "Windows")
     monkeypatch.setattr(
