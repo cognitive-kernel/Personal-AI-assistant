@@ -833,6 +833,7 @@ jobs:
       - name: Recheck live Pause and execution mode after concurrency admission
         id: pause
         env:
+          VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
@@ -840,19 +841,13 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          # GITHUB_TOKEN cannot read repository Actions variables. Use the
-          # already-authenticated Runner service account's GitHub CLI credential
-          # for this read-only control-plane query; keep it out of logs and do
-          # not reuse it for workflow or repository mutations. Remove token
-          # overrides so gh auth token must read the persisted CLI login.
-          Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
-          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
-          $ghCommand = Get-Command gh -ErrorAction Stop
-          $settingsTokenOutput = & $ghCommand.Source auth token --hostname github.com 2>$null
-          $settingsTokenExitCode = $LASTEXITCODE
-          $settingsToken = (@($settingsTokenOutput) -join "`n").Trim()
-          if ($settingsTokenExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($settingsToken)) {
-            throw "The Runner service account GitHub CLI authentication is unavailable; live Pause/mode cannot be verified."
+          # GITHUB_TOKEN has no repository Variables permission. Use a
+          # dedicated fine-grained read-only credential for this control-plane
+          # query; never reuse it for workflow or repository mutations.
+          $settingsToken = ([string]$env:VARIABLES_TOKEN).Trim()
+          Remove-Item Env:VARIABLES_TOKEN -ErrorAction SilentlyContinue
+          if ([string]::IsNullOrWhiteSpace($settingsToken)) {
+            throw "Repository secret AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is missing; configure a fine-grained token with Variables: read. No task will start."
           }
           $headers = @{
             Accept = "application/vnd.github+json"
@@ -894,6 +889,8 @@ jobs:
           }
           $pausedValue = Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED" -DefaultValue "false" -AllowedValues @("true", "false")
           $modeValue = Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE" -DefaultValue "continuous" -AllowedValues @("continuous", "scheduled")
+          $headers.Authorization = $null
+          $settingsToken = $null
           $recoveryAttempt = 0
           if (-not [int]::TryParse($env:RECOVERY_ATTEMPT, [ref]$recoveryAttempt) -or $recoveryAttempt -lt 0) {
             throw "Recovery attempt input is invalid. Failing closed; no new task will start."
