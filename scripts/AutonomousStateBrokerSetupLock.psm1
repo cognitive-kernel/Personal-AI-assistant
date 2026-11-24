@@ -78,6 +78,21 @@ function Enter-AutonomousStateBrokerSetupMutex {
         throw "A previous elevated state-broker setup left an unacknowledged recovery marker. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
     }
 
+    if ($processRecoveryBlock -and $AcknowledgeAbandoned) {
+        # Marker persistence failed in this same PowerShell process. Release
+        # the retained ownership before acquiring a fresh lock; otherwise a
+        # recursive acquisition would leave one stale ownership count behind.
+        $retainedMutex = [System.Threading.Mutex]::new($false, $Name)
+        try {
+            $retainedMutex.ReleaseMutex()
+        } catch {
+            throw "The process-scoped recovery block is set, but this thread does not own the retained setup mutex. Close the original PowerShell process and rerun acknowledgement in a fresh process."
+        } finally {
+            $retainedMutex.Dispose()
+        }
+        Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
+    }
+
     $mutex = $null
     $acquired = $false
     $abandoned = $false
