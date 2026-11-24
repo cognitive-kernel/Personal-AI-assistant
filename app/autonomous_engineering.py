@@ -36,7 +36,6 @@ from .autonomous_engineering_progress import (
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
 from .autonomous_engineering_dispatch_lock import dispatch_admission_lock
-from .autonomous_engineering_maintenance_lock import maintenance_admission_lock
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -1372,13 +1371,11 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
 
     try:
         if _is_windows():
-            # The worker and this maintenance request share an OS-level
-            # admission lock. Check GitHub while holding it, then let the
-            # Broker acquire its repository/state/checkpoint locks. A new
-            # worker cannot enter between the active-run check and cleanup.
-            with maintenance_admission_lock(timeout_seconds=0):
-                ensure_no_active_workflow()
-                return _cleanup_autonomous_engineering_temporary_data_locked()
+            # The protected Windows Broker is authoritative: it acquires the
+            # repository, durable-state, and checkpoint-store locks itself and
+            # checks active/unknown progress while those locks are held. Do
+            # not perform a stale GitHub preflight in the dashboard process.
+            return _cleanup_autonomous_engineering_temporary_data_locked()
         # POSIX uses the same repository lock as the Runner, then the helper
         # acquires durable-state and checkpoint-store locks in that order.
         ensure_no_active_workflow()
