@@ -1834,7 +1834,7 @@ def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch)
         return {"value": "true"}
 
     monkeypatch.setattr(cycle, "api", fake_api)
-    monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("A paused task must not start"))
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("A paused task must not start"))
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
         "--run-id", "123", "--run-attempt", "1",
@@ -1912,7 +1912,7 @@ def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
     monkeypatch.setattr(cycle, "api", fake_api)
-    monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("A scheduled-mode automatic task must not start"))
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("A scheduled-mode automatic task must not start"))
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
         "--run-id", "123", "--run-attempt", "1",
@@ -1977,7 +1977,7 @@ def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monk
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
     monkeypatch.setattr(cycle, "api", fake_api)
-    monkeypatch.setattr(cycle, "run_cycle", lambda args: 23)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: 23)
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
         "--run-id", "123", "--run-attempt", "1",
@@ -2013,7 +2013,7 @@ def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monke
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
     monkeypatch.setattr(cycle, "api", fake_api)
-    monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("An unmarked empty dispatch must not start"))
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("An unmarked empty dispatch must not start"))
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
         "--run-id", "123", "--run-attempt", "1",
@@ -2049,7 +2049,7 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
     monkeypatch.setattr(cycle, "api", fake_api)
-    monkeypatch.setattr(cycle, "run_cycle", lambda args: 29)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: 29)
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
         "--run-id", "123", "--run-attempt", "1",
