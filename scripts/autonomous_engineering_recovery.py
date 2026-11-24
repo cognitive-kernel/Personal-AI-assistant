@@ -48,14 +48,31 @@ class GitHubActionsClient:
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json",
         }
+        self.settings_headers: dict[str, str] | None = None
 
-    def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    def set_settings_token(self, token: str) -> None:
+        if not token.strip():
+            raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is missing.")
+        self.settings_headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token.strip()}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+        }
+
+    def _request_with_headers(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None,
+        headers: dict[str, str],
+    ) -> Any:
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
             self.base_url + path,
             data=body,
             method=method,
-            headers=self.headers,
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=25) as response:
@@ -70,6 +87,14 @@ class GitHubActionsClient:
             raise RuntimeError(
                 f"GitHub Actions API request failed: {type(exc).__name__}: {exc}"
             ) from exc
+
+    def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        return self._request_with_headers(method, path, payload, self.headers)
+
+    def request_settings(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        if self.settings_headers is None:
+            raise RuntimeError("The read-only repository Variables credential is not configured.")
+        return self._request_with_headers(method, path, payload, self.settings_headers)
 
     def jobs(self, run_id: int) -> list[dict[str, Any]]:
         jobs: list[dict[str, Any]] = []
@@ -156,9 +181,17 @@ def report(title: str, message: str, *, error: bool = False) -> None:
 
 
 
+def _settings_request(client: GitHubActionsClient, method: str, path: str) -> Any:
+    request_settings = getattr(client, "request_settings", None)
+    if callable(request_settings):
+        return request_settings(method, path)
+    # Lightweight fake clients in unit tests may expose only request().
+    return client.request(method, path)
+
+
 def _verify_repository_access(client: GitHubActionsClient, expected_repository: str) -> None:
     try:
-        metadata = client.request("GET", "/")
+        metadata = _settings_request(client, "GET", "/")
     except RuntimeError as exc:
         raise RuntimeError(
             "The GitHub token could not verify the configured repository; recovery fails closed."
@@ -173,7 +206,7 @@ def _verify_repository_access(client: GitHubActionsClient, expected_repository: 
 
 def _live_pause_enabled(client: GitHubActionsClient) -> bool:
     try:
-        setting = client.request("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+        setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
         if "HTTP 404" in str(exc):
             return False
@@ -190,7 +223,7 @@ def _live_pause_enabled(client: GitHubActionsClient) -> bool:
 
 def _live_execution_mode(client: GitHubActionsClient) -> str:
     try:
-        setting = client.request("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+        setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
         if "HTTP 404" in str(exc):
             return "continuous"
@@ -208,16 +241,24 @@ def _live_execution_mode(client: GitHubActionsClient) -> str:
 def main() -> int:
     repository = os.environ.get("GH_REPO", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
+    settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
     try:
         failed_run_id = int(os.environ.get("FAILED_RUN_ID", ""))
     except ValueError:
         failed_run_id = 0
-    if not repository or "/" not in repository or not token or failed_run_id < 1:
-        report("Recovery configuration invalid", "Repository, token, or triggering run ID is invalid.", error=True)
+    if not repository or "/" not in repository or not token or not settings_token or failed_run_id < 1:
+        report(
+            "Recovery configuration invalid",
+            "Repository, workflow token, read-only Variables credential, or triggering run ID is invalid.",
+            error=True,
+        )
         return 1
 
     try:
         client = GitHubActionsClient(repository, token)
+        set_settings_token = getattr(client, "set_settings_token", None)
+        if callable(set_settings_token):
+            set_settings_token(settings_token)
         # Verify repository access before interpreting a variable-endpoint 404
         # as an intentionally unset variable; private-repo authorization failures
         # can otherwise look identical to a missing repository variable.
