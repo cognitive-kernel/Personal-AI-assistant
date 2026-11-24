@@ -530,6 +530,8 @@ def test_state_broker_mutex_has_real_windows_process_integration_coverage():
     workflow = _read(".github/workflows/tests.yml")
 
     assert "Invoke-SetupMutexProcessIntegrationTest" in service_test
+    assert service_test.count("function Invoke-SetupMutexProcessIntegrationTest {") == 1
+    assert service_test.count("Invoke-SetupMutexProcessIntegrationTest") == 2
     assert 'Start-SetupMutexTestChild -Mode "proxy"' in service_test
     assert 'Start-SetupMutexTestChild -Mode "busy"' in service_test
     assert 'Start-SetupMutexTestChild -Mode "abandoned"' in service_test
