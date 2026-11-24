@@ -428,6 +428,7 @@ def test_resume_unexpected_preflight_error_fails_closed_without_pause_mutation(m
     with pytest.raises(HTTPException) as error:
         agent.resume_autonomous_engineering()
     assert error.value.status_code == 503
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_PREFLIGHT_FAILED"
     assert error.value.headers["X-Retryable"] == "false"
 
 
