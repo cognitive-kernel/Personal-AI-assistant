@@ -1135,8 +1135,7 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
         _DISPATCH_REQUEST_LOCK.release()
 
 
-@router.post("/cancel")
-def cancel_autonomous_engineering() -> dict[str, Any]:
+def _cancel_autonomous_engineering_locked() -> dict[str, Any]:
     gh = shutil.which("gh")
     if not gh:
         raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
@@ -1193,36 +1192,78 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
             return None
         return str(codex_jobs[0].get("status") or "").strip().casefold().replace("-", "_")
 
-    # Workflow-run status alone is insufficient: a newer schedule-gate job can
-    # be in progress while its Codex job is still queued behind concurrency.
-    # Inspect only the bounded set of workflow runs reported in progress.
     in_progress_runs = [item for item in active_runs if item.get("status") == "in_progress"]
-    queued_runs = [item for item in active_runs if item.get("status") in {"queued", "waiting", "requested", "pending"}]
     if len(in_progress_runs) > 5:
         raise HTTPException(
             status_code=409,
             detail="تعداد اجراهای درحال‌بررسی بیش از حد است؛ برای جلوگیری از لغو اجرای اشتباه، عملیات لغو متوقف شد.",
         )
-    active = None
-    queued_candidates = []
+
+    active_codex_runs = []
+    queued_codex_runs = []
+    queued_job_states = {"queued", "waiting", "requested", "pending"}
     for run in in_progress_runs:
         job_state = _codex_job_state(run)
         if job_state == "in_progress":
-            active = run
-            break
-        if job_state in {"queued", "waiting", "requested", "pending"}:
-            queued_candidates.append(run)
-    if active is None:
-        active = queued_candidates[0] if queued_candidates else (queued_runs[0] if queued_runs else active_runs[0])
-    if not active or not isinstance(active.get("databaseId"), int):
-        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
+            active_codex_runs.append(run)
+        elif job_state in queued_job_states:
+            queued_codex_runs.append(run)
+
+    if len(active_codex_runs) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="چند اجرای Codex هم‌زمان فعال گزارش شده‌اند؛ اجرای هدف برای لغو مبهم است و عملیات متوقف شد.",
+        )
+    if len(active_codex_runs) == 1:
+        active = active_codex_runs[0]
+        selection_reason = "codex_job_in_progress"
+    elif len(queued_codex_runs) > 1:
+        raise HTTPException(
+            status_code=409,
+            detail="چند اجرای Codex در صف گزارش شده‌اند؛ انتخاب اجرای هدف برای لغو مبهم است و عملیات متوقف شد.",
+        )
+    elif len(queued_codex_runs) == 1:
+        active = queued_codex_runs[0]
+        selection_reason = "codex_job_queued"
+    elif len(active_runs) == 1:
+        active = active_runs[0]
+        selection_reason = "single_active_workflow"
+    else:
+        raise HTTPException(
+            status_code=409,
+            detail="چند Workflow فعال وجود دارد اما job فعال Codex یکتا نیست؛ برای جلوگیری از لغو اجرای اشتباه، عملیات متوقف شد.",
+        )
+
     cancelled = _run(
         [gh, "run", "cancel", str(active["databaseId"]), "--repo", _repository()],
         timeout=12,
     )
     if not cancelled or cancelled.returncode != 0:
         raise HTTPException(status_code=502, detail="لغو اجرا توسط GitHub تأیید نشد.")
-    return {"accepted": True, "run_id": active["databaseId"], "message": "درخواست لغو به GitHub ارسال شد."}
+    return {
+        "accepted": True,
+        "run_id": active["databaseId"],
+        "selection_reason": selection_reason,
+        "message": "درخواست لغو اجرای انتخاب‌شده به GitHub ارسال شد.",
+    }
+
+
+@router.post("/cancel")
+def cancel_autonomous_engineering() -> dict[str, Any]:
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(
+            status_code=409,
+            detail="ثبت یا ادامهٔ اجرای دیگری در حال انجام است؛ پس از پایان آن دوباره لغو را امتحان کنید.",
+            headers={
+                "X-Error-Code": "AUTONOMOUS_CANCEL_IN_PROGRESS",
+                "X-Retryable": "false",
+            },
+        )
+    try:
+        return _cancel_autonomous_engineering_locked()
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()
+
 
 # Operational administration -------------------------------------------------
 _ACTIVE_RUN_STATES = {"queued", "in_progress", "waiting", "requested", "pending"}
