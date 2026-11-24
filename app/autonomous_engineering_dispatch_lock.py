@@ -9,6 +9,11 @@ from uuid import uuid4
 from . import autonomous_engineering_state_broker as state_broker
 
 
+class DispatchAdmissionError(RuntimeError):
+    """The broker returned an invalid or incomplete reservation response."""
+
+
+
 @contextmanager
 def dispatch_admission_lock() -> Iterator[dict[str, Any]]:
     """Reserve dispatch admission, then commit or release it through the broker.
@@ -25,7 +30,7 @@ def dispatch_admission_lock() -> Iterator[dict[str, Any]]:
         timeout_ms=3500,
     )
     if not isinstance(acquired, dict) or acquired.get("acquired") is not True:
-        raise RuntimeError("The state broker did not confirm dispatch admission.")
+        raise DispatchAdmissionError("The state broker did not confirm dispatch admission.")
     state: dict[str, Any] = {
         "accepted": False,
         "last_accepted_at": acquired.get("last_accepted_at", 0.0),
@@ -40,4 +45,4 @@ def dispatch_admission_lock() -> Iterator[dict[str, Any]]:
             timeout_ms=3500,
         )
         if not isinstance(completed, dict) or completed.get("completed") is not True:
-            raise RuntimeError("The state broker could not confirm dispatch reservation completion.")
+            raise DispatchAdmissionError("The state broker could not confirm dispatch reservation completion.")
