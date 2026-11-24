@@ -629,3 +629,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
 
 ---
+
+## 2026-11-24 — سخت‌سازی انتخاب هدف Cancel
+
+- Cancel اکنون از همان dispatch lock مشترک با Dispatch و Resume استفاده می‌کند؛ در زمان ثبت Dispatch/Resume هم‌زمان اجرا نمی‌شود.
+- انتخاب اجرا قطعی‌تر شد: یک Codex job فعال، هدف اصلی است؛ چند Codex job فعال یا چند candidate صف‌شده باعث 409 و fail-closed می‌شود. اگر job مشخصی وجود نداشته باشد، فقط یک workflow فعالِ یکتا قابل لغو است؛ چند workflow مبهم هرگز با انتخاب جدیدترین run لغو نمی‌شوند.
+- تست‌های regression برای چند Codex job فعال، چند candidate صف‌شده، fallback مبهم، تنها workflow فعال و lock contention اضافه شدند. این اصلاح در شاخه‌های والد و follow-upهاست؛ exact-head CI هنوز pending است.
+
