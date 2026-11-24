@@ -1,3 +1,38 @@
+## 2026-11-24 — PR #871 regression-harness correction and Resume idempotency follow-up
+
+### Exact-head CI evidence
+- Prior tested code head: `82c44e04d44f6366c307440175352fe847621781`.
+- Browser E2E and dependency audit passed; Windows storage regressions passed. The full Linux and Windows test jobs failed, so the PR was not accepted.
+- Failure causes traced from job logs:
+  - Resume timeout test's fake `_run` treated the required `AUTONOMOUS_ENGINEERING_PAUSED=false` update as the workflow dispatch and failed before testing the ambiguous dispatch path.
+  - The definitive CLI-launch error message did not explicitly tell the operator that retry is safe when `X-Retryable=true`.
+  - A static workflow test searched for the removed `run_codex()` call instead of the current `result = run()` process boundary.
+  - The retry prompt lacked the explicit worktree/checkpoint preservation sentence required by its regression.
+  - Marker tests still expected any earlier marker in the body to invalidate a valid final-line marker, contrary to the final-nonempty-line contract.
+  - Recovery tests reused an environment credential intentionally consumed by the first invocation.
+  - Module-boundary assertions omitted the new `setStatusMessage` core API.
+  - POSIX broker returned a generic blocker where Windows returned the specific reservation/grace blocker.
+  - An obsolete autouse fixture still monkeypatched the removed in-memory grace variable, causing setup errors across otherwise unrelated dispatch-safety tests.
+- No existing test was skipped or deleted. The obsolete fixture was removed because the durable broker, not an in-memory timestamp, is now the source of truth. Marker coverage was replaced with an explicit regression proving that only the final non-empty line is authoritative.
+
+### Corrections on the PR #871 branch
+- Corrected the resume-timeout fake to acknowledge the Pause=false variable update and then simulate an ambiguous workflow dispatch.
+- Made a definitive process-launch failure explicitly retryable in its user-facing detail, consistent with `X-Retryable=true`.
+- Updated static contract tests to assert the actual process boundary and the exported sticky-status API.
+- Added the exact worktree/checkpoint preservation instruction to same-task Codex report repair.
+- Updated marker tests for last-nonempty-line semantics and added a dedicated repeated/preceding-marker regression.
+- Reinitialized the dedicated read-only recovery credential between independent test invocations.
+- Removed the obsolete test fixture for `_LAST_DISPATCH_ACCEPTED_AT`; persistent State Broker reservation/grace remains authoritative.
+- Preserved structured POSIX dispatch blockers so reservation-active and recently-accepted conflicts match the Windows broker contract.
+- Added a fail-closed guard: an idle queue that is already unpaused cannot receive a second one-shot Resume dispatch. An existing active run may be unpaused without enqueueing a duplicate.
+
+### Validation boundary
+- The latest code head at this log update is `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`; exact-head tests, Browser E2E and dependency audit were queued. No success is claimed until all jobs finish on the final SHA.
+- The actual Windows target-host acceptance, live Runner/Ollama/Codex, dispatch/pause/resume/cancel, crash/restart, checkpoint restore, manual accessibility and owner UI acceptance remain separate gates.
+- PR #871 remains stacked on #870/#866. No merge, workflow dispatch/cancel, repository setting/secret change, task/checkpoint mutation, Runner/ACL change, database migration or user-data mutation was performed.
+
+---
+
 ## 2026-11-24 — make Resume idempotent and fail closed
 
 - Resume now uses the shared dispatch lock and a separate resume-acceptance timestamp; the manual dispatch route also checks the most recent Resume acceptance. This prevents a second workflow from being queued immediately after Resume.
