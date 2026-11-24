@@ -20,6 +20,7 @@ from app import main as main_module
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch):
     monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+    monkeypatch.setattr(agent, "_LAST_RESUME_ACCEPTED_AT", 0.0)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
@@ -32,6 +33,20 @@ def _stub_durable_pending_work_status(monkeypatch):
         "checkpoint": {"available": False, "verified": True},
         "reason": None,
     })
+
+
+def _resume_ready_status(recent_runs=None):
+    return {
+        "github": {"runs_available": True, "recent_runs": list(recent_runs or [])},
+        "paused": True,
+        "ready": True,
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "checkpoint": {"available": False, "verified": True},
+        },
+        "checks": {},
+    }
 
 
 @pytest.mark.parametrize(
@@ -280,6 +295,8 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
 
 
 def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: _resume_ready_status())
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(
@@ -296,15 +313,19 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     assert "در حالت زمان‌بندی‌شده این اجرا یک‌باره است" in result["message"]
     assert len(result["correlation_id"]) == 32
     assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][0][1:3] == ["workflow", "run"]
-    assert "--field" in calls[2][0]
-    assert "correlation_id=" + result["correlation_id"] in calls[2][0]
-    assert "resume_once=true" in calls[2][0]
-    assert calls[2][1] is True
+    assert calls[2][0][1:3] == ["auth", "status"]
+    assert calls[3][0][1:3] == ["workflow", "run"]
+    assert "--field" in calls[3][0]
+    assert "correlation_id=" + result["correlation_id"] in calls[3][0]
+    assert "resume_once=true" in calls[3][0]
+    assert calls[3][1] is True
+    assert result["dispatch_status"] == "resume_once_dispatched"
+    assert agent._LAST_RESUME_ACCEPTED_AT > 0
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
 
 def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: _resume_ready_status())
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     calls = []
 
@@ -332,6 +353,7 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
 
 
 def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: _resume_ready_status())
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
