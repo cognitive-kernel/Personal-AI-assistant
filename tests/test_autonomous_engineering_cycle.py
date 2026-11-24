@@ -52,9 +52,9 @@ def test_task_marker_rejects_missing_or_ambiguous_marker(tmp_path: Path, report:
 
 def test_task_marker_validates_only_the_last_nonempty_line(tmp_path: Path):
     path = tmp_path / "report.md"
-    path.write_text("TASK_COMPLETE\\nQUEUE_EMPTY\\n", encoding="utf-8")
+    path.write_text("TASK_COMPLETE\nQUEUE_EMPTY\n", encoding="utf-8")
     assert cycle.task_marker(path) == "QUEUE_EMPTY"
-    path.write_text("TASK_COMPLETE\\nTASK_COMPLETE\\n", encoding="utf-8")
+    path.write_text("TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
     assert cycle.task_marker(path) == "TASK_COMPLETE"
 
 
