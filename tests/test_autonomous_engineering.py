@@ -82,10 +82,12 @@ def test_dispatch_admission_context_releases_unaccepted_reservation(monkeypatch)
 
 
 def test_dispatch_grace_window_is_shared_by_separate_requests(monkeypatch):
-    state = {"last_accepted_at": 0.0}
+    state = {"accepted": False}
     calls = []
     @contextmanager
     def shared_lock():
+        if state["accepted"]:
+            raise RuntimeError("dispatch_admission_conflict")
         yield state
 
     monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
