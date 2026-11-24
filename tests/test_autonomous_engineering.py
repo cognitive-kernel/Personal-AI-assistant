@@ -407,6 +407,23 @@ def test_resume_unpauses_existing_active_run_without_dispatching_duplicate(monke
     assert pause_update[3:6] == ["AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false"]
 
 
+def test_resume_rejects_unpaused_idle_queue_without_dispatch(monkeypatch):
+    snapshot = _paused_ready_snapshot()
+    snapshot["paused"] = False
+    monkeypatch.setattr(agent, "collect_status", lambda: snapshot)
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda *args, **kwargs: pytest.fail("An idle, already-unpaused queue must not mutate GitHub or dispatch"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_NOT_PAUSED"
+    assert error.value.headers["X-Retryable"] == "false"
+
+
 def test_resume_lock_conflict_fails_before_github_or_pause_mutation(monkeypatch):
     @contextmanager
     def busy_lock():
