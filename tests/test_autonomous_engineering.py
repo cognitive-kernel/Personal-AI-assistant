@@ -3199,7 +3199,7 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     ).read_text(encoding="utf-8")
     assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in cycle_policy
     run_cycle_start = cycle_policy.index("def run_cycle(")
-    assert cycle_policy.index('os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")', run_cycle_start) < cycle_policy.index("run_codex(", run_cycle_start)
+    assert cycle_policy.index('os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")', run_cycle_start) < cycle_policy.index("result = run(", run_cycle_start)
     assert "_live_pause_enabled(settings_token, repo)" in cycle_policy
     assert "_live_execution_mode(settings_token, repo)" in cycle_policy
     assert "def _settings_api(" in cycle_policy
