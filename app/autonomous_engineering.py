@@ -920,6 +920,7 @@ def _dispatch_autonomous_engineering_locked(
             "manual_task_submitted": False,
             "resume_once": True,
             "dispatch_status": "existing_run_active",
+            "paused": False,
             "correlation_id": correlation_id,
             "message": "توقف برداشته شد؛ یک اجرای عامل از قبل فعال است، بنابراین برای جلوگیری از اجرای تکراری Workflow تازه‌ای ارسال نشد.",
         }
@@ -974,6 +975,7 @@ def _dispatch_autonomous_engineering_locked(
         "manual_task_submitted": bool(manual_task),
         "resume_once": bool(resume_once),
         "dispatch_status": "resume_once_dispatched" if resume_once else "dispatched",
+        "paused": False if resume_once else readiness.get("paused", False),
         "correlation_id": correlation_id,
         "message": "ادامه از وضعیت ذخیره‌شده درخواست شد؛ در حالت زمان‌بندی‌شده این اجرا یک‌باره است." if resume_once
             else "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید." if manual_task
