@@ -745,6 +745,18 @@ def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
     assert result["recent_runs"] == []
 
 
+
+def test_manual_dispatch_is_suppressed_after_resume_acceptance(monkeypatch):
+    monkeypatch.setattr(agent, "_LAST_RESUME_ACCEPTED_AT", agent.time.monotonic())
+
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+    assert "پیش از ارسال دوباره" in error.value.detail
+
+
 def test_dispatch_fails_closed_when_run_list_is_unavailable(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": False,
