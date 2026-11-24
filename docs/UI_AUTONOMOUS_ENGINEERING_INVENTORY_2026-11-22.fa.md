@@ -354,3 +354,4 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - Exact-head CI برای شاخه‌های فعلی #863/#869 و #866/#870: pending تا اجرای کامل روی آخرین SHA.
 - Windows target-host، Runner واقعی، Ollama/Codex واقعی و owner acceptance: NOT RUN؛ هیچ‌کدام با CI شبیه‌سازی‌شده جایگزین نمی‌شوند.
 - Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
+- Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
