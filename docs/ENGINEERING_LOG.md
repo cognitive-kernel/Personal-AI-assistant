@@ -6,7 +6,7 @@
 
 ### Correction
 - Added a protected machine-level recovery marker at `HKLM\\SOFTWARE\\PersonalAIAssistant\\StateBroker\\SetupAbandoned`, pinned to the 64-bit registry view on 64-bit Windows so 32-bit and 64-bit PowerShell hosts observe the same state.
-- When the production mutex detects abandonment without explicit acknowledgement, it writes the marker before releasing the mutex and refusing setup. If registry persistence itself fails, the process remains fail-closed with a process-scoped fallback flag while retaining mutex ownership until process exit.
+- When the production mutex detects abandonment without explicit acknowledgement, it writes the marker before releasing the mutex and refusing setup. If registry persistence itself fails, the process remains fail-closed with a process-scoped fallback flag while retaining mutex ownership; explicit acknowledgement from the same owning thread releases that stale ownership before a fresh acquisition, while acknowledgement from another process/thread is rejected.
 - Every later invocation checks the persistent marker/process fallback before acquiring the mutex; it refuses without `-AcknowledgeAbandonedSetup`, including a second invocation in the same PowerShell session.
 - An acknowledged setup keeps the marker until all setup operations, Runner restarts, and broker health checks succeed. Only then is the marker removed.
 - The Windows integration test now exercises parent termination, live mutex exclusion, abandoned-owner detection, durable marker persistence, same-process re-entry rejection, cross-process rejection, explicit acknowledgement, marker cleanup, and clean lock reuse. A static contract regression verifies that the production installer wires the marker into the lock module.
