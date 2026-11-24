@@ -445,3 +445,63 @@ def test_posix_broker_task_archive_rejects_stale_revision_and_active_execution(p
             assert (state_dir / "pending-manual-task.txt").exists()
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+
+def test_posix_broker_dispatch_admission_reservation_is_persistent_and_two_phase(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    first_id = "a" * 32
+    second_id = "b" * 32
+
+    acquired = broker.request(
+        "POST", "/v1/dispatch-admission/acquire",
+        body={"request_id": first_id},
+    )
+    assert acquired["acquired"] is True
+    assert acquired["lease_seconds"] == 120
+    with pytest.raises(broker.StateBrokerConflict) as conflict:
+        broker.request(
+            "POST", "/v1/dispatch-admission/acquire",
+            body={"request_id": second_id},
+        )
+    assert "dispatch_reservation_active" in conflict.value.blockers
+
+    released = broker.request(
+        "POST", "/v1/dispatch-admission/complete",
+        body={"request_id": first_id, "accepted": False},
+    )
+    assert released["completed"] is True
+    acquired_again = broker.request(
+        "POST", "/v1/dispatch-admission/acquire",
+        body={"request_id": second_id},
+    )
+    assert acquired_again["acquired"] is True
+    committed = broker.request(
+        "POST", "/v1/dispatch-admission/complete",
+        body={"request_id": second_id, "accepted": True},
+    )
+    assert committed["completed"] is True
+    state = json.loads((state_dir / "workflow-dispatch-admission.json").read_text(encoding="utf-8"))
+    assert state["schema_version"] == 1
+    assert state["pending"] is None
+    assert state["last_accepted_at"] > 0
+
+    with pytest.raises(broker.StateBrokerConflict) as grace:
+        broker.request(
+            "POST", "/v1/dispatch-admission/acquire",
+            body={"request_id": "c" * 32},
+        )
+    assert "dispatch_recently_accepted" in grace.value.blockers
+
+
+def test_posix_broker_fails_closed_when_dispatch_admission_state_is_corrupt(posix_broker):
+    state_dir, _socket_path, broker = posix_broker
+    (state_dir / "workflow-dispatch-admission.json").write_text(
+        '{"schema_version":1,"last_accepted_at":"invalid","pending":null}',
+        encoding="utf-8",
+    )
+    with pytest.raises(broker.StateBrokerError, match="dispatch_admission_state_invalid"):
+        broker.request(
+            "POST", "/v1/dispatch-admission/acquire",
+            body={"request_id": "d" * 32},
+        )
