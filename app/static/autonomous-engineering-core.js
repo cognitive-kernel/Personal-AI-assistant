@@ -2,10 +2,16 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const message = $("agent-message");
+  const statusMessage = $("agent-status-message");
   function setMessage(text, kind) {
     if (!message) return;
     message.textContent = text;
     message.dataset.kind = kind || "";
+  }
+  function setStatusMessage(text, kind) {
+    if (!statusMessage) return;
+    statusMessage.textContent = text;
+    statusMessage.dataset.kind = kind || "";
   }
   function createCorrelationId() {
     const cryptoApi = window.crypto;
@@ -45,8 +51,23 @@
         headers: requestHeaders,
         signal: controller.signal
       });
+      const responseText = await response.text();
       let payload = {};
-      try { payload = await response.json(); } catch (_) {}
+      if (responseText.trim()) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch (_) {
+          const invalid = new Error("پاسخ سرویس JSON معتبر نیست؛ نتیجهٔ درخواست قابل تأیید نیست.");
+          invalid.status = response.ok ? 502 : response.status;
+          invalid.code = "AUTONOMOUS_ENGINEERING_INVALID_RESPONSE";
+          throw invalid;
+        }
+      } else if (response.ok) {
+        const empty = new Error("پاسخ سرویس خالی بود؛ نتیجهٔ درخواست قابل تأیید نیست.");
+        empty.status = 502;
+        empty.code = "AUTONOMOUS_ENGINEERING_EMPTY_RESPONSE";
+        throw empty;
+      }
       if (!response.ok) {
         const detail = typeof payload.detail === "string"
           ? payload.detail
@@ -156,6 +177,6 @@
   }
 
   window.autonomousEngineeringCore = Object.freeze({
-    version: 1, $, request, setMessage, startPolling
+    version: 1, $, request, setMessage, setStatusMessage, startPolling
   });
 })();
