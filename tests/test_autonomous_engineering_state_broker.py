@@ -258,6 +258,27 @@ def test_broker_pipe_open_retries_transient_missing_instance(monkeypatch):
     assert fake.calls == 2
 
 
+
+
+def test_broker_pipe_open_reports_missing_service_instead_of_hiding_it_as_timeout(monkeypatch):
+    class MissingServiceKernel:
+        def __init__(self):
+            self.calls = 0
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE
+
+    fake = MissingServiceKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: broker._ERROR_FILE_NOT_FOUND, raising=False)
+    monkeypatch.setattr(broker.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(broker.StateBrokerError, match=r"pipe is unavailable \(WinError 2\)"):
+        broker._open_pipe(fake, broker.time.monotonic() + 5)
+
+    assert fake.calls == broker._ERROR_FILE_NOT_FOUND_RETRIES
+
+
 def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
     class FakeKernel:
         def __init__(self):
