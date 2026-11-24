@@ -844,6 +844,23 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None, re
     return _dispatch_with_admission(payload, correlation_id=correlation_id)
 
 
+def _set_autonomous_engineering_pause(gh: str, paused: bool) -> bool:
+    result = _run(
+        [
+            gh,
+            "variable",
+            "set",
+            "AUTONOMOUS_ENGINEERING_PAUSED",
+            "--body",
+            "true" if paused else "false",
+            "--repo",
+            _repository(),
+        ],
+        timeout=15,
+    )
+    return bool(result and result.returncode == 0)
+
+
 def _dispatch_autonomous_engineering_locked(
     payload: ManualTaskRequest | None = None,
     *,
@@ -889,6 +906,13 @@ def _dispatch_autonomous_engineering_locked(
         for item in active_runs
     )
     if resume_once and has_active_run:
+        gh = _authenticated_gh()
+        if not _set_autonomous_engineering_pause(gh, False):
+            raise HTTPException(
+                status_code=502,
+                detail="اجرای فعال شناسایی شد اما برداشتن توقف در GitHub تأیید نشد؛ وضعیت را بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
+            )
         return {
             "accepted": True,
             "repository": _repository(),
@@ -912,15 +936,33 @@ def _dispatch_autonomous_engineering_locked(
     command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--raw-field", f"correlation_id={correlation_id}", "--raw-field", f"manual_task={manual_task}"]
     if resume_once:
         command.extend(["--raw-field", "resume_once=true"])
+        if not _set_autonomous_engineering_pause(gh, False):
+            raise HTTPException(
+                status_code=502,
+                detail="برداشتن توقف در GitHub تأیید نشد؛ Workflow ارسال نشد.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
+            )
     try:
         result = _run(command, timeout=20, raise_os_error=True)
     except OSError as exc:
+        if resume_once and not _set_autonomous_engineering_pause(gh, True):
+            raise HTTPException(
+                status_code=502,
+                detail="ارسال Workflow آغاز نشد و بازگردانی توقف در GitHub نیز تأیید نشد؛ وضعیت را فوراً بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED", "X-Retryable": "false"},
+            ) from exc
         _STATUS_LOGGER.error("Autonomous workflow dispatch could not start; correlation_id=%s", correlation_id)
         raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED" if resume_once else "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
     if result is None:
         _STATUS_LOGGER.warning("Autonomous workflow dispatch outcome is unknown; correlation_id=%s", correlation_id)
         raise HTTPException(status_code=502, detail="نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN" if resume_once else "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"})
     if result.returncode != 0:
+        if resume_once and not _set_autonomous_engineering_pause(gh, True):
+            raise HTTPException(
+                status_code=502,
+                detail="GitHub ارسال Workflow را رد کرد اما بازگردانی توقف نیز تأیید نشد؛ وضعیت را فوراً بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED", "X-Retryable": "false"},
+            )
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16] if safe_stderr else "empty"
         _STATUS_LOGGER.error("Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s", correlation_id, result.returncode, stderr_fingerprint)
