@@ -926,6 +926,17 @@ def _ensure_ollama_server(
     )
 
 
+_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(r"-codex-(?:ctx(?:[0-9]+)?|64k)$", re.IGNORECASE)
+
+
+def _internal_codex_context_base_model(model: str) -> str | None:
+    """Return the base tag for an app-generated Codex model variant, if any."""
+    match = _INTERNAL_CODEX_CONTEXT_VARIANT.search(model.strip())
+    if not match:
+        return None
+    return model.strip()[:match.start()]
+
+
 def _ensure_ollama() -> None:
     """Read-only Ollama preflight; installation, startup, and model pulls are user actions."""
     active_providers = [
@@ -1016,14 +1027,33 @@ def _ensure_ollama() -> None:
         required_models.append(("مدل بازبینی factual", factual_review_model))
 
     missing = [
-        f"{role}: {model}"
+        (role, model)
         for role, model in required_models
         if model not in installed_models
     ]
+    legacy_variants = [
+        (role, model, _internal_codex_context_base_model(model))
+        for role, model in missing
+        if _internal_codex_context_base_model(model) is not None
+    ]
+    if legacy_variants:
+        role, model, base_model = legacy_variants[0]
+        base_state = (
+            f"مدل پایهٔ {base_model} نصب است؛ آن را در تنظیمات انتخاب کنید."
+            if base_model in installed_models
+            else f"مدل پایهٔ {base_model} نیز نصب نیست؛ ابتدا یک مدل پایهٔ قابل انتخاب نصب کنید."
+        )
+        raise RuntimeError(
+            f"{role} به variant داخلی Codex یعنی {model} اشاره می‌کند. "
+            "این نام یک مدل قابل دریافت از رجیستری Ollama نیست و نباید با ollama pull دریافت شود. "
+            + base_state
+            + " تنظیم ذخیره‌شده تغییر نکرده است."
+        )
     if missing:
         raise RuntimeError(
             "مدل‌های انتخاب‌شده نصب نیستند؛ startup دانلود انجام نمی‌دهد. "
-            "مدل را از کنترل دریافت مدل در UI نصب کنید: " + "؛ ".join(missing)
+            "مدل را از کنترل دریافت مدل در UI نصب کنید: "
+            + "؛ ".join(f"{role}: {model}" for role, model in missing)
         )
 
 
