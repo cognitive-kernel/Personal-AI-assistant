@@ -443,7 +443,7 @@ def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_f
     assert "if ($wasRunning)" in install[stage_catch:stage_catch_end]
     assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:stage_catch_end]
     assert "$existingServicePath" in install
-    assert "The previous state-broker service configuration" in install
+    assert 'Write-Warning "Could not restore the previous state-broker service configuration."' in install
     assert "'binPath=' $binaryPath" in install
     assert '"StartPending"' in install and '"StopPending"' in install
     assert 'refusing to replace its executable' in install
@@ -478,9 +478,9 @@ def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
     assert "Another elevated state-broker setup is already running" in ensure
     assert "catch [System.Threading.AbandonedMutexException]" in ensure
     assert "fail closed" in ensure
-    finalizer = ensure[ensure.rfind("} finally {"):]
-    assert "$setupMutex.ReleaseMutex()" in finalizer
-    assert "$setupMutex.Dispose()" in finalizer
+    assert "$setupMutex.ReleaseMutex()" in ensure
+    assert "$setupMutex.Dispose()" in ensure
+    assert ensure.rfind("$setupMutex.ReleaseMutex()") < ensure.rfind("$setupMutex.Dispose()")
 
 
 def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
