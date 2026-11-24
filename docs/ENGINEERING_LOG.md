@@ -1,3 +1,21 @@
+## 2026-11-24 — allow explicit Resume to reach the authoritative live Pause gate
+
+### Root cause
+- The Resume API clears the repository Pause variable and dispatches `resume_once=true`, but the first workflow admission step still checked the workflow-context `PAUSED` snapshot before the job entered the concurrency group.
+- If that snapshot was stale and still `true`, the schedule gate skipped the explicit Resume before the newer live API check could run. This is especially relevant to one-shot Resume while scheduled mode is active.
+
+### Correction
+- The schedule gate now lets only an explicit `workflow_dispatch` carrying `resume_once=true` pass the stale snapshot-only Pause check.
+- The live Pause/mode API gate after the concurrency group remains mandatory and authoritative. A still-active Pause, scheduled-mode mismatch, malformed setting, or API failure still prevents task start.
+- Manual task dispatch while Pause is active remains rejected at the early gate.
+- Added a workflow contract test and documented the boundary in ADR-024.
+
+### Validation boundary
+- Exact-head CI is required. The regression is static/workflow-contract coverage; runtime GitHub variable propagation is still verified by the live post-concurrency gate and target-host acceptance.
+- No repository variable or workflow was dispatched by this source change. No task/checkpoint/durable state was modified.
+
+---
+
 ## 2026-11-24 — apply live Pause/mode gate to recovered merged-PR chaining
 
 ### Root cause
