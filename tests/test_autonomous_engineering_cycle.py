@@ -1826,6 +1826,7 @@ def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch)
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
     def fake_api(token, repo, method, path, payload=None):
+        assert token == "settings-token"
         if path == "":
             events.append("repo_check")
             return {"full_name": repo}
