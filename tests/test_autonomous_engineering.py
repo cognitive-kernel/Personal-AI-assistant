@@ -2437,7 +2437,8 @@ def test_workflow_run_list_uses_fixed_server_selected_limit(monkeypatch):
     assert runs[0]["workflow_path"] == ".github/workflows/autonomous-codex-engineering.yml"
 
 
-def test_workflow_run_list_reads_diagnostics_only_for_failed_runs(monkeypatch):
+def test_workflow_run_list_reads_diagnostics_only_for_failed_runs_and_caches_polls(monkeypatch):
+    monkeypatch.setattr(agent, "_RUN_DIAGNOSTICS_CACHE", {})
     diagnostic_reads = []
     monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
         "workflow_runs": [
@@ -2450,11 +2451,14 @@ def test_workflow_run_list_reads_diagnostics_only_for_failed_runs(monkeypatch):
         diagnostic_reads.append(run_id) or {"diagnostics": [{"summary": "root cause"}]}
     ))
     runs = agent._workflow_runs("gh")
+    second_poll = agent._workflow_runs("gh")
     assert [run["id"] for run in runs] == [1, 2, 3]
+    assert [run["id"] for run in second_poll] == [1, 2, 3]
     assert diagnostic_reads == [3]
     assert runs[0]["failure_summary"] is None
     assert runs[1]["failure_summary"] is None
     assert runs[2]["failure_summary"] == "root cause"
+    assert second_poll[2]["failure_summary"] == "root cause"
 
 
 def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
