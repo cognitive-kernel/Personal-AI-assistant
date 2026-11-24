@@ -493,6 +493,19 @@ def run_codex(args: argparse.Namespace) -> int:
             "plan_completed": completed, "plan_total": total,
             "plan_percent": plan_percentage(completed, total),
         })
+        attempt_status = {
+            "schema_version": 1,
+            "final_agent_message_present": bool(final_agent_message and final_agent_message.strip()),
+            "turn_completed": final_turn_completed,
+            "turn_failed": final_turn_failed,
+            "jsonl_event_count": event_count,
+            "process_exit_code": return_code,
+        }
+        status_path = Path(args.report).with_suffix(Path(args.report).suffix + ".status.json")
+        try:
+            status_path.write_text(json.dumps(attempt_status, separators=(",", ":")) + "\\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"Could not persist non-content Codex attempt status: {type(exc).__name__}", file=sys.stderr)
         return return_code
     finally:
         try:
