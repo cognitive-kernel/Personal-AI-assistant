@@ -155,6 +155,17 @@ def report(title: str, message: str, *, error: bool = False) -> None:
             summary.write(f"## {title}\n\n{message}\n")
 
 
+
+def _verify_repository_access(client: GitHubActionsClient, expected_repository: str) -> None:
+    metadata = client.request("GET", "/")
+    if not isinstance(metadata, dict):
+        raise RuntimeError("GitHub returned invalid repository metadata; recovery fails closed.")
+    actual_repository = str(metadata.get("full_name") or "").strip()
+    if actual_repository.casefold() != expected_repository.casefold():
+        raise RuntimeError("The GitHub token could not verify the configured repository; recovery fails closed.")
+
+
+
 def _live_pause_enabled(client: GitHubActionsClient) -> bool:
     try:
         setting = client.request("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
@@ -202,6 +213,10 @@ def main() -> int:
 
     try:
         client = GitHubActionsClient(repository, token)
+        # Verify repository access before interpreting a variable-endpoint 404
+        # as an intentionally unset variable; private-repo authorization failures
+        # can otherwise look identical to a missing repository variable.
+        _verify_repository_access(client, repository)
         if _live_execution_mode(client) != "continuous":
             report("Recovery not enabled", "The live execution mode is scheduled; automatic recovery is disabled.")
             return 0
