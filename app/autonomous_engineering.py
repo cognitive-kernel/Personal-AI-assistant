@@ -1129,14 +1129,64 @@ def cancel_autonomous_engineering() -> dict[str, Any]:
         runs = json.loads(result.stdout)
     except ValueError as exc:
         raise HTTPException(status_code=502, detail="پاسخ GitHub معتبر نیست.") from exc
-    active = next(
-        (
-            item for item in runs
-            if isinstance(item, dict)
-            and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-        ),
-        None,
-    )
+    active_runs = [
+        item for item in runs
+        if isinstance(item, dict)
+        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+        and isinstance(item.get("databaseId"), int)
+        and not isinstance(item.get("databaseId"), bool)
+    ]
+    if not active_runs:
+        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
+
+    def _codex_job_state(run: dict[str, Any]) -> str | None:
+        details = _run(
+            [gh, "run", "view", str(run["databaseId"]), "--repo", _repository(), "--json", "jobs"],
+            timeout=5,
+        )
+        if not details or details.returncode != 0:
+            raise HTTPException(
+                status_code=502,
+                detail="وضعیت jobهای اجرای فعال قابل تأیید نیست؛ برای جلوگیری از لغو اجرای اشتباه، عملیات متوقف شد.",
+            )
+        try:
+            payload = json.loads(details.stdout)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail="جزئیات jobهای اجرای فعال معتبر نیست.") from exc
+        jobs = payload.get("jobs") if isinstance(payload, dict) else None
+        if not isinstance(jobs, list):
+            raise HTTPException(status_code=502, detail="فهرست jobهای اجرای فعال در دسترس نیست.")
+        codex_jobs = [
+            job for job in jobs
+            if isinstance(job, dict) and str(job.get("name") or "").strip().casefold() == "codex"
+        ]
+        if len(codex_jobs) > 1:
+            raise HTTPException(status_code=502, detail="بیش از یک job با مالکیت Codex در یک اجرا گزارش شد؛ لغو ایمن ممکن نیست.")
+        if not codex_jobs:
+            return None
+        return str(codex_jobs[0].get("status") or "").strip().casefold().replace("-", "_")
+
+    # Workflow-run status alone is insufficient: a newer schedule-gate job can
+    # be in progress while its Codex job is still queued behind concurrency.
+    # Inspect only the bounded set of workflow runs reported in progress.
+    in_progress_runs = [item for item in active_runs if item.get("status") == "in_progress"]
+    queued_runs = [item for item in active_runs if item.get("status") in {"queued", "waiting", "requested", "pending"}]
+    if len(in_progress_runs) > 5:
+        raise HTTPException(
+            status_code=409,
+            detail="تعداد اجراهای درحال‌بررسی بیش از حد است؛ برای جلوگیری از لغو اجرای اشتباه، عملیات لغو متوقف شد.",
+        )
+    active = None
+    queued_candidates = []
+    for run in in_progress_runs:
+        job_state = _codex_job_state(run)
+        if job_state == "in_progress":
+            active = run
+            break
+        if job_state in {"queued", "waiting", "requested", "pending"}:
+            queued_candidates.append(run)
+    if active is None:
+        active = queued_candidates[0] if queued_candidates else (queued_runs[0] if queued_runs else active_runs[0])
     if not active or not isinstance(active.get("databaseId"), int):
         raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
     cancelled = _run(
