@@ -307,6 +307,7 @@ def test_run_cycle_stops_without_blind_retry_when_codex_has_no_final_agent_messa
         report.with_suffix(report.suffix + ".status.json").write_text(json.dumps({
             "schema_version": 1,
             "final_agent_message_present": False,
+            "missing_message_reason": "turn_failed_or_tool_error",
             "turn_completed": False,
             "turn_failed": True,
             "jsonl_event_count": 19,
@@ -327,6 +328,7 @@ def test_run_cycle_stops_without_blind_retry_when_codex_has_no_final_agent_messa
     saved = json.loads((state_root / "run-diagnostics" / "123.json").read_text(encoding="utf-8"))
     entry = saved["diagnostics"][-1]
     assert entry["category"] == "no_last_agent_message"
+    assert "reason=turn_failed_or_tool_error" in entry["summary"]
     assert "turn_failed=True" in entry["summary"]
     assert "jsonl_event_count=19" in entry["summary"]
     assert "tool call did not complete" in entry["detail"]
@@ -381,6 +383,11 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
 
     assert calls["codex"] == 2
     assert len(stopped) == 2
+    retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
+    retry_text = retry_prompt.read_text(encoding="utf-8")
+    assert "Codex process exited with code 1" in retry_text
+    assert "simulated Codex failure" in retry_text
+    assert "Sanitized diagnostic from the failed Codex attempt" in retry_text
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
