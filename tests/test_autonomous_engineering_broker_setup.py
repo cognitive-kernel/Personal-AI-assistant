@@ -162,10 +162,19 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
         pytest.skip("A supported PowerShell host is unavailable")
 
     mutex_name = "Global\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
-    marker = str(tmp_path / "mutex-held.txt").replace("'", "''")
-    release = str(tmp_path / "mutex-release.txt").replace("'", "''")
-    exited = str(tmp_path / "mutex-owner-exited.txt").replace("'", "''")
-    hold_script = (
+    marker = tmp_path / "mutex-held.txt"
+    release = tmp_path / "mutex-release.txt"
+    exited = tmp_path / "mutex-owner-exited.txt"
+    shutdown = tmp_path / "mutex-child-shutdown.txt"
+    pid_file = tmp_path / "mutex-child.pid"
+    child_script_path = tmp_path / "mutex-owner-child.ps1"
+    parent_script_path = tmp_path / "mutex-owner-parent.ps1"
+
+    def ps_quote(value):
+        return str(value).replace("'", "''")
+
+    child_script = (
+        "$ErrorActionPreference = 'Stop'\n"
         "Add-Type -TypeDefinition @'\n"
         "using System.IO;\n"
         "using System.Threading;\n"
@@ -183,24 +192,46 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
         "    thread.IsBackground = true; thread.Start();\n"
         "  }\n"
         "}\n"
-        "'@; "
-        "[StateBrokerMutexOwner]::Start('" + mutex_name + "', '" + marker + "', '" + release + "', '" + exited + "'); "
-        "while ($true) { Start-Sleep -Seconds 1 }"
+        "'@\n"
+        "[StateBrokerMutexOwner]::Start('"
+        + ps_quote(mutex_name) + "', '"
+        + ps_quote(marker) + "', '"
+        + ps_quote(release) + "', '"
+        + ps_quote(exited) + "')\n"
+        "while (-not [System.IO.File]::Exists('" + ps_quote(shutdown) + "')) {\n"
+        "  Start-Sleep -Milliseconds 100\n"
+        "}\n"
     )
-    child = subprocess.Popen(
-        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", hold_script],
+    child_script_path.write_text(child_script, encoding="utf-8")
+
+    parent_script = (
+        "$ErrorActionPreference = 'Stop'\n"
+        "$child = Start-Process -FilePath '" + ps_quote(powershell) + "' "
+        "-ArgumentList '-NoLogo -NoProfile -NonInteractive -File \"" + ps_quote(child_script_path) + "\"' "
+        "-PassThru\n"
+        "[System.IO.File]::WriteAllText('" + ps_quote(pid_file) + "', [string]$child.Id)\n"
+        "$child.WaitForExit()\n"
+        "exit $child.ExitCode\n"
+    )
+    parent_script_path.write_text(parent_script, encoding="utf-8")
+
+    parent = subprocess.Popen(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(parent_script_path)],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
     )
+    child_pid = None
     try:
         deadline = time.monotonic() + 20
-        while time.monotonic() < deadline and not os.path.exists(marker):
-            if child.poll() is not None:
-                stdout, stderr = child.communicate(timeout=2)
+        while time.monotonic() < deadline and (not marker.exists() or not pid_file.exists()):
+            if parent.poll() is not None:
+                stdout, stderr = parent.communicate(timeout=2)
                 pytest.fail(f"Mutex-owning child exited early: {stdout} {stderr}")
             time.sleep(0.05)
-        assert os.path.exists(marker), "Mutex-owning thread did not acquire the named mutex"
+        assert marker.exists(), "Elevated-child simulation did not acquire the named mutex"
+        assert pid_file.exists(), "Parent did not publish the child process ID"
+        child_pid = int(pid_file.read_text(encoding="utf-8").strip())
 
         competing_script = (
             "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
@@ -219,12 +250,26 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
         )
         assert competing.returncode == 2, competing.stdout + competing.stderr
 
-        # End only the mutex-owning thread; keep its process alive to observe abandonment.
-        Path(release).write_text("release", encoding="utf-8")
+        # Simulate the Python/PowerShell parent timing out: terminate only the
+        # parent while the independently started child continues to own the mutex.
+        parent.terminate()
+        parent.wait(timeout=5)
+        still_locked = subprocess.run(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", competing_script],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,
+        )
+        assert still_locked.returncode == 2, still_locked.stdout + still_locked.stderr
+
+        # Let the owning thread exit without ReleaseMutex. Its process remains
+        # alive, so the next acquisition must report AbandonedMutexException.
+        release.write_text("release", encoding="utf-8")
         deadline = time.monotonic() + 10
-        while time.monotonic() < deadline and not os.path.exists(exited):
+        while time.monotonic() < deadline and not exited.exists():
             time.sleep(0.025)
-        assert os.path.exists(exited), "Mutex-owning thread did not exit"
+        assert exited.exists(), "Mutex-owning thread did not exit"
 
         abandoned_script = (
             "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
@@ -246,16 +291,40 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
             check=False,
         )
         assert abandoned.returncode == 0, abandoned.stdout + abandoned.stderr
+
+        shutdown.write_text("shutdown", encoding="utf-8")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            check = subprocess.run(
+                ["tasklist.exe", "/FI", f"PID eq {child_pid}", "/FO", "CSV", "/NH"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+                check=False,
+            )
+            if str(child_pid) not in check.stdout:
+                break
+            time.sleep(0.1)
+        else:
+            pytest.fail("Elevated-child simulation did not exit after shutdown")
     finally:
-        if child.poll() is None:
-            child.terminate()
+        if parent.poll() is None:
+            parent.terminate()
             try:
-                child.wait(timeout=5)
+                parent.wait(timeout=5)
             except subprocess.TimeoutExpired:
-                child.kill()
-                child.wait(timeout=5)
-        if child.stdout:
-            child.stdout.close()
-        if child.stderr:
-            child.stderr.close()
+                parent.kill()
+                parent.wait(timeout=5)
+        if child_pid is not None:
+            subprocess.run(
+                ["taskkill.exe", "/PID", str(child_pid), "/T", "/F"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        if parent.stdout:
+            parent.stdout.close()
+        if parent.stderr:
+            parent.stderr.close()
 
