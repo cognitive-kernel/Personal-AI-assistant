@@ -1,3 +1,9 @@
+## 2026-11-24 — serialize Cancel and fail closed on ambiguous targets
+
+- Cancel now shares the dispatch/resume lock, preventing a run-list inspection from racing a concurrent workflow submission.
+- Target selection prefers exactly one in-progress Codex job. Multiple in-progress Codex jobs or multiple queued Codex candidates fail closed; when no Codex job is identifiable, fallback is allowed only if exactly one workflow is active. Ambiguous active sets are never resolved by choosing the newest run.
+- Added tests for multiple active/queued Codex candidates, ambiguous workflow fallback, the single-run fallback, and lock contention. Exact-head CI and Windows target-host acceptance remain pending.
+
 ## 2026-11-24 — reconcile Autonomous Engineering branches with merged UI and cancellation fixes
 
 - PR #864 merged the serialized post-mutation status refresh. Its exact head 8303afa5d44f104c6e9a5d569868f3db248023b0 passed tests, Browser E2E, CodeQL, and dependency audit.
