@@ -465,7 +465,7 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append((command, raise_os_error))
-        if command[1:3] == ["auth", "status"]:
+        if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         return None
@@ -2886,7 +2886,8 @@ def test_dispatch_launch_error_is_definitive_and_retryable(monkeypatch):
     assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
-    assert "می‌توانید دوباره تلاش کنید" in error.value.detail
+    assert "شناسهٔ پیگیری" in error.value.detail
+    assert error.value.headers["X-Retryable"] == "true"
     assert "ممکن است GitHub درخواست را دریافت کرده باشد" not in error.value.detail
 
 def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(monkeypatch):
