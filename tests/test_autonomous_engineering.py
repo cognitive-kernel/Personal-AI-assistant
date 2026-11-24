@@ -436,7 +436,7 @@ def test_resume_acceptance_suppresses_following_manual_dispatch(monkeypatch):
     @contextmanager
     def shared_lock():
         if state["accepted"]:
-            raise RuntimeError("dispatch_admission_conflict")
+            raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
         yield state
 
     monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
