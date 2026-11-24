@@ -1794,7 +1794,7 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
         "12345", "1", task=1, attempt=2,
         stage="codex_decision", category="task_blocked",
         summary="Codex marked task 1 as blocked.",
-        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
+        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value Authorization: Basic dXNlcjpwYXNzd29yZA== ghp_0123456789abcdefghijklmnopqrstuvwxyz sk-proj-0123456789abcdefghijklmnopqrstuv eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
     )
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1814,6 +1814,10 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
     assert "bearer-secret-value" not in detail
+    assert "dXNlcjpwYXNzd29yZA==" not in detail
+    assert "sk-proj-0123456789abcdefghijklmnopqrstuv" not in detail
+    assert "eyJhbGciOiJIUzI1NiJ9" not in detail
+    assert "signaturelongtoken" not in detail
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
     assert "hunter2" not in detail
     assert "sk-test-value" not in detail
