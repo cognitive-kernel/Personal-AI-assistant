@@ -2,18 +2,33 @@ Set-StrictMode -Version Latest
 
 $script:DefaultSetupMarkerRegistrySubKey = "SOFTWARE\PersonalAIAssistant\StateBroker"
 
+function Open-AutonomousStateBrokerSetupMarkerBaseKey {
+    $view = [Microsoft.Win32.RegistryView]::Default
+    if ([Environment]::Is64BitOperatingSystem) {
+        # Use one physical registry view from both 32-bit and 64-bit PowerShell.
+        $view = [Microsoft.Win32.RegistryView]::Registry64
+    }
+    return [Microsoft.Win32.RegistryKey]::OpenBaseKey(
+        [Microsoft.Win32.RegistryHive]::LocalMachine,
+        $view
+    )
+}
+
 function Test-AutonomousStateBrokerSetupRecoveryMarker {
     [CmdletBinding()]
     param([string]$RegistrySubKey = $script:DefaultSetupMarkerRegistrySubKey)
     if ([string]::IsNullOrWhiteSpace($RegistrySubKey)) {
         throw "A non-empty State Broker setup recovery-marker registry path is required."
     }
-    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($RegistrySubKey, $false)
-    if ($null -eq $key) { return $false }
+    $baseKey = Open-AutonomousStateBrokerSetupMarkerBaseKey
     try {
-        $value = $key.GetValue("SetupAbandoned", $null)
-        return -not [string]::IsNullOrWhiteSpace([string]$value)
-    } finally { $key.Dispose() }
+        $key = $baseKey.OpenSubKey($RegistrySubKey, $false)
+        if ($null -eq $key) { return $false }
+        try {
+            $value = $key.GetValue("SetupAbandoned", $null)
+            return -not [string]::IsNullOrWhiteSpace([string]$value)
+        } finally { $key.Dispose() }
+    } finally { $baseKey.Dispose() }
 }
 
 function Set-AutonomousStateBrokerSetupRecoveryMarker {
@@ -22,11 +37,14 @@ function Set-AutonomousStateBrokerSetupRecoveryMarker {
     if ([string]::IsNullOrWhiteSpace($RegistrySubKey)) {
         throw "A non-empty State Broker setup recovery-marker registry path is required."
     }
-    $key = [Microsoft.Win32.Registry]::LocalMachine.CreateSubKey($RegistrySubKey)
-    if ($null -eq $key) { throw "Could not create the protected State Broker setup recovery marker." }
+    $baseKey = Open-AutonomousStateBrokerSetupMarkerBaseKey
     try {
-        $key.SetValue("SetupAbandoned", [DateTimeOffset]::UtcNow.ToString("o"), [Microsoft.Win32.RegistryValueKind]::String)
-    } finally { $key.Dispose() }
+        $key = $baseKey.CreateSubKey($RegistrySubKey)
+        if ($null -eq $key) { throw "Could not create the protected State Broker setup recovery marker." }
+        try {
+            $key.SetValue("SetupAbandoned", [DateTimeOffset]::UtcNow.ToString("o"), [Microsoft.Win32.RegistryValueKind]::String)
+        } finally { $key.Dispose() }
+    } finally { $baseKey.Dispose() }
 }
 
 function Clear-AutonomousStateBrokerSetupRecoveryMarker {
@@ -35,9 +53,12 @@ function Clear-AutonomousStateBrokerSetupRecoveryMarker {
     if ([string]::IsNullOrWhiteSpace($RegistrySubKey)) {
         throw "A non-empty State Broker setup recovery-marker registry path is required."
     }
-    $key = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey($RegistrySubKey, $true)
-    if ($null -eq $key) { return }
-    try { $key.DeleteValue("SetupAbandoned", $false) } finally { $key.Dispose() }
+    $baseKey = Open-AutonomousStateBrokerSetupMarkerBaseKey
+    try {
+        $key = $baseKey.OpenSubKey($RegistrySubKey, $true)
+        if ($null -eq $key) { return }
+        try { $key.DeleteValue("SetupAbandoned", $false) } finally { $key.Dispose() }
+    } finally { $baseKey.Dispose() }
 }
 
 function Enter-AutonomousStateBrokerSetupMutex {
