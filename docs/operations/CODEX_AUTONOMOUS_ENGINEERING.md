@@ -15,6 +15,23 @@ The worker is event-driven and periodic. It is not a model process generating co
 
 Official references: [Ollama Codex integration](https://docs.ollama.com/integrations/codex), [Codex non-interactive mode](https://learn.chatgpt.com/docs/non-interactive-mode), [Ollama local API](https://docs.ollama.com/api/introduction).
 
+## Current Ollama model roles and inventory
+
+The project currently uses the locally installed Ollama service. The project owner has confirmed that `gpt-oss:20b` is the model used for autonomous engineering/Codex work. Keep this role distinct from the chat, learning, programming, and embedding model settings; do not infer a model's role from its presence in a default setting alone.
+
+The following model identifiers are documented in the repository configuration and have been confirmed by the project owner as valid baseline information. They are not a complete inventory of the host's installed models:
+
+| Model identifier | Documented role / status |
+| --- | --- |
+| `gpt-oss:20b` | Confirmed by the project owner as the autonomous engineering model |
+| `qwen2.5:7b` | Chat/general model default in application configuration |
+| `qwen3:14b` | Programming model default in application configuration |
+| `nomic-embed-text` | Embedding model default in application configuration |
+
+Additional locally installed models exist; their exact identifiers and tags will be added when the project owner provides the inventory. Until then, do not label this table as the complete installed-model list, remove existing model settings, pull or replace models automatically, or change model routing based only on this partial list.
+
+All currently selected models should remain local and free-of-charge where available. Future support for a project-owned/private LLM should be additive and provider-capability based; it must not displace the working Ollama path before the replacement is implemented and regression-tested.
+
 ## Target hardware and model
 
 The repository's target machine is documented as:
