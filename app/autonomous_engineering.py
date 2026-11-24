@@ -1333,7 +1333,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
                 failed_files.append(str(path))
 
     # Absolute cleanup paths can disclose usernames and host directory layout.
-    failed_files = sorted({Path(str(item)).name for item in failed_files if str(item).strip()})
+    failed_files = sorted({Path(str(item).replace("\\\\", "/")).name for item in failed_files if str(item).strip()})
 
     preserved = [
         "history.jsonl",
