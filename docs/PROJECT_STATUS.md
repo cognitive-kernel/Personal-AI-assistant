@@ -1,3 +1,9 @@
+## 2026-11-24 — سخت‌سازی انتخاب هدف Cancel
+
+- Cancel اکنون از همان dispatch lock مشترک با Dispatch و Resume استفاده می‌کند؛ در زمان ثبت Dispatch/Resume هم‌زمان اجرا نمی‌شود.
+- انتخاب اجرا قطعی‌تر شد: یک Codex job فعال، هدف اصلی است؛ چند Codex job فعال یا چند candidate صف‌شده باعث 409 و fail-closed می‌شود. اگر job مشخصی وجود نداشته باشد، فقط یک workflow فعالِ یکتا قابل لغو است؛ چند workflow مبهم هرگز با انتخاب جدیدترین run لغو نمی‌شوند.
+- تست‌های regression برای چند Codex job فعال، چند candidate صف‌شده، fallback مبهم، تنها workflow فعال و lock contention اضافه شدند. این اصلاح در شاخه‌های والد و follow-upهاست؛ exact-head CI هنوز pending است.
+
 ## 2026-11-24 — Resume idempotency and safe rollback
 
 - Resume now shares the dispatch mutex, has its own acceptance grace (separate from manual dispatch), and manual dispatch is suppressed immediately after an accepted Resume.
