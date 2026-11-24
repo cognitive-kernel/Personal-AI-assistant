@@ -2312,7 +2312,6 @@ def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monk
     ],
 )
 def test_recovered_owner_merged_pr_chains_only_when_live_mode_allows(
-    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     shared_state_tmp_path: Path,
