@@ -1313,9 +1313,10 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
 
     assert result["accepted"] is True
     assert len(result["correlation_id"]) == 32
-    assert calls[-1][-2:] == ["--field", "manual_task=" + task]
-    assert calls[-1][-4] == "--field"
+    assert calls[-1][-2:] == ["--raw-field", "manual_task=" + task]
+    assert calls[-1][-4] == "--raw-field"
     assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
+    assert calls[-1].count("--field") == 0
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
@@ -1459,34 +1460,41 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
     assert result["recent_runs"][-1]["status"] == "queued"
 
 
-def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
+def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    runs = [
-        {"databaseId": index + 1, "status": "completed"}
-        for index in range(30)
-    ]
-    runs[-1] = {"databaseId": 999, "status": "in_progress"}
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "id": 999,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    } if path == "actions/runs/999" else pytest.fail(f"Unexpected API path: {path}"))
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
-    result = agent.cancel_autonomous_engineering()
-
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
     assert result["run_id"] == 999
-    list_command = next(command for command in calls if command[1:3] == ["run", "list"])
-    assert list_command[list_command.index("--limit") + 1] == "30"
     assert calls[-1][1:3] == ["run", "cancel"]
     assert calls[-1][3] == "999"
+
+
+def test_cancel_rejects_snapshot_run_that_is_no_longer_active(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 999,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "completed",
+    })
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("A completed run must not be cancelled"))
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
+    assert error.value.status_code == 409
 
 
 def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
