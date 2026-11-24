@@ -1097,6 +1097,36 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
                         correlation_id,
                     )
             raise
+        except Exception as exc:
+            _LAST_RESUME_ACCEPTED_AT = time.monotonic()
+            try:
+                rollback = _run(
+                    [gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "true", "--repo", _repository()],
+                    timeout=15,
+                )
+                if not rollback or rollback.returncode != 0:
+                    _STATUS_LOGGER.error(
+                        "Autonomous resume rollback after unexpected error failed; correlation_id=%s",
+                        correlation_id,
+                    )
+            except Exception:
+                _STATUS_LOGGER.exception(
+                    "Autonomous resume rollback after unexpected error raised; correlation_id=%s",
+                    correlation_id,
+                )
+            _STATUS_LOGGER.exception(
+                "Autonomous resume outcome became ambiguous; correlation_id=%s",
+                correlation_id,
+            )
+            raise HTTPException(
+                status_code=502,
+                detail="نتیجهٔ درخواست ادامه نامشخص شد؛ برای جلوگیری از اجرای تکراری، ابتدا تاریخچهٔ اجراها را بازخوانی کنید.",
+                headers={
+                    "X-Correlation-ID": correlation_id,
+                    "X-Error-Code": "WORKFLOW_RESUME_OUTCOME_UNKNOWN",
+                    "X-Retryable": "false",
+                },
+            ) from exc
 
         if dispatched.get("accepted") is True:
             _LAST_RESUME_ACCEPTED_AT = time.monotonic()
