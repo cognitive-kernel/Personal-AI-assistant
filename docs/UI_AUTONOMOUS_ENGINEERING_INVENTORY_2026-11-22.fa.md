@@ -326,3 +326,4 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - Exact-head CI برای شاخه‌های فعلی #863/#869 و #866/#870: pending تا اجرای کامل روی آخرین SHA.
 - Windows target-host، Runner واقعی، Ollama/Codex واقعی و owner acceptance: NOT RUN؛ هیچ‌کدام با CI شبیه‌سازی‌شده جایگزین نمی‌شوند.
 
+- Cancel با dispatch/resume lock سریال می‌شود. فقط یک Codex job فعال یا یک queued candidate یکتا انتخاب می‌شود؛ چند candidate یا چند workflow بدون هدف یکتا با 409 رد می‌شوند. fallback بدون Codex فقط برای یک workflow فعال مجاز است.
