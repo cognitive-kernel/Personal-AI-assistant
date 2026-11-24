@@ -10,11 +10,6 @@ from app import autonomous_engineering as agent
 from app import autonomous_engineering_progress as progress
 
 
-@pytest.fixture(autouse=True)
-def _reset_dispatch_admission_state(monkeypatch):
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
-
-
 def _ready(monkeypatch):
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
