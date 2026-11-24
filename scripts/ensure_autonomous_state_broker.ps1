@@ -52,26 +52,14 @@ if (-not $isAdministrator) {
     exit $childExitCode
 }
 
-$setupMutexName = "Global\PersonalAIAssistant.StateBrokerSetup"
-$setupMutex = $null
-$setupMutexAcquired = $false
-$setupMutexAbandonedUnacknowledged = $false
+$scriptRoot = Split-Path -Parent $PSCommandPath
+Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -Force
+
+$setupMutexState = $null
 try {
-    $setupMutex = [System.Threading.Mutex]::new($false, $setupMutexName)
-    try {
-        $setupMutexAcquired = $setupMutex.WaitOne(0)
-    } catch [System.Threading.AbandonedMutexException] {
-        # WaitOne grants ownership when this exception is raised. Without an
-        # explicit operator acknowledgement, keep ownership until this child
-        # exits so every retry continues to detect the interrupted transaction; fail closed.
-        if (-not $AcknowledgeAbandonedSetup) {
-            $setupMutexAbandonedUnacknowledged = $true
-            throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
-        }
-        $setupMutexAcquired = $true
-    }
-    if (-not $setupMutexAcquired) {
-        throw "Another elevated state-broker setup is already running. No service or ACL changes were started."
+    $setupMutexState = Enter-AutonomousStateBrokerSetupMutex -Name "Global\PersonalAIAssistant.StateBrokerSetup" -AcknowledgeAbandoned:$AcknowledgeAbandonedSetup
+    if ($setupMutexState.AbandonedUnacknowledged) {
+        throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
     }
 
     # The lock belongs to this elevated child, not the Python/PowerShell parent.
@@ -87,7 +75,6 @@ try {
     Write-Warning "Could not start the State Broker setup transcript ($($_.Exception.GetType().Name))."
 }
 
-$scriptRoot = Split-Path -Parent $PSCommandPath
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBroker.psm1") -Force
@@ -307,14 +294,7 @@ if ($resolvedRunnerServices.Count -gt 0) {
 Write-Host "Shared state root: $stateRoot"
 
 } finally {
-    if ($setupMutexAcquired) {
-        try {
-            $setupMutex.ReleaseMutex()
-        } finally {
-            $setupMutexAcquired = $false
-        }
-    }
-    if ($null -ne $setupMutex -and -not $setupMutexAbandonedUnacknowledged) {
-        $setupMutex.Dispose()
+    if ($null -ne $setupMutexState -and -not $setupMutexState.AbandonedUnacknowledged) {
+        Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState
     }
 }
