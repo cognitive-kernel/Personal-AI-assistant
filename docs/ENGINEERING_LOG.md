@@ -1,3 +1,13 @@
+## 2026-11-24 — reconcile Autonomous Engineering branches with merged UI and cancellation fixes
+
+- PR #864 merged the serialized post-mutation status refresh. Its exact head 8303afa5d44f104c6e9a5d569868f3db248023b0 passed tests, Browser E2E, CodeQL, and dependency audit.
+- PR #867 merged job-aware emergency cancellation. Its exact head 7238ea3da83678a06370160af9183d34ad4a6421 passed tests, Browser E2E, CodeQL, and dependency audit.
+- The broker branch now carries the mainline cancel handler and serialized status refresh plus the browser regression. The live Pause/Mode branch now carries the mainline cancel handler while retaining its one-shot resume change.
+- PR #863/#866 remain Draft and are based on the earlier main SHA 3d1e843...; current main is ff90d2e.... Reconciliation is not a substitute for rebase review or exact-head CI.
+- PR #869/#870 remain stacked follow-ups. Latest branch-specific Windows storage/full-suite and live secret-backed Runner validation remain pending; no target-host run or workflow dispatch was performed.
+
+---
+
 ## 2026-11-24 — preserve State Broker cleanup failure diagnostics
 
 ### User-host evidence
