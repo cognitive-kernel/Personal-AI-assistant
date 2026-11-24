@@ -1,3 +1,14 @@
+## 2026-11-24 — اصلاح دور زدن قفل Broker در نشست تعاملی PowerShell
+
+- مبنای فعلی بررسی‌شدهٔ `main`: `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1`. PR #863 بر پایهٔ head قدیمی `3d1e843...` است؛ PR #869 به‌صورت stack روی head #863 قرار دارد و هنوز CI دقیق روی main فعلی ندارد.
+- نقص جدید: نگه‌داشتن mutex abandoned تا پایان process در اجرای اسکریپت با call operator داخل PowerShell تعاملی کافی نبود؛ host تعاملی زنده می‌ماند و اجرای دوباره در همان thread می‌توانست mutex را به‌صورت recursive بگیرد و الزام acknowledgement را دور بزند.
+- اصلاح در branch #869: وضعیت abandoned اکنون در marker محافظت‌شدهٔ Registry در `HKLM\SOFTWARE\PersonalAIAssistant\StateBroker\SetupAbandoned` ثبت می‌شود؛ mutex پس از ثبت marker آزاد می‌شود، اما هر اجرای بعدی—حتی در همان نشست—تا ارائهٔ `-AcknowledgeAbandonedSetup` رد می‌شود.
+- marker فقط پس از تکمیل موفق setup، راه‌اندازی مجدد Runnerها و تأیید health Broker حذف می‌شود. شکست recovery marker را نگه می‌دارد؛ هیچ task، checkpoint یا دادهٔ پایدار پاک نمی‌شود.
+- تست Windows اکنون parent termination، نگه‌داشتن قفل توسط فرزند، abandoned owner، ثبت marker، جلوگیری از re-entry در همان process و process دیگر، acknowledgement صریح، حذف marker و استفادهٔ مجدد از mutex را پوشش می‌دهد.
+- exact-head CI روی main فعلی و آزمون UAC/Runner/ACL روی میزبان هدف pending است؛ PR #869 Draft می‌ماند و ادغام مجاز نیست.
+
+---
+
 ## 2026-11-24 — اصلاح Broker و تکمیل کنترل‌های ماژول مهندسی (PR #863، Draft)
 
 - شاخهٔ کاری: `fix/autonomous-engineering-broker-final-ci-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. هیچ تغییری به main ادغام نشده است.
