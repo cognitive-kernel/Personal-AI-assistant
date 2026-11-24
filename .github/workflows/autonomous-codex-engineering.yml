@@ -833,7 +833,6 @@ jobs:
       - name: Recheck live Pause and execution mode after concurrency admission
         id: pause
         env:
-          GH_TOKEN: ${{ github.token }}
           EVENT_NAME: ${{ github.event_name }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
@@ -841,9 +840,20 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
+          # GITHUB_TOKEN cannot read repository Actions variables. Use the
+          # already-authenticated Runner service account's GitHub CLI credential
+          # for this read-only control-plane query; keep it out of logs and do
+          # not reuse it for workflow or repository mutations.
+          $ghCommand = Get-Command gh -ErrorAction Stop
+          $settingsTokenOutput = & $ghCommand.Source auth token --hostname github.com 2>$null
+          $settingsTokenExitCode = $LASTEXITCODE
+          $settingsToken = (@($settingsTokenOutput) -join "`n").Trim()
+          if ($settingsTokenExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($settingsToken)) {
+            throw "The Runner service account GitHub CLI authentication is unavailable; live Pause/mode cannot be verified."
+          }
           $headers = @{
             Accept = "application/vnd.github+json"
-            Authorization = "Bearer $env:GH_TOKEN"
+            Authorization = "Bearer $settingsToken"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
           # Verify that the token can see this repository before treating a
