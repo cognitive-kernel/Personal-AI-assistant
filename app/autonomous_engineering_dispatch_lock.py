@@ -56,7 +56,7 @@ def dispatch_admission_lock() -> Iterator[dict[str, float]]:
                 payload = json.loads(raw.decode("utf-8"))
             except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                 raise RuntimeError("Persistent workflow dispatch admission state is corrupt; refusing dispatch.") from exc
-            if not isinstance(payload, dict):
+            if not isinstance(payload, dict) or payload.get("schema_version") != 1:
                 raise RuntimeError("Persistent workflow dispatch admission state is invalid; refusing dispatch.")
             last = payload.get("last_accepted_at", 0.0)
             if isinstance(last, bool) or not isinstance(last, (int, float)) or last < 0:
@@ -65,8 +65,15 @@ def dispatch_admission_lock() -> Iterator[dict[str, float]]:
             last = 0.0
         state = {"last_accepted_at": float(last)}
         yield state
+        last_accepted_at = state.get("last_accepted_at")
+        if (
+            isinstance(last_accepted_at, bool)
+            or not isinstance(last_accepted_at, (int, float))
+            or last_accepted_at < 0
+        ):
+            raise RuntimeError("Refusing to persist an invalid workflow dispatch timestamp.")
         updated = json.dumps(
-            {"schema_version": 1, "last_accepted_at": state["last_accepted_at"]},
+            {"schema_version": 1, "last_accepted_at": float(last_accepted_at)},
             separators=(",", ":"),
         ).encode("utf-8")
         handle.seek(1)
