@@ -410,7 +410,7 @@ def test_resume_unpauses_existing_active_run_without_dispatching_duplicate(monke
 def test_resume_lock_conflict_fails_before_github_or_pause_mutation(monkeypatch):
     @contextmanager
     def busy_lock():
-        raise RuntimeError("dispatch_admission_conflict")
+        raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
         yield {"accepted": False}
 
     monkeypatch.setattr(agent, "dispatch_admission_lock", busy_lock)
