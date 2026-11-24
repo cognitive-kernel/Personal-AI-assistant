@@ -5,39 +5,69 @@
   const { $, request, setMessage } = core;
   function renderRuns(runs) {
     const host = $("recent-runs");
-    host.replaceChildren();
+    const existing = new Map(
+      [...host.querySelectorAll(".run-item[data-run-id]")].map(item => [item.dataset.runId, item])
+    );
     if (!Array.isArray(runs) || !runs.length) {
-      const empty = document.createElement("p");
-      empty.className = "muted";
+      for (const item of existing.values()) item.remove();
+      let empty = host.querySelector(".run-empty");
+      if (!empty) {
+        empty = document.createElement("p");
+        empty.className = "muted run-empty";
+        host.append(empty);
+      }
       empty.textContent = "اجرای ثبت‌شده‌ای پیدا نشد یا GitHub CLI دسترسی ندارد.";
-      host.append(empty);
       return;
     }
+    const empty = host.querySelector(".run-empty");
+    if (empty) empty.remove();
+    const ordered = [];
     for (const run of runs) {
-      const item = document.createElement("article");
-      item.className = "run-item";
-      const summary = document.createElement("div");
-      summary.className = "run-summary";
-      const heading = document.createElement("strong");
-      heading.textContent = "#" + String(run.id || "—") + " · " +
-        String(run.display_title || run.name || "اجرای عامل مهندسی");
-      const metadata = document.createElement("span");
+      const runId = String(run.id || "");
+      if (!runId) continue;
+      let item = existing.get(runId);
+      if (!item) {
+        item = document.createElement("article");
+        item.className = "run-item";
+        item.dataset.runId = runId;
+      }
+      existing.delete(runId);
+      let summary = item.querySelector(".run-summary");
+      if (!summary) {
+        summary = document.createElement("div");
+        summary.className = "run-summary";
+        const heading = document.createElement("strong");
+        const metadata = document.createElement("span");
+        summary.append(heading, metadata);
+      }
+      const heading = summary.querySelector("strong");
+      const metadata = summary.querySelector("span");
+      heading.textContent = "#" + runId + " · " + String(run.display_title || run.name || "اجرای عامل مهندسی");
       metadata.textContent = String(run.status || "نامشخص") +
         (run.conclusion ? " · " + String(run.conclusion) : "") +
         (run.created_at ? " · " + String(run.created_at) : "");
-      summary.append(heading, metadata);
-      item.append(summary);
-      if (run.failure_summary || (run.status === "completed" && run.conclusion && !["success", "neutral", "skipped"].includes(run.conclusion))) {
-        const failureSummary = document.createElement("p");
-        failureSummary.className = "run-failure-summary";
+      let failureSummary = item.querySelector(".run-failure-summary");
+      const hasFailure = Boolean(run.failure_summary ||
+        (run.status === "completed" && run.conclusion && !["success", "neutral", "skipped"].includes(run.conclusion)));
+      if (hasFailure) {
+        if (!failureSummary) {
+          failureSummary = document.createElement("p");
+          failureSummary.className = "run-failure-summary";
+        }
         const label = run.status === "completed" ? "علت خطا: " : "آخرین تشخیص: ";
         failureSummary.textContent = run.failure_summary
           ? label + String(run.failure_summary)
           : "این اجرا ناموفق بوده است؛ برای دیدن مرحله و علت ثبت‌شده، گزارش اجرا را باز کنید.";
-        item.append(failureSummary);
+      } else if (failureSummary) {
+        failureSummary.remove();
+        failureSummary = null;
       }
-      const controls = document.createElement("div");
-      controls.className = "run-controls";
+      let controls = item.querySelector(".run-controls");
+      if (!controls) {
+        controls = document.createElement("div");
+        controls.className = "run-controls";
+      }
+      controls.replaceChildren();
       if (typeof run.url === "string" && run.url.startsWith("https://github.com/")) {
         const link = document.createElement("a");
         link.href = run.url;
@@ -46,12 +76,12 @@
         link.textContent = "GitHub";
         controls.append(link);
       }
-      if (Number.isSafeInteger(Number(run.id)) && Number(run.id) > 0) {
+      if (Number.isSafeInteger(Number(runId)) && Number(runId) > 0) {
         const logsButton = document.createElement("button");
         logsButton.type = "button";
         logsButton.className = "secondary";
         logsButton.dataset.runAction = "logs";
-        logsButton.dataset.runId = String(run.id);
+        logsButton.dataset.runId = runId;
         logsButton.textContent = "گزارش اجرا و علت خطا";
         controls.append(logsButton);
         if (run.status === "completed") {
@@ -59,14 +89,22 @@
           deleteButton.type = "button";
           deleteButton.className = "danger-button";
           deleteButton.dataset.runAction = "delete";
-          deleteButton.dataset.runId = String(run.id);
+          deleteButton.dataset.runId = runId;
           deleteButton.textContent = "حذف اجرای قدیمی";
           controls.append(deleteButton);
         }
       }
+      const panel = item.querySelector(".run-log-panel");
+      item.append(summary);
+      if (failureSummary) item.append(failureSummary);
       item.append(controls);
-      host.append(item);
+      if (panel) item.append(panel);
+      ordered.push(item);
     }
+    for (const stale of existing.values()) stale.remove();
+    for (const item of ordered) host.append(item);
+    const refreshError = host.querySelector(".run-refresh-error");
+    if (refreshError) refreshError.remove();
   }
   let runsRequestSequence = 0;
   async function refreshRuns() {
@@ -79,10 +117,13 @@
     } catch (error) {
       if (requestSequence !== runsRequestSequence) return;
       const host = $("recent-runs");
-      const note = document.createElement("p");
-      note.className = "muted";
-      note.textContent = "دریافت تاریخچهٔ کامل اجراها ناموفق بود: " + (error.message || "خطای نامشخص");
-      host.replaceChildren(note);
+      let note = host.querySelector(".run-refresh-error");
+      if (!note) {
+        note = document.createElement("p");
+        note.className = "muted run-refresh-error";
+        host.prepend(note);
+      }
+      note.textContent = "دریافت تاریخچهٔ اجراها ناموفق بود؛ پنل‌های باز حفظ شدند: " + (error.message || "خطای نامشخص");
       return false;
     }
   }
@@ -138,6 +179,7 @@
       button.disabled = true;
       try {
         const data = await request("runs/" + runId + "/logs");
+        if (!panel.isConnected || item.dataset.runId !== runId) return;
         diagnosisSummary.textContent = data.error_summary || (
           data.run && data.run.status !== "completed"
             ? "اجرا هنوز پایان نیافته است؛ پس از پایان، گزارش نهایی علت دقیق‌تری ارائه می‌کند."
@@ -228,8 +270,8 @@
     try {
       const result = await request("cleanup", {method: "POST"});
       status.textContent = result.message || ("پاک‌سازی انجام شد؛ " + result.files_removed + " فایل حذف شد.");
-      setMessage(status.textContent, "success");
-      window.dispatchEvent(new Event("autonomous-engineering:cleanup-completed"));
+      setMessage(status.textContent, result.cleaned === true ? "success" : "error");
+      if (result.cleaned === true) window.dispatchEvent(new Event("autonomous-engineering:cleanup-completed"));
     } catch (error) {
       status.textContent = error.message || "پاک‌سازی ناموفق بود.";
       setMessage(status.textContent, "error");
