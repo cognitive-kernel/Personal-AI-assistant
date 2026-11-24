@@ -34,7 +34,7 @@ def test_autonomous_engineering_features_have_versioned_single_owner_contracts()
     shell = _read("autonomous-engineering.js")
 
     assert "window.autonomousEngineeringCore = Object.freeze({" in core
-    assert "version: 1, $, request, setMessage, startPolling" in core
+    assert "version: 1, $, request, setMessage, setStatusMessage, startPolling" in core
     assert "window.autonomousEngineeringStatus = Object.freeze({" in status
     assert "window.autonomousEngineeringControls = Object.freeze({version: 1, stop})" in controls
     assert "window.autonomousEngineeringRuns = Object.freeze({version: 1" in runs
