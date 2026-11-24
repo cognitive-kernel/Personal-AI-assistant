@@ -629,3 +629,11 @@ The subsequent documentation-only evidence update does not change runtime code a
 - پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
 
 ---
+
+## 2026-11-24 — Autonomous Engineering module hardening in progress
+
+- Work is isolated on fix/autonomous-engineering-backend-ui-hardening-20261124-rebased and is stacked on the latest live-pause base branch fix/recovered-pr-chain-live-pause-gate-20261124 (PR #870).
+- The implementation covers the 14 reported backend, Codex retry/report, and UI findings. Windows dispatch admission now goes through the protected State Broker rather than opening protected state files from the application account. Windows cleanup delegates active-progress and lock decisions to the broker.
+- The broker protocol includes strict two-phase dispatch reservation operations for both POSIX and Windows. These changes require the Windows service to be rebuilt/reinstalled before target-host validation.
+- Tests and documentation have been updated, but exact-head CI has not yet been run on this branch. Do not merge or claim the module is fully fixed until Linux and Windows suites, broker service compilation/integration, browser E2E, and real Windows target-host acceptance checks pass.
+- Existing active workflow runs were left untouched. No active run was cancelled or modified.
