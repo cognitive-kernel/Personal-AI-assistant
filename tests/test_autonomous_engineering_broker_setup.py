@@ -160,13 +160,31 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
     if not powershell:
         pytest.skip("A supported PowerShell host is unavailable")
 
-    mutex_name = "Global\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
+    mutex_name = "Global\\\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
     marker = str(tmp_path / "mutex-held.txt").replace("'", "''")
+    release = str(tmp_path / "mutex-release.txt").replace("'", "''")
+    exited = str(tmp_path / "mutex-owner-exited.txt").replace("'", "''")
     hold_script = (
-        "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
-        "if (-not $mutex.WaitOne(0)) { exit 3 }; "
-        "[System.IO.File]::WriteAllText('" + marker + "', 'held'); "
-        "Start-Sleep -Seconds 30"
+        "Add-Type -TypeDefinition @'\n"
+        "using System.IO;\n"
+        "using System.Threading;\n"
+        "public static class StateBrokerMutexOwner {\n"
+        "  private static Mutex heldMutex;\n"
+        "  public static void Start(string name, string marker, string release, string exited) {\n"
+        "    var thread = new Thread(() => {\n"
+        "      heldMutex = new Mutex(false, name);\n"
+        "      if (!heldMutex.WaitOne(0)) throw new System.Exception(\"mutex busy\");\n"
+        "      File.WriteAllText(marker, \"held\");\n"
+        "      while (!File.Exists(release)) Thread.Sleep(25);\n"
+        "      File.WriteAllText(exited, \"exited\");\n"
+        "      // Intentionally return without ReleaseMutex: the owning thread exits.\n"
+        "    });\n"
+        "    thread.IsBackground = true; thread.Start();\n"
+        "  }\n"
+        "}\n"
+        "'@; "
+        "[StateBrokerMutexOwner]::Start('" + mutex_name + "', '" + marker + "', '" + release + "', '" + exited + "'); "
+        "while ($true) { Start-Sleep -Seconds 1 }"
     )
     child = subprocess.Popen(
         [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", hold_script],
@@ -175,13 +193,13 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
         text=True,
     )
     try:
-        deadline = time.monotonic() + 10
+        deadline = time.monotonic() + 20
         while time.monotonic() < deadline and not os.path.exists(marker):
             if child.poll() is not None:
                 stdout, stderr = child.communicate(timeout=2)
                 pytest.fail(f"Mutex-owning child exited early: {stdout} {stderr}")
             time.sleep(0.05)
-        assert os.path.exists(marker), "Mutex-owning child did not acquire the named mutex"
+        assert os.path.exists(marker), "Mutex-owning thread did not acquire the named mutex"
 
         competing_script = (
             "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
@@ -200,10 +218,13 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
         )
         assert competing.returncode == 2, competing.stdout + competing.stderr
 
-        # A different process cannot release the child-owned mutex. Only
-        # terminating the owner makes the next acquisition abandoned.
-        child.terminate()
-        child.wait(timeout=5)
+        # End only the mutex-owning thread; keep its process alive to observe abandonment.
+        Path(release).write_text("release", encoding="utf-8")
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and not os.path.exists(exited):
+            time.sleep(0.025)
+        assert os.path.exists(exited), "Mutex-owning thread did not exit"
+
         abandoned_script = (
             "$mutex = [System.Threading.Mutex]::new($false, '" + mutex_name + "'); "
             "try { "
@@ -236,3 +257,4 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
             child.stdout.close()
         if child.stderr:
             child.stderr.close()
+
