@@ -2068,8 +2068,10 @@ def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
     args = type("Args", (), {"mode": "continuous", "correlation_id": "a" * 32})()
 
     assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
-    assert len(calls) == 1
-    assert calls[0][1].endswith("AUTONOMOUS_ENGINEERING_MODE")
+    assert calls == [
+        ("GET", ""),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE"),
+    ]
 
 
 def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
@@ -2089,8 +2091,12 @@ def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
     args = type("Args", (), {"mode": "continuous", "correlation_id": "b" * 32})()
 
     assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
-    assert len(calls) == 2
-    assert all(method == "GET" for method, _, _ in calls)
+    assert calls == [
+        ("GET", ""),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE"),
+        ("GET", ""),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"),
+    ]
 
 
 def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaused(monkeypatch):
