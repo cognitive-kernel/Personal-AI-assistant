@@ -2,62 +2,35 @@
 param(
     [switch]$ElevatedChild,
     [string]$RunnerRoot = "",
-    [switch]$AcknowledgeAbandonedSetup,
-    [switch]$WindowsPowerShellHost
+    [switch]$AcknowledgeAbandonedSetup
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-    $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -WindowsPowerShellHost'
-    if (-not $isAdministrator) {
-        $argumentLine += " -ElevatedChild"
-    }
-    if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
-        $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
-    }
-    if ($AcknowledgeAbandonedSetup) {
-        $argumentLine += " -AcknowledgeAbandonedSetup"
-    }
-    try {
-        $startArguments = @{
-            FilePath = $windowsPowerShellPath
-            ArgumentList = $argumentLine
-            Wait = $true
-            PassThru = $true
-            ErrorAction = "Stop"
-        }
-        if (-not $isAdministrator) {
-            $startArguments.Verb = "RunAs"
-        }
-        $child = Start-Process @startArguments
-        exit $child.ExitCode
-    } catch {
-        Write-Error "Could not start the Windows PowerShell 5.1 state-broker host. $($_.Exception.Message)"
-        exit 1
-    }
-}
-
+# Elevate by relaunching the exact PowerShell executable that is running this
+# script. Restrict only the child process' module search path so it cannot load
+# Security type data from another PowerShell edition or custom module directory.
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+$isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdministrator) {
     if ($ElevatedChild) {
         throw "The elevated state-broker setup process is not running as an administrator."
     }
-    $scriptPath = $PSCommandPath
-    $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -ElevatedChild'
+
+    $argumentLine = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' +
+        $PSCommandPath.Replace('"', '""') + '" -ElevatedChild'
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
     if ($AcknowledgeAbandonedSetup) {
         $argumentLine += " -AcknowledgeAbandonedSetup"
     }
-    # Keep the selected PowerShell edition, but isolate the elevated child from
-    # module paths inherited from the caller before it imports Windows modules.
+
     $previousModulePath = $env:PSModulePath
+    $childExitCode = 1
+    $launchFailure = $null
     try {
         $env:PSModulePath = Join-Path $PSHOME "Modules"
         $hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path
@@ -66,13 +39,17 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
             throw "Could not resolve the executable path of the active PowerShell host."
         }
         $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
-        exit $child.ExitCode
+        $childExitCode = [int]$child.ExitCode
     } catch {
-        Write-Error "Administrator approval is required to install the machine state broker. $($_.Exception.Message)"
-        exit 1
+        $launchFailure = $_.Exception
     } finally {
         $env:PSModulePath = $previousModulePath
     }
+    if ($null -ne $launchFailure) {
+        Write-Error "Administrator approval or the elevated PowerShell host failed. $($launchFailure.GetType().Name): $($launchFailure.Message)"
+        exit 1
+    }
+    exit $childExitCode
 }
 
 $setupMutexName = "Global\PersonalAIAssistant.StateBrokerSetup"
