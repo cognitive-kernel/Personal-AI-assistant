@@ -2716,3 +2716,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - A second inspection of `.github/workflows/tests.yml` found a duplicate `windows-storage-regressions`/ `runtime-bootstrap` block and orphaned PowerShell lines after the runtime job. The duplicate block was removed; a static regression now asserts each job appears exactly once and no orphaned broker-build fragment follows the final job.
 - Broker setup serialization now combines a thread guard with an OS byte-range/file lock in the per-user temporary directory. The OS lock spans the entire install/repair transaction and is released by the kernel on process exit. A spawned-process regression verifies a second process cannot enter while the first holds the lock. Durable task, repository, and checkpoint locks remain separate and unchanged.
 - This lock serializes app processes for the same OS user; it is not represented as a machine-wide distributed lock or a replacement for the existing durable-state lock.
+
+## 2026-11-24 — serialize Cancel and fail closed on ambiguous targets
+
+- Cancel now shares the dispatch/resume lock, preventing a run-list inspection from racing a concurrent workflow submission.
+- Target selection prefers exactly one in-progress Codex job. Multiple in-progress Codex jobs or multiple queued Codex candidates fail closed; when no Codex job is identifiable, fallback is allowed only if exactly one workflow is active. Ambiguous active sets are never resolved by choosing the newest run.
+- Added tests for multiple active/queued Codex candidates, ambiguous workflow fallback, the single-run fallback, and lock contention. Exact-head CI and Windows target-host acceptance remain pending.
+
