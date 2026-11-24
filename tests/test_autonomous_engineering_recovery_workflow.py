@@ -34,6 +34,7 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "def _live_execution_mode(client: GitHubActionsClient)" in policy
     assert "def _live_pause_enabled(client: GitHubActionsClient)" in policy
     assert "def request_settings(" in policy
+    assert "only GET requests are allowed" in policy
     assert "def _settings_request(" in policy
     assert "set_settings_token(settings_token)" in policy
     assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in policy
