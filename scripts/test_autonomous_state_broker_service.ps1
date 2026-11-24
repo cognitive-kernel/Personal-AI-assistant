@@ -143,6 +143,17 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "process-blocked")
         }
     }
+    "process-recover-wrong-thread" {
+        $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "An inherited process recovery flag was incorrectly treated as mutex ownership."
+        } catch {
+            if ($_.Exception.Message -notmatch "this thread does not own the retained setup mutex") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "wrong-thread-rejected")
+        }
+    }
     "process-recover" {
         $staleMutex = [System.Threading.Mutex]::new($false, $env:STATE_BROKER_LOCK_NAME)
         try {
@@ -337,6 +348,18 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             -not (Test-Path -LiteralPath $processRecoveredSignal -PathType Leaf) -or
             [System.IO.File]::ReadAllText($processRecoveredSignal) -ne "process-recovered") {
             throw "Explicit recovery left stale recursive mutex ownership in the interactive process."
+        }
+
+        $wrongThreadSignal = Join-Path $testRoot "wrong-thread-rejected.signal"
+        $wrongThread = Start-SetupMutexTestChild -Mode "process-recover-wrong-thread" -SignalPath $wrongThreadSignal
+        if (-not $wrongThread.WaitForExit(15000)) {
+            Stop-Process -Id $wrongThread.Id -Force -ErrorAction SilentlyContinue
+            throw "The inherited recovery-flag ownership probe did not exit within its deadline."
+        }
+        if ($wrongThread.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $wrongThreadSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($wrongThreadSignal) -ne "wrong-thread-rejected") {
+            throw "An inherited recovery flag incorrectly authorized a different process/thread."
         }
 
         $reacquired = Enter-AutonomousStateBrokerSetupMutex -Name $mutexName -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
