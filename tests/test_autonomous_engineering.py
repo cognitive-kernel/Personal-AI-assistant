@@ -1558,6 +1558,41 @@ def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch
     assert calls[-1][3] == "999"
 
 
+def test_cancel_refuses_selected_run_without_active_codex_job(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "id": 1001,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    })
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "jobs": [{"name": "Codex", "status": "completed"}]
+        }), "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1001))
+    assert error.value.status_code == 409
+    assert not any(command[1:3] == ["run", "cancel"] for command in calls)
+
+
+def test_resume_preflight_failure_keeps_pause_enabled(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    snapshot = _paused_ready_snapshot()
+    snapshot["ready"] = False
+    monkeypatch.setattr(agent, "collect_status", lambda: snapshot)
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert calls == []
+
+
 def test_cancel_rejects_snapshot_run_that_is_no_longer_active(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
