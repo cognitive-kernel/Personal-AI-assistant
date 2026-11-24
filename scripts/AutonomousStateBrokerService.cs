@@ -1473,7 +1473,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     };
                 object rawSchema, rawLast, rawPending;
                 double lastAccepted;
-                if (!state.TryGetValue("schema_version", out rawSchema) || Convert.ToInt32(rawSchema) != 1 ||
+                if (state.Count != 3 || !state.TryGetValue("schema_version", out rawSchema) || Convert.ToInt32(rawSchema) != 1 ||
                     !state.TryGetValue("last_accepted_at", out rawLast) || !TryFiniteNumber(rawLast, out lastAccepted) ||
                     !state.TryGetValue("pending", out rawPending))
                     return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
@@ -1488,10 +1488,13 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     {
                         double createdAt, expiresAt;
                         object rawCreated, rawExpires, rawId;
-                        if (!pending.TryGetValue("request_id", out rawId) ||
+                        if (pending.Count != 3 ||
+                            !pending.TryGetValue("request_id", out rawId) ||
                             !pending.TryGetValue("created_at", out rawCreated) || !TryFiniteNumber(rawCreated, out createdAt) ||
                             !pending.TryGetValue("lease_expires_at", out rawExpires) || !TryFiniteNumber(rawExpires, out expiresAt) ||
-                            !(rawId is string) || ((string)rawId).Length != 32 || expiresAt <= createdAt)
+                            !(rawId is string) || ((string)rawId).Length != 32 ||
+                            ((string)rawId).Any(ch => !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) ||
+                            expiresAt <= createdAt)
                             return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
                         if (now < expiresAt)
                         {
