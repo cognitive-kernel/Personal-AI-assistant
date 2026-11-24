@@ -181,6 +181,7 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -246,6 +247,7 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -365,6 +367,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     records = []
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     live_pr = {
         "number": 77,
@@ -1739,6 +1742,7 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     state_root = shared_state_tmp_path / "autonomous-state"
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_root))
@@ -1836,6 +1840,7 @@ def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch)
         "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
     ])
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
 
     assert cycle.main() == 0
@@ -1913,6 +1918,7 @@ def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
         "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
     ])
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
@@ -1977,6 +1983,7 @@ def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monk
         "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
     ])
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
@@ -2012,6 +2019,7 @@ def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monke
         "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
     ])
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
@@ -2047,6 +2055,7 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
         "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
     ])
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
@@ -2196,6 +2205,7 @@ def test_recovered_owner_merged_pr_chains_only_when_live_mode_allows(
         "base_sha": "b" * 40,
     }
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv(
         "AUTONOMOUS_ENGINEERING_PROGRESS_DIR",
