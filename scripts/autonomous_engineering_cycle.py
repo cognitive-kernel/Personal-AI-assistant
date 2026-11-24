@@ -612,7 +612,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             active_prompt.write_text(
                 original + "\n\n## Required repair after failed verification\n"
                 + "This is a fresh session for the SAME task. Do not select or start another task. "
-                "Do not reset or discard the existing worktree/checkpoint; inspect and preserve all prior task state.\n"
+                "do not reset or discard the existing worktree/checkpoint; inspect and preserve all prior task state.\n"
                 + failure_feedback + "\n" + repair_instruction,
                 encoding="utf-8",
             )
