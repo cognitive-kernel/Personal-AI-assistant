@@ -31,7 +31,46 @@ def _failed_execution_jobs():
 def _configure_environment(monkeypatch):
     monkeypatch.setenv("GH_REPO", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("FAILED_RUN_ID", "123")
+
+
+def test_main_requires_dedicated_variables_credential(monkeypatch):
+    _configure_environment(monkeypatch)
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN")
+    reports = []
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 1
+    assert reports
+    assert "read-only Variables credential" in reports[0][0][1]
+
+
+def test_github_actions_client_separates_workflow_and_settings_credentials(monkeypatch):
+    authorizations = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self, size):
+            return b'{"ok": true}'
+
+    def fake_urlopen(request, timeout):
+        authorizations.append(request.get_header("Authorization"))
+        return Response()
+
+    monkeypatch.setattr(recovery.urllib.request, "urlopen", fake_urlopen)
+    client = recovery.GitHubActionsClient("owner/repository", "workflow-token")
+    client.set_settings_token("settings-token")
+
+    client.request("GET", "/actions/runs")
+    client.request_settings("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+
+    assert authorizations == ["Bearer workflow-token", "Bearer settings-token"]
 
 
 def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
