@@ -235,6 +235,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert 'id="save-agent-settings"' in page
     assert 'id="storage-state"' in page
     assert "checks.progress_storage_accessible" in status_script
+    assert 'window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress({queueIfBusy: true}); });' in progress_script
     assert "gpt-oss:20b" not in page
     assert 'هیچ مدل اصلی قابل انتخابی از Ollama شناسایی نشد' in status_script
     assert "model_context_length" in status_script
