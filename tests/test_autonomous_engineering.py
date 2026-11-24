@@ -2734,11 +2734,12 @@ def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     if agent._is_windows():
+        from app.autonomous_engineering_state_broker import StateBrokerConflict
         monkeypatch.setattr(
             agent,
-            "maintenance_admission_lock",
-            lambda **kwargs: (_ for _ in ()).throw(
-                RuntimeError("Repository maintenance is already in progress.")
+            "cleanup_shared_progress_data",
+            lambda: (_ for _ in ()).throw(
+                StateBrokerConflict("repository lock busy", ["repository_execution_active"])
             ),
         )
     else:
@@ -2764,50 +2765,45 @@ def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
     assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
 
 
-def test_cleanup_checks_active_workflow_while_holding_shared_admission_lock(monkeypatch):
+def test_cleanup_windows_uses_broker_active_state_check_instead_of_stale_github_preflight(monkeypatch):
     calls = {"runs": 0, "cleanup": 0}
-    lock_state = {"held": False}
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
 
-    @contextmanager
-    def fake_maintenance_lock(timeout_seconds=0):
-        lock_state["held"] = True
-        try:
-            yield
-        finally:
-            lock_state["held"] = False
-
     if agent._is_windows():
-        monkeypatch.setattr(agent, "maintenance_admission_lock", fake_maintenance_lock)
-        def workflow_runs(gh):
-            assert lock_state["held"] is True
-            calls["runs"] += 1
-            return [{"status": "in_progress"}]
+        from app.autonomous_engineering_state_broker import StateBrokerConflict
+        monkeypatch.setattr(agent, "_workflow_runs", lambda gh: (
+            calls.__setitem__("runs", calls["runs"] + 1) or pytest.fail("Windows broker owns the authoritative active-progress check")
+        ))
+        monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: (
+            calls.__setitem__("cleanup", calls["cleanup"] + 1)
+            or (_ for _ in ()).throw(StateBrokerConflict(
+                "active progress run", ["active_progress_run"]
+            ))
+        ))
+        response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post("/api/autonomous-engineering/cleanup")
+        assert response.status_code == 409
+        assert calls == {"runs": 0, "cleanup": 1}
     else:
         monkeypatch.setattr(agent, "repository_execution_lock", lambda *args, **kwargs: nullcontext())
         def workflow_runs(gh):
             calls["runs"] += 1
             return [] if calls["runs"] == 1 else [{"status": "in_progress"}]
-
-    monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
-
-    def cleanup():
-        calls["cleanup"] += 1
-        return {"cleaned": True}
-
-    monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", cleanup)
-    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post("/api/autonomous-engineering/cleanup")
-
-    assert response.status_code == 409
-    assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
-    assert calls["cleanup"] == 0
-    assert calls["runs"] == (1 if agent._is_windows() else 2)
+        monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
+        monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", lambda: (
+            calls.__setitem__("cleanup", calls["cleanup"] + 1) or {"cleaned": True}
+        ))
+        response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post("/api/autonomous-engineering/cleanup")
+        assert response.status_code == 409
+        assert calls == {"runs": 2, "cleanup": 0}
 
 def test_windows_cleanup_delegates_locking_to_broker_without_client_self_lock(monkeypatch):
     monkeypatch.setattr(agent, "_is_windows", lambda: True)
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
-    monkeypatch.setattr(agent, "maintenance_admission_lock", lambda **kwargs: nullcontext())
+    monkeypatch.setattr(
+        agent,
+        "_workflow_runs",
+        lambda gh: pytest.fail("Windows broker performs the active-progress check under its own locks"),
+    )
     monkeypatch.setattr(
         agent,
         "repository_execution_lock",
