@@ -27,7 +27,7 @@ class TaskReportError(RuntimeError):
 
 
 _TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)", re.IGNORECASE)
-_ANY_MARKER = re.compile(r"(?i)\\b(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\\b")
+_ANY_MARKER = re.compile(r"(?i)\b(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)\b")
 
 
 def task_marker(report: Path, markers=None) -> str:
