@@ -2111,12 +2111,22 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
     def api_json(gh, path, timeout=15):
         api_paths.append(path)
-        return {
-            "jobs": [{
-                "name": "codex", "status": "completed", "conclusion": "failure",
-                "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
-            }]
-        }
+        if path == "actions/runs/123":
+            return {
+                "id": 123,
+                "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+                "status": "completed",
+                "conclusion": "failure",
+                "html_url": "https://github.com/example/run/123",
+            }
+        if path == "actions/runs/123/jobs?per_page=100":
+            return {
+                "jobs": [{
+                    "name": "codex", "status": "completed", "conclusion": "failure",
+                    "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+                }]
+            }
+        raise AssertionError(path)
 
     commands = []
     monkeypatch.setattr(agent, "_github_api_json", api_json)
@@ -2128,7 +2138,7 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
     result = agent.autonomous_engineering_run_logs(123)
 
-    assert api_paths == ["actions/runs/123/jobs?per_page=100"]
+    assert api_paths == ["actions/runs/123", "actions/runs/123/jobs?per_page=100"]
     assert commands[0][1:] == ["run", "view", "123", "--log", "--repo", agent._repository()]
     assert result["run"]["id"] == 123
     assert result["run"]["url"] == "https://github.com/example/run/123"
@@ -2142,20 +2152,18 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
 def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
     calls = []
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: calls.append(gh) or [])
-
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: calls.append(args) or {})
     for invalid_id in (0, -1, True):
         with pytest.raises(HTTPException) as error:
             agent._verified_workflow_run("gh", invalid_id)
         assert error.value.status_code == 422
-
     assert calls == []
 
 
 def test_run_logs_reject_non_agent_workflow(monkeypatch):
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/another.yml",
-    }])
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/another.yml@refs/heads/main", "status": "completed",
+    })
     with pytest.raises(HTTPException) as error:
         agent._verified_workflow_run("gh", 123)
     assert error.value.status_code == 404
@@ -2163,10 +2171,10 @@ def test_run_logs_reject_non_agent_workflow(monkeypatch):
 
 def test_delete_run_refuses_active_workflow_run(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
         "status": "in_progress",
-    }])
+    })
     calls = []
     monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
 
@@ -2179,10 +2187,10 @@ def test_delete_run_refuses_active_workflow_run(monkeypatch):
 
 def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
         "status": "completed",
-    }])
+    })
     calls = []
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(
         command, 0, "", ""
