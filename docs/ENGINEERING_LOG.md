@@ -1,3 +1,21 @@
+## 2026-11-24 — preserve State Broker cleanup failure diagnostics
+
+### User-host evidence
+- The local UI reported `AUTONOMOUS_ENGINEERING_UNAVAILABLE` while cleanup said durable state was preserved. The cleanup API caught every broker `RuntimeError` and returned only its class name, concealing whether the local named pipe was absent, timed out, denied, or the service rejected the operation.
+- The C# broker cleanup route could also let an I/O/ACL exception escape to the generic worker loop. That closed the named pipe without a protocol response, making the Python client observe only a broken-pipe/transport error.
+
+### Corrections
+- The API now preserves a bounded, broker-originated diagnostic (for example the Win32 error number or protocol error code), returns the specific code `AUTONOMOUS_ENGINEERING_BROKER_UNAVAILABLE`, marks the operation retryable, and logs the diagnostic with the existing correlation ID.
+- The broker service now catches cleanup-operation exceptions and returns a bounded protocol error code: access denied, missing state directory, unverified durable state, lock timeout, I/O failure, or generic cleanup failure. It does not send local paths or raw exception messages over the pipe.
+- Added regressions for the API correlation/diagnostic contract and for a protocol response on cleanup exceptions.
+- Restored the setup script's elevation preamble: it relaunches the exact selected PowerShell executable, isolates the child `PSModulePath`, forwards operator acknowledgement, and acquires the machine-wide setup mutex before service/ACL work. No forced PowerShell 5.1 switch remains.
+
+### Validation boundary
+- The prior Windows report still indicates the user's Broker was not installed/ready. These source fixes do not claim that the local machine service is repaired; exact-head Windows CI and target-host setup/health verification remain required.
+- No task, checkpoint, current progress, history, Runner service, ACL, database, or shared-state content was deleted or rewritten by these source changes.
+
+---
+
 ## 2026-11-24 — isolate Windows Security module loading to the active PowerShell edition
 
 ### User-host reproduction
