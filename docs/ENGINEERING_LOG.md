@@ -1,3 +1,21 @@
+## 2026-11-24 — add real Windows process tests for elevated State Broker setup mutex
+
+### Root cause
+- The machine-wide setup mutex added to the elevated installer was protected only by source-text assertions. Existing multiprocessing coverage exercises the Python file lock, not the Windows named mutex or Windows abandoned-owner semantics.
+- A source assertion cannot prove that a separate Windows process is excluded, that process termination marks the mutex abandoned, or that explicit acknowledgement makes the lock reusable.
+
+### Correction
+- Extracted named-mutex acquire/release behavior into `scripts/AutonomousStateBrokerSetupLock.psm1`; the elevated installer uses this same module before service discovery, service stop, and ACL changes.
+- Added a disposable Windows process integration probe to the existing live broker CI script. It starts a process that owns a unique Global mutex, proves a second process is rejected, terminates the owner, proves the abandoned mutex fails closed, acknowledges the interruption in a separate process, and proves the mutex can then be acquired and released normally.
+- The probe uses a unique test mutex name and temporary test files; it does not operate on the production service, ACL, task, checkpoint, or shared-state paths.
+
+### Validation boundary
+- The integration probe is selected by the Windows storage-regression job and runs under both Windows PowerShell Desktop and PowerShell Core.
+- Exact-head CI is still required. The test does not simulate interactive UAC or prove behavior on the user's actual Windows host; those remain separate acceptance gates.
+- No service, ACL, Runner registration, task, checkpoint, database, or user state was changed by this source update.
+
+---
+
 ## 2026-11-24 — preserve State Broker cleanup failure diagnostics
 
 ### User-host evidence
