@@ -6,7 +6,7 @@
 
 ### Correction
 - Extracted named-mutex acquire/release behavior into `scripts/AutonomousStateBrokerSetupLock.psm1`; the elevated installer uses this same module before service discovery, service stop, and ACL changes.
-- Added a disposable Windows process integration probe to the existing live broker CI script. It starts a process that owns a unique Global mutex, proves a second process is rejected, terminates the owner, proves the abandoned mutex fails closed, acknowledges the interruption in a separate process, and proves the mutex can then be acquired and released normally.
+- Added a disposable Windows process integration probe to the existing live broker CI script. A proxy parent starts a separate holder process whose dedicated .NET thread owns a unique Global mutex; terminating only the proxy must not release the holder's lock. A competing process is rejected, then the owner thread exits without releasing while the holder process remains alive. Separate processes verify abandoned-owner fail-closed behavior, explicit acknowledgement, and clean lock reuse.
 - The probe uses a unique test mutex name and temporary test files; it does not operate on the production service, ACL, task, checkpoint, or shared-state paths.
 
 ### Validation boundary
