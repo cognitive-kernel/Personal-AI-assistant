@@ -461,3 +461,40 @@ def test_broker_installer_preflights_net48_and_service_control_before_mutation()
     assert release_check < service_root_creation < service_lookup
     assert "$scCommand = Get-Command sc.exe -ErrorAction Stop" in installer
     assert installer.index("$scCommand = Get-Command sc.exe") < service_root_creation
+
+
+
+def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+
+    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
+    assert mutex > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
+    assert mutex < ensure.index('$brokerLogDirectory =')
+    assert mutex < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert mutex < ensure.index("Get-CimInstance Win32_Service")
+    assert mutex < ensure.index("Stop-Service -Name $service.Name")
+    assert mutex < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert "$setupMutex.WaitOne(0)" in ensure
+    assert "Another elevated state-broker setup is already running" in ensure
+    assert "catch [System.Threading.AbandonedMutexException]" in ensure
+    assert "fail closed" in ensure
+    assert "$setupMutex.ReleaseMutex()" in ensure
+    assert "$setupMutex.Dispose()" in ensure
+    assert ensure.rfind("$setupMutex.ReleaseMutex()") < ensure.rfind("$setupMutex.Dispose()")
+
+
+def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    parent = ensure[:ensure.index("$setupMutexName")]
+    abandoned = ensure[ensure.index("catch [System.Threading.AbandonedMutexException]"):ensure.index("if (-not $setupMutexAcquired)")]
+
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in parent
+    assert "if (-not $AcknowledgeAbandonedSetup)" in abandoned
+    assert "$setupMutexAbandonedUnacknowledged = $true" in abandoned
+    assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
+    assert "$setupMutex.ReleaseMutex()" not in abandoned
+    assert "$setupMutexAbandonedUnacknowledged" in ensure
+    python_setup = _read("app/autonomous_engineering_broker_setup.py")
+    assert "-AcknowledgeAbandonedSetup" not in python_setup

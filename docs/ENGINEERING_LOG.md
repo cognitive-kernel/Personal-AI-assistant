@@ -14,6 +14,55 @@
 
 ---
 
+## 2026-11-24 — isolate PATH PowerShell discovery tests from the host registry
+
+### CI finding
+- Three Windows discovery tests were intended to test mocked PATH candidates, but the hosted Windows runner also exposed real PowerShell Core registry installations. Those extra candidates were correctly discovered by production code and accidentally accepted by the test's permissive fake probe, making the tests depend on runner configuration.
+
+### Correction
+- The shared PATH-test helper now stubs `winreg` as unavailable; the explicit registry-discovery test continues to use its own fake registry.
+- The Desktop-only discovery test applies the same isolation.
+- Production discovery behavior is unchanged.
+
+### Validation boundary
+- The exact-head Windows full-suite run must confirm the isolation.
+- No runtime configuration or machine registry was changed.
+
+---
+
+## 2026-11-24 — stabilize Windows broker mutex and ACL rollback regressions
+
+### CI findings
+- The first named-mutex integration test terminated the entire PowerShell process and expected `AbandonedMutexException`; the Windows runner did not observe the expected condition in that harness. The revised regression launches a child PowerShell process from a parent, terminates only the parent (the timeout/orphan scenario), verifies a competing process still cannot acquire the mutex, then lets the child's dedicated .NET owner thread exit without releasing it and verifies `AbandonedMutexException` while the child process remains alive.
+- The static release assertion selected the nested `finally` that resets a Boolean rather than the outer mutex finalizer. It now verifies release and disposal ordering in the complete script.
+- The service rollback test expected wording that no longer matched the actual warning; it now asserts the real warning emitted when `sc.exe config` restoration fails.
+- Windows ACL rollback added the OS-maintained DACL auto-inherited control flag (`D:AI`) while preserving owner/group and ACE entries. The integration assertion now normalizes only that flag and compares the remaining SDDL exactly.
+
+### Validation boundary
+- Exact-head Windows full-suite and storage-regression reruns are required.
+- No service, ACL, Runner registration, task, checkpoint, or durable state was modified.
+
+---
+
+## 2026-11-24 — serialize elevated State Broker setup across parent timeout
+
+### Root cause
+- Python holds a same-user cross-process setup lock, but the Windows installer launches a separate UAC-elevated PowerShell child with `Start-Process -Wait`.
+- If the Python timeout terminates the non-elevated parent, the elevated child may continue. The Python lock is released while the child can still stop Runner services or reconcile machine ACLs.
+
+### Correction
+- The elevated child now acquires a machine-wide named mutex before importing installer modules, querying Runner services, or changing service/ACL state.
+- A concurrent elevated setup fails closed without starting mutations.
+- An abandoned mutex is treated as an interrupted machine-state transaction and fails closed for explicit inspection; it is not silently treated as a clean lock release.
+- The child releases and disposes the mutex in a script-level `finally`, while Windows also releases ownership if the child process terminates.
+
+### Validation boundary
+- Added a static portability regression contract proving mutex acquisition precedes all service/ACL mutation paths and that abandoned-owner and release paths remain present.
+- This source-level regression does not replace execution on a Windows target host. Exact-head Windows CI and a real parent-timeout/elevated-child integration test remain required.
+- No Runner service, ACL, task, checkpoint, database, or durable state was modified by this source change.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings
