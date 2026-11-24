@@ -500,21 +500,36 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert "-AcknowledgeAbandonedSetup" not in python_setup
 
 
-def test_security_module_import_isolated_to_the_active_powershell_host():
-    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_mutation():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    elevation = ensure[:ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')]
 
-    assert "$previousModulePath = $env:PSModulePath" in module
+    assert "[switch]$ElevatedChild" in parameters
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert "[switch]$WindowsPowerShellHost" not in parameters
+    assert "Get-Process -Id $PID -ErrorAction Stop).Path" in elevation
+    assert 'Join-Path $PSHOME "Modules"' in elevation
+    assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in elevation
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in elevation
+    assert elevation.index('Join-Path $PSHOME "Modules"') < elevation.index("Start-Process -FilePath $hostExecutable")
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index(
+        'Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")'
+    )
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index("$setupMutexName")
+    assert "$env:PSModulePath = $previousModulePath" in elevation
+    assert "$windowsPowerShellPath" not in elevation
+
+
+def test_security_module_import_is_isolated_to_the_active_powershell_host():
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+    assert '$previousModulePath = $env:PSModulePath' in module
     assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in module
-    assert "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop" in module
-    assert "$env:PSModulePath = $previousModulePath" in module
+    assert 'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop' in module
+    assert '$env:PSModulePath = $previousModulePath' in module
     assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
-        "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop"
+        'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop'
     )
-    assert module.index("Import-Module Microsoft.PowerShell.Security -ErrorAction Stop") < module.index(
-        "$env:PSModulePath = $previousModulePath"
+    assert module.index('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop') < module.index(
+        '$env:PSModulePath = $previousModulePath'
     )
-    assert "Get-Process -Id $PID -ErrorAction Stop).Path" in ensure
-    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in ensure
-    assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in ensure
-    assert "[switch]$WindowsPowerShellHost" not in ensure
