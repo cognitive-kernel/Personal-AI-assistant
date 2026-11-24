@@ -336,4 +336,4 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - PR #864's serialized post-mutation status refresh is now part of main and parent #863; PR #867's job-aware Cancel handler is carried by both parent branches. The child follow-ups must retain these changes when rebased.
 - The progress cleanup queue fix and dedicated read-only Variables credential remain specific to #870 and await exact-head CI and secret-backed Runner validation.
 - Broker Registry64 and same-thread/wrong-thread acknowledgement behavior remain specific to #869 and await Windows storage regression execution and target-host validation.
-
+- Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
