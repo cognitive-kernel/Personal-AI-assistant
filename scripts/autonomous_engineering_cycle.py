@@ -702,7 +702,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
             diagnostic_detail = _sanitize_run_diagnostic_text(
-                "\\n".join(part for part in (report_detail, captured_error, captured_output) if part)
+                "\n".join(part for part in (report_detail, captured_error, captured_output) if part)
             )
             diagnostic_summary = f"Codex process exited with code {result.returncode}."
             persist_run_diagnostic(
