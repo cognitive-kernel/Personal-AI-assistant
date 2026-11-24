@@ -373,6 +373,100 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
 
 
+
+def test_resume_uses_separate_grace_from_manual_dispatch_and_suppresses_duplicate(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: _resume_ready_status())
+    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", agent.time.monotonic())
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append((command, raise_os_error))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    first = agent.resume_autonomous_engineering()
+    first_call_count = len(calls)
+    second = agent.resume_autonomous_engineering()
+
+    assert first["accepted"] is True
+    assert first["dispatch_status"] == "resume_once_dispatched"
+    assert second["accepted"] is True
+    assert second["dispatch_status"] == "recently_accepted"
+    assert len(calls) == first_call_count
+    assert any("resume_once=true" in call[0] for call in calls)
+    assert agent._LAST_RESUME_ACCEPTED_AT > 0
+
+
+def test_resume_unpauses_existing_run_without_dispatching_duplicate(monkeypatch):
+    monkeypatch.setattr(
+        agent,
+        "collect_status",
+        lambda: _resume_ready_status([{"status": "in_progress", "databaseId": 123}]),
+    )
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(
+        agent,
+        "_run",
+        lambda command, timeout=8, *, raise_os_error=False: (
+            calls.append((command, raise_os_error))
+            or subprocess.CompletedProcess(command, 0, "", "")
+        ),
+    )
+
+    result = agent.resume_autonomous_engineering()
+
+    assert result["accepted"] is True
+    assert result["paused"] is False
+    assert result["dispatch_status"] == "existing_run_active"
+    assert len(calls) == 2
+    assert calls[1][0][1:3] == ["variable", "set"]
+    assert not any(call[0][1:3] == ["workflow", "run"] for call in calls)
+
+
+def test_resume_lock_busy_fails_before_changing_pause(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
+    assert agent._DISPATCH_REQUEST_LOCK.acquire(blocking=False)
+    try:
+        with pytest.raises(HTTPException) as error:
+            agent.resume_autonomous_engineering()
+    finally:
+        agent._DISPATCH_REQUEST_LOCK.release()
+
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_RESUME_IN_PROGRESS"
+    assert calls == []
+
+
+def test_resume_preflight_failure_restores_pause(monkeypatch):
+    monkeypatch.setattr(
+        agent,
+        "collect_status",
+        lambda: {**_resume_ready_status(), "ready": False},
+    )
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    variable_writes = [call for call in calls if call[1:3] == ["variable", "set"]]
+    assert [call[4] for call in variable_writes] == ["false", "true"]
+    assert not any(call[1:3] == ["workflow", "run"] for call in calls)
+    assert agent._LAST_RESUME_ACCEPTED_AT == 0.0
+
+
 def test_autonomous_recovery_uses_the_durable_policy_module():
     root = Path(__file__).resolve().parents[1]
     recovery = (root / ".github" / "workflows" / "autonomous-codex-recovery.yml").read_text(encoding="utf-8")
