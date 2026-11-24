@@ -60,6 +60,50 @@ def test_python_broker_client_accepts_only_fixed_protocol_endpoints(monkeypatch)
         assert [(method, path) for method, path, _ in calls] == endpoints
         assert all(call[2]["timeout_ms"] == 3500 for call in calls)
 
+
+def test_broker_client_validates_dispatch_admission_body_before_transport(monkeypatch):
+    from app import autonomous_engineering_state_broker_unix as unix
+
+    calls = []
+    monkeypatch.setattr(unix, "request_unix", lambda method, path, **kwargs: (
+        calls.append((method, path, kwargs)) or {"acquired": True}
+    ))
+    if broker.os.name == "nt":
+        pytest.skip("The POSIX transport seam is exercised on POSIX; Windows contract is covered by service tests.")
+    request_id = "a" * 32
+    result = broker.request(
+        "POST", "/v1/dispatch-admission/acquire",
+        body={"request_id": request_id},
+    )
+    assert result == {"acquired": True}
+    assert calls[0][0:2] == ("POST", "/v1/dispatch-admission/acquire")
+    assert calls[0][2]["body"] == {"request_id": request_id}
+    with pytest.raises(ValueError):
+        broker.request(
+            "POST", "/v1/dispatch-admission/acquire",
+            body={"request_id": "../state"},
+        )
+
+
+def test_broker_dispatch_admission_is_allowlisted_in_both_service_transports():
+    client = (ROOT / "app" / "autonomous_engineering_state_broker.py").read_text(encoding="utf-8")
+    unix = (ROOT / "app" / "autonomous_engineering_state_broker_unix.py").read_text(encoding="utf-8")
+    windows = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+    posix = (ROOT / "scripts" / "autonomous_state_broker_service_posix.py").read_text(encoding="utf-8")
+
+    for source in (client, unix):
+        assert '"/v1/dispatch-admission/acquire"' in source
+        assert '"/v1/dispatch-admission/complete"' in source
+        assert "validate_dispatch_admission_request" in source
+    assert "HandleDispatchAdmission" in windows
+    assert '"workflow-dispatch-admission.json"' in windows
+    assert "WithStateLock" in windows[windows.index("private void HandleDispatchAdmission"):windows.index("private object CleanupProgress")]
+    assert "dispatch_admission" in posix
+    assert "workflow-dispatch-admission.json" in posix
+    assert "lease_expires_at" in posix
+
+
+
 def test_windows_app_state_paths_are_mediated_by_the_broker():
     progress = (ROOT / "app" / "autonomous_engineering_progress.py").read_text(encoding="utf-8")
     agent = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
@@ -81,6 +125,8 @@ def test_broker_service_has_no_generic_file_path_operation():
     assert 'path == "/v1/pending-work"' in service
     assert 'path == "/v1/progress"' in service
     assert 'path == "/v1/cleanup"' in service
+    assert 'path == "/v1/dispatch-admission/acquire"' in service
+    assert 'path == "/v1/dispatch-admission/complete"' in service
     assert 'path.StartsWith("/v1/diagnostics/"' in service
     assert "ReadCheckpointSummary" in service
     assert "latest-worktree-checkpoint.json" in service
