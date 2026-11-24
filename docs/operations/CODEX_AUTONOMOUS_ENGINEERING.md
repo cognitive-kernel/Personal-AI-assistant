@@ -6,6 +6,14 @@ This workflow replaces the paid OpenAI API dependency with the local Codex CLI c
 
 The worker is event-driven and periodic. It is not a model process generating code continuously for 24 hours. Each Codex task attempt is capped at 30 minutes, and Codex inference/recovery is capped at two attempts and 45 minutes of actual Codex runtime. Local tests and exact-head GitHub validation use a separate 90-minute total task lifecycle budget, so verification time does not consume the inference budget. A missing/invalid completion marker triggers one bounded report-finalization retry of the same task: the controller first instructs Codex to inspect the existing plan, diff, and report and avoid repeating completed implementation or broad tests. The existing worktree and checkpoint are preserved. These are task-execution bounds, not a guarantee that setup, tests, and GitHub validation all finish within 45 minutes.
 
+## Live Pause/Mode credential
+
+The post-concurrency workflow gate reads the current repository Actions variables through the REST API. The workflow's `GITHUB_TOKEN` cannot be granted the repository `Variables: read` permission, and a newly provisioned non-administrator Runner account is not assumed to inherit the installer's GitHub CLI login.
+
+Before enabling autonomous execution, create a fine-grained token restricted to this repository with **Variables: read** and save it as the repository Actions secret `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` (GitHub repository → Settings → Secrets and variables → Actions). The workflow uses this token only for read-only repository identity and Pause/Mode variable GET requests. All other workflow/controller operations continue to use the separate `GITHUB_TOKEN`.
+
+If the secret is missing, cannot read variables, or returns malformed settings, the live gate fails closed and starts no task. Never put the token in source files, workflow inputs, issues, logs, or chat.
+
 ## No paid API key
 
 - No `OPENAI_API_KEY` secret is used or required.
