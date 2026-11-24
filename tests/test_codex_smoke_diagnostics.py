@@ -449,10 +449,10 @@ def test_jsonl_report_recovery_requires_a_successful_completed_turn(tmp_path):
         report, "TASK_COMPLETE\nQUEUE_EMPTY", turn_completed=True, turn_failed=False,
     )
     assert report.read_text(encoding="utf-8") == "TASK_COMPLETE\nQUEUE_EMPTY\n"
-    assert not progress.recover_final_agent_message_report(
+    assert progress.recover_final_agent_message_report(
         report, "TASK_COMPLETE\nTASK_COMPLETE", turn_completed=True, turn_failed=False,
     )
-    assert not report.exists()
+    assert report.read_text(encoding="utf-8") == "TASK_COMPLETE\nTASK_COMPLETE\n"
 
 
 def test_jsonl_report_recovery_replaces_invalid_nonempty_output_with_valid_final_message(tmp_path):
