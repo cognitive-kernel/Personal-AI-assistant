@@ -797,19 +797,15 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
     try:
         try:
             with dispatch_admission_lock() as admission:
-                now = time.time()
-                last_accepted = admission["last_accepted_at"]
-                if last_accepted and (now < last_accepted or now - last_accepted < _DISPATCH_VISIBILITY_GRACE_SECONDS):
-                    raise HTTPException(status_code=409, detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"})
                 try:
                     result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id, resume_once=resume_once)
                 except HTTPException as exc:
                     if (exc.headers or {}).get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
-                        admission["last_accepted_at"] = time.time()
+                        admission["accepted"] = True
                         _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
                     raise
                 if result.get("accepted") is True:
-                    admission["last_accepted_at"] = time.time()
+                    admission["accepted"] = True
                     _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
                 if resume_once:
                     gh = _authenticated_gh()
@@ -819,8 +815,8 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
                     result["paused"] = False
                 return result
         except RuntimeError as exc:
-            if "Another process is currently deciding" in str(exc):
-                raise HTTPException(status_code=409, detail="درخواست اجرای دیگری در پردازهٔ دیگر در حال ثبت است؛ وضعیت را بازخوانی کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"}) from exc
+            if "dispatch_admission_conflict" in str(exc) or "dispatch_admission_lease_not_owned" in str(exc):
+                raise HTTPException(status_code=409, detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"}) from exc
             _STATUS_LOGGER.error("Persistent dispatch admission unavailable; correlation_id=%s", correlation_id)
             raise HTTPException(status_code=503, detail="قفل پایدار کنترل ارسال در دسترس یا معتبر نیست؛ برای جلوگیری از اجرای تکراری، درخواست متوقف شد.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_ADMISSION_UNAVAILABLE", "X-Retryable": "false"}) from exc
     finally:
