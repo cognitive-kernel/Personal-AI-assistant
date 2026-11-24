@@ -1,3 +1,43 @@
+## 2026-11-24 — bound job-level inspection during emergency cancellation
+
+- The job-level Codex ownership check now inspects only workflow runs reported in_progress, not every queued run.
+- If more than five workflow runs are simultaneously reported in_progress, cancellation fails closed with 409 rather than making an unbounded series of GitHub CLI calls.
+- When no Codex job is executing, the endpoint falls back to a queued Codex candidate found among preflight runs, then to the newest queued workflow.
+- Per-run job inspection has a five-second command deadline. Regression coverage verifies queued-only fallback and the fail-closed inspection bound.
+
+---
+
+## 2026-11-24 — select the actual Codex job when cancelling queued workflow runs
+
+### Additional root cause
+- Workflow-run status can be `in_progress` while a newer run is still executing its schedule gate and its `codex` job is queued behind the job-level concurrency group. Workflow-run status alone can therefore still select the wrong run.
+
+### Correction
+- The cancel endpoint now inspects `gh run view --json jobs` and selects the run whose `codex` job is actually `in_progress`.
+- If no Codex job is executing, it falls back to a queued Codex job, then to the first active preflight run.
+- Failure to retrieve or parse job state fails closed; the endpoint does not guess which workflow to cancel.
+- Added a regression with two workflow runs both reported `in_progress`, where the newer run has a queued Codex job and the older run owns the active Codex job.
+
+### Validation boundary
+- Exact-head Linux/Windows tests and target-host GitHub CLI behavior remain required. No workflow was cancelled by this source change.
+
+---
+
+## 2026-11-24 — cancel the executing workflow before newer queued runs
+
+### Root cause
+- `gh run list` returns recent runs first. The cancel endpoint selected the first run in any active state, so a newer queued run could be cancelled while an older `in_progress` workflow continued executing the actual engineering task.
+
+### Correction
+- The endpoint now selects an `in_progress` workflow run first and only falls back to queued/waiting/requested/pending work when no run is executing.
+- Added a regression where the newest run is queued and the older run is in progress; cancellation must target the in-progress run.
+
+### Validation boundary
+- Exact-head tests and Windows/browser CI are required. This selection is based on workflow-run status; if GitHub reports multiple in-progress runs, the endpoint still chooses the first in list order and a later audit should inspect job-level concurrency state.
+- No workflow was cancelled and no task/checkpoint/durable state was modified by this source update.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings

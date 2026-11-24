@@ -1435,6 +1435,12 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -2706,3 +2712,116 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
     assert response.status_code == 200
     assert calls == ["repository", "durable-state", "checkpoint"]
+
+
+def test_cancel_prefers_running_workflow_over_a_newer_queued_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    # gh run list is newest-first: the queued run is newer than the active run.
+    runs = [
+        {"databaseId": 222, "status": "queued"},
+        {"databaseId": 111, "status": "in_progress"},
+    ]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 111
+    assert calls[-1][1:3] == ["run", "cancel"]
+    assert calls[-1][3] == "111"
+
+
+def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [
+        {"databaseId": 333, "status": "queued"},
+        {"databaseId": 222, "status": "waiting"},
+    ]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 333
+    assert not any(command[1:3] == ["run", "view"] for command in calls)
+    assert calls[-1][3] == "333"
+
+
+def test_cancel_inspects_codex_job_when_newer_workflow_run_is_only_at_schedule_gate(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [
+        {"databaseId": 222, "status": "in_progress"},
+        {"databaseId": 111, "status": "in_progress"},
+    ]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        if command[1:3] == ["run", "view"]:
+            run_id = command[3]
+            state = "queued" if run_id == "222" else "in_progress"
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
+            )
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["run_id"] == 111
+    assert [command[3] for command in calls if command[1:3] == ["run", "view"]] == ["222", "111"]
+    assert calls[-1][3] == "111"
+
+
+def test_cancel_fails_closed_when_too_many_workflow_runs_are_in_progress(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    runs = [{"databaseId": index + 1, "status": "in_progress"} for index in range(6)]
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
+        raise AssertionError("Job inspection and cancellation must not start beyond the bound.")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 409
