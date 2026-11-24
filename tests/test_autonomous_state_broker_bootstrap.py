@@ -24,6 +24,7 @@ def test_machine_state_broker_startup_preflight_is_read_only():
 
 def test_windows_broker_setup_discovers_runner_identity_and_path():
     ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    lock_module = (ROOT / "scripts" / "AutonomousStateBrokerSetupLock.psm1").read_text(encoding="utf-8")
     provision = (ROOT / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
 
     assert "Get-CimInstance Win32_Service" in ensure
@@ -53,6 +54,13 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert ensure.index("$stoppedRunnerServices += $service.Name") < ensure.index("$service.WaitForStatus(")
     assert "activeWorkersAfterStop" in ensure
     assert "Start-Transcript -Path $brokerLogPath -Append -Force" in ensure
+    assert 'MarkerRegistrySubKey $setupMarkerRegistrySubKey' in ensure
+    assert "Clear-AutonomousStateBrokerSetupRecoveryMarker" in ensure
+    assert "Test-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "RecoveryMarkerPresent = $markerPresent" in lock_module
+    assert "A protected recovery marker was recorded" in lock_module
+    assert "AbandonedUnacknowledged" not in ensure
     assert "Start-Service -Name $serviceNameToRestart" in ensure
     assert 'if ($restarted.Status -eq "StopPending")' in ensure
     assert 'if ($restarted.Status -eq "Stopped")' in ensure
