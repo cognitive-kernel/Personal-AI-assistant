@@ -23,7 +23,7 @@ def _stub_durable_pending_work_status(monkeypatch):
 
     @contextmanager
     def fake_dispatch_admission_lock():
-        yield {"last_accepted_at": 0.0}
+        yield {"accepted": False, "last_accepted_at": 0.0}
 
     monkeypatch.setattr(agent, "dispatch_admission_lock", fake_dispatch_admission_lock)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
