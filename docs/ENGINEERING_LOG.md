@@ -1,3 +1,19 @@
+## 2026-11-24 — align live repository-variable tests with the shared PowerShell reader
+
+### CI findings
+- The workflow now uses a reusable `Get-LiveRepositoryVariable` helper with a dynamic variable-name URL, so static tests that required literal endpoint strings or prohibited all `actions/variables` references were stale.
+- The recovery coordinator reports `Recovery failed closed`; its test expected the different phrase `Recovery fails closed`.
+
+### Corrections
+- Workflow tests now assert the helper, the exact Pause/Mode variable names passed to it, and the fail-closed read contract.
+- Recovery tests assert the actual message and verify that Pause/Mode are re-read after backoff as well as before it.
+
+### Validation boundary
+- These changes update test contracts only. The live variable reader remains after concurrency admission, and non-404 API failures still block task execution.
+- Exact-head CI must be rerun.
+
+---
+
 ## 2026-11-24 — align live-pause workflow tests with the current policy boundary
 
 ### CI findings
