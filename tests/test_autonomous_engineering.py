@@ -220,7 +220,7 @@ def test_autonomous_engineering_page_and_navigation_are_present():
     assert "checkpoint.verified" in status_script
     assert "function canStartManualTask()" in status_script
     assert "taskButton.disabled = !canStartManualTask()" in status_script
-    assert "فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند" in agent_page
+    assert "فقط LocalService و Runner نصب‌شده به پوشهٔ محافظت‌شده دسترسی Modify مستقیم دارند" in agent_page
     assert "حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند" in agent_page
     assert "checks.github_runs_available" in status_script
     assert 'id="interval-hours"' in page
@@ -1435,12 +1435,6 @@ def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
             return subprocess.CompletedProcess(command, 0, "", "")
         if command[1:3] == ["run", "list"]:
             return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        if command[1:3] == ["run", "view"]:
-            run_id = command[3]
-            state = "queued" if run_id == "222" else "in_progress"
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
-            )
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -1979,7 +1973,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
 
     assert "new AbortController()" in core
     assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
-    assert "requestedTimeoutMs > 120000" in core
+    assert "requestedTimeoutMs > 300000" in core
     assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
@@ -2184,6 +2178,45 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     assert (tmp_path / "history.jsonl").is_file()
     assert (tmp_path / "scorecard-baseline.json").is_file()
     assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
+
+
+
+
+def test_windows_cleanup_surfaces_bounded_broker_error_and_correlation_id(monkeypatch, caplog):
+    from app import autonomous_engineering_state_broker as broker
+
+    correlation_id = "9da051e21a854ffa8e6829265f2e11c3"
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda _gh: [])
+    monkeypatch.setattr(
+        agent,
+        "cleanup_shared_progress_data",
+        lambda: (_ for _ in ()).throw(
+            broker.StateBrokerError("Windows state broker is unavailable (WinError 2).")
+        ),
+    )
+    caplog.set_level("ERROR", logger=agent._STATUS_LOGGER.name)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+    payload = response.json()
+    assert response.status_code == 503
+    assert payload["code"] == "AUTONOMOUS_ENGINEERING_BROKER_UNAVAILABLE"
+    assert payload["correlation_id"] == correlation_id
+    assert payload["retryable"] is True
+    assert "WinError 2" in payload["detail"]
+    assert payload["safe_details"] == {
+        "operation": "cleanup",
+        "broker_error": "Windows state broker is unavailable (WinError 2).",
+    }
+    assert response.headers["X-Correlation-ID"] == correlation_id
+    assert f"correlation_id={correlation_id}" in caplog.text
+    assert "WinError 2" in caplog.text
+    assert "StateBrokerError" not in payload["detail"]
 
 
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
@@ -2712,6 +2745,56 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
     assert response.status_code == 200
     assert calls == ["repository", "durable-state", "checkpoint"]
+
+
+def test_broker_setup_route_returns_verified_success(monkeypatch):
+    expected = {
+        "ready": True,
+        "already_ready": False,
+        "runtime": "Core capability adapter",
+        "message": "Broker ready",
+    }
+    monkeypatch.setattr(
+        "app.autonomous_engineering_broker_setup.setup_state_broker",
+        lambda: expected,
+    )
+
+    assert agent.autonomous_engineering_setup_broker() == expected
+
+
+def test_broker_setup_route_preserves_structured_safe_failure(monkeypatch):
+    from app.autonomous_engineering_broker_setup import BrokerSetupError
+
+    def fail():
+        raise BrokerSetupError(
+            "UAC cancelled",
+            code="STATE_BROKER_ELEVATION_CANCELLED",
+            status_code=403,
+            safe_details={"runtime": "Desktop"},
+        )
+
+    monkeypatch.setattr("app.autonomous_engineering_broker_setup.setup_state_broker", fail)
+
+    with pytest.raises(HTTPException) as error:
+        agent.autonomous_engineering_setup_broker()
+
+    assert error.value.status_code == 403
+    assert error.value.headers["X-Error-Code"] == "STATE_BROKER_ELEVATION_CANCELLED"
+    assert error.value.headers["X-Retryable"] == "false"
+    assert error.value.safe_details == {"runtime": "Desktop"}
+
+
+def test_broker_setup_is_a_loopback_protected_post_route():
+    route = next(
+        item for item in agent.router.routes
+        if getattr(item, "path", None) == "/api/autonomous-engineering/broker/setup"
+    )
+
+    assert "POST" in route.methods
+    assert agent.require_loopback_client in [
+        dependency.dependency for dependency in agent.router.dependencies
+    ]
+
 
 
 def test_cancel_prefers_running_workflow_over_a_newer_queued_run(monkeypatch):
