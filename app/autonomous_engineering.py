@@ -841,19 +841,22 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None, re
 
 
 def _set_autonomous_engineering_pause(gh: str, paused: bool) -> bool:
-    result = _run(
-        [
-            gh,
-            "variable",
-            "set",
-            "AUTONOMOUS_ENGINEERING_PAUSED",
-            "--body",
-            "true" if paused else "false",
-            "--repo",
-            _repository(),
-        ],
-        timeout=15,
-    )
+    try:
+        result = _run(
+            [
+                gh,
+                "variable",
+                "set",
+                "AUTONOMOUS_ENGINEERING_PAUSED",
+                "--body",
+                "true" if paused else "false",
+                "--repo",
+                _repository(),
+            ],
+            timeout=15,
+        )
+    except OSError:
+        return False
     return bool(result and result.returncode == 0)
 
 
