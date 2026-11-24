@@ -273,7 +273,7 @@ def recover_final_agent_message_report(
             existing = ""
         if _has_terminal_completion_marker(existing):
             return False
-        report.write_text(message + "\\n", encoding="utf-8")
+        report.write_text(message + "\n", encoding="utf-8")
     except OSError:
         return False
     return True
@@ -508,7 +508,7 @@ def run_codex(args: argparse.Namespace) -> int:
         }
         status_path = Path(args.report).with_suffix(Path(args.report).suffix + ".status.json")
         try:
-            status_path.write_text(json.dumps(attempt_status, separators=(",", ":")) + "\\n", encoding="utf-8")
+            status_path.write_text(json.dumps(attempt_status, separators=(",", ":")) + "\n", encoding="utf-8")
         except OSError as exc:
             print(f"Could not persist non-content Codex attempt status: {type(exc).__name__}", file=sys.stderr)
         return return_code
