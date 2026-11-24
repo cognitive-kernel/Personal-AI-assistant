@@ -40,7 +40,7 @@ def maintenance_admission_lock(timeout_seconds: float = 0.0) -> Iterator[None]:
                 acquired = True
             except OSError as exc:
                 if time.monotonic() >= deadline:
-                    raise RuntimeError("Repository maintenance is already in progress or an autonomous execution owns the repository.") from exc
+                    raise RuntimeError("Another autonomous execution owns this repository worktree, or repository maintenance is already in progress.") from exc
                 time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
         yield
     finally:
