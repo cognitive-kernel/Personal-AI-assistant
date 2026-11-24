@@ -2764,6 +2764,8 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "modeValue -eq \"scheduled\"" in gate
     assert "Invoke-RestMethod -Method Get" in gate
     assert 'Get-Command gh -ErrorAction Stop' in gate
+    assert 'Remove-Item Env:GH_TOKEN' in gate
+    assert 'Remove-Item Env:GITHUB_TOKEN' in gate
     assert 'auth token --hostname github.com' in gate
     assert 'Authorization = "Bearer $settingsToken"' in gate
     assert 'Authorization = "Bearer $env:GH_TOKEN"' not in gate
