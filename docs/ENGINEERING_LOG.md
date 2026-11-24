@@ -2655,3 +2655,10 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Uses the documented Ollama `DELETE /api/delete` method and verifies each deletion by re-reading `/api/tags`; a tag still present after bounded verification fails the preflight.
 - Added an audit-only mode and tests with multiple model families, including Qwen legacy aliases, loaded-model preservation, marker mismatches, and post-delete verification.
 - This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
+
+## 2026-11-24 — serialize Cancel and fail closed on ambiguous targets
+
+- Cancel now shares the dispatch/resume lock, preventing a run-list inspection from racing a concurrent workflow submission.
+- Target selection prefers exactly one in-progress Codex job. Multiple in-progress Codex jobs or multiple queued Codex candidates fail closed; when no Codex job is identifiable, fallback is allowed only if exactly one workflow is active. Ambiguous active sets are never resolved by choosing the newest run.
+- Added tests for multiple active/queued Codex candidates, ambiguous workflow fallback, the single-run fallback, and lock contention. Exact-head CI and Windows target-host acceptance remain pending.
+
