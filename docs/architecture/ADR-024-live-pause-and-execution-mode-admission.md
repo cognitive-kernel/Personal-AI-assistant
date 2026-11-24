@@ -19,6 +19,7 @@ An empty workflow_dispatch was also ambiguous: it could represent an owner-reque
 5. In scheduled mode, queued push/schedule runs, automatic recovery attempts, and unmarked empty workflow_dispatch runs are skipped. Explicit manual tasks remain allowed.
 6. The Resume API marks its empty workflow_dispatch with the boolean input resume_once=true. This authorizes one explicit empty-task run in scheduled mode. Automatic cycle chaining and recovery dispatches never set this marker.
 7. A Pause received after a task has started does not terminate or suspend that task. It prevents the next task or automatic recovery from starting after the current safe boundary.
+8. The pre-concurrency schedule gate may see a stale workflow-context Pause snapshot. An explicit `workflow_dispatch` with `resume_once=true` may pass that snapshot-only check, but this flag does not authorize execution by itself: the live Pause/mode gate after concurrency admission remains authoritative and must still allow the run.
 8. GitHub Actions outputs from the PowerShell gate are appended using UTF-8 without BOM for Windows PowerShell 5.1 compatibility.
 
 ## Failure and recovery semantics
