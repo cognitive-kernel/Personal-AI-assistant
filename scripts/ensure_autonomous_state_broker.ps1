@@ -2,11 +2,60 @@
 param(
     [switch]$ElevatedChild,
     [string]$RunnerRoot = "",
-    [switch]$AcknowledgeAbandonedSetup
+    [switch]$AcknowledgeAbandonedSetup,
+    [switch]$WindowsPowerShellHost
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+# PowerShell Core 7.3+ can inherit PSModulePath from a parent process and then
+# fail to load Microsoft.PowerShell.Security in the spawned host with duplicate
+# ObjectSecurity extended type data. Run all machine ACL work under the inbox
+# Windows PowerShell 5.1 host, whose own PSModulePath is isolated by the module.
+if ($PSVersionTable.PSEdition -ne "Desktop" -and -not $WindowsPowerShellHost) {
+    $windowsPowerShellPath = if (
+        [Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess
+    ) {
+        Join-Path $env:WINDIR "Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+    } else {
+        Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+    }
+    if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
+        throw "Windows PowerShell 5.1 is required for safe machine ACL setup; no service or ACL changes were started."
+    }
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    $principal = [Security.Principal.WindowsPrincipal]::new($identity)
+    $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -WindowsPowerShellHost'
+    if (-not $isAdministrator) {
+        $argumentLine += " -ElevatedChild"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
+        $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
+    }
+    if ($AcknowledgeAbandonedSetup) {
+        $argumentLine += " -AcknowledgeAbandonedSetup"
+    }
+    try {
+        $startArguments = @{
+            FilePath = $windowsPowerShellPath
+            ArgumentList = $argumentLine
+            Wait = $true
+            PassThru = $true
+            ErrorAction = "Stop"
+        }
+        if (-not $isAdministrator) {
+            $startArguments.Verb = "RunAs"
+        }
+        $child = Start-Process @startArguments
+        exit $child.ExitCode
+    } catch {
+        Write-Error "Could not start the Windows PowerShell 5.1 state-broker host. $($_.Exception.Message)"
+        exit 1
+    }
+}
 
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
