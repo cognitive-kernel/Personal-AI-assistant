@@ -479,7 +479,7 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     assert error.value.headers["X-Retryable"] == "false"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
-    assert "تاریخچهٔ اجراها را بازخوانی کنید" in error.value.detail
+    assert "سوابق اجرا را بازخوانی کنید" in error.value.detail
     assert calls[-1][1] is True
     pause_updates = [call[0] for call in calls if call[0][1:3] == ["variable", "set"]]
     assert len(pause_updates) == 1
