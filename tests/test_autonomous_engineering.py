@@ -2127,7 +2127,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert 'setStatusMessage(data.paused ?' in status
     assert 'setMessage(data.paused ?' not in status
     assert 'addEventListener("click", () => refresh())' in status
-    assert 'cancelButton.disabled = true' not in status[status.index('} catch (error) {'):status.index('} finally {')]
+    assert "cancelButton.disabled = true" not in status
     assert 'getActiveRunId: () => lastActiveRunId' in status
     assert 'JSON.stringify({run_id: runId})' in controls
     assert 'if (error.ambiguous || (error.status >= 500 && !error.retryable))' in controls
@@ -2139,7 +2139,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert 'window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress({queueIfBusy: true}); });' in progress
     assert '[1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours))' in status
     assert 'agent-status-message' in html
-    assert '.\\\\scripts\\\\provision_autonomous_runner.ps1' not in html
+    assert "." + chr(92) * 2 + "scripts" + chr(92) * 2 + "provision_autonomous_runner.ps1" not in html
 
 
 def test_autonomous_run_administration_routes_are_registered():
