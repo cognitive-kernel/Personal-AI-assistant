@@ -869,9 +869,26 @@ def run_cycle(args: argparse.Namespace) -> int:
     print(f"Task {task} passed exact-head checks and is awaiting owner review; no automatic merge or queue advance: {pr_url}")
     return 0
 
+
+def _verify_repository_access(token: str, repo: str) -> None:
+    try:
+        metadata = api(token, repo, "GET", "")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Could not verify repository access; no automatic task will start."
+        ) from exc
+    if not isinstance(metadata, dict):
+        raise RuntimeError("GitHub returned invalid repository metadata; no automatic task will start.")
+    actual_repository = str(metadata.get("full_name") or "").strip()
+    if actual_repository.casefold() != repo.casefold():
+        raise RuntimeError("The GitHub token could not verify the configured repository; no automatic task will start.")
+
+
+
 def _live_pause_enabled(token: str, repo: str) -> bool:
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required to verify the live Pause setting.")
+    _verify_repository_access(token, repo)
     try:
         setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
@@ -891,6 +908,7 @@ def _live_pause_enabled(token: str, repo: str) -> bool:
 def _live_execution_mode(token: str, repo: str) -> str:
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required to verify the live execution mode.")
+    _verify_repository_access(token, repo)
     try:
         setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
