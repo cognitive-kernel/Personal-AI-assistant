@@ -425,8 +425,15 @@ class RestrictedStateBroker:
                         raise BrokerFailure(409, "dispatch_admission_conflict")
                     # A crashed caller may have dispatched before losing its
                     # response. Treat an expired lease as ambiguous, not free.
-                    last_accepted = max(last_accepted, float(pending["created_at"]))
+                    # Start a fresh grace interval from lease recovery, not
+                    # from the old reservation creation time.
+                    last_accepted = max(last_accepted, now)
                     pending = None
+                    self._write_dispatch_admission_state({
+                        "schema_version": 1,
+                        "last_accepted_at": last_accepted,
+                        "pending": None,
+                    })
                 if last_accepted and (now < last_accepted or now - last_accepted < 30.0):
                     raise BrokerFailure(409, "dispatch_admission_conflict")
                 state = {
