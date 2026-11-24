@@ -1,3 +1,22 @@
+## 2026-11-24 — replace the unprovisioned Runner CLI assumption with a dedicated read-only credential
+
+### Follow-up audit and correction
+- The prior intermediate fix used `gh auth token` inside the Windows Runner job. Reviewing `scripts/provision_autonomous_runner.ps1` showed that its `gh auth status` check runs in the elevated installer session, while a newly provisioned Runner normally runs as a separate generated non-administrator local account. The provisioning script does not copy or configure the installer's GitHub CLI login for that service identity.
+- Therefore, assuming that the Runner service account has a persisted GitHub CLI credential was not valid for a fresh installation. That intermediate approach has been removed from the workflow.
+
+### Current implementation
+- The live post-concurrency Pause/Mode gate now reads `secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN`.
+- This must be a fine-grained token restricted to this repository with **Variables: read** (and the standard repository metadata visibility needed to verify repository identity). It is used only for read-only GET requests; the existing `GITHUB_TOKEN` remains separate for workflow/controller operations.
+- A missing secret, insufficient permission, invalid value, or failed repository verification blocks task start. The token is removed from the step environment after it is copied into the in-memory request header, and is not logged or persisted.
+- Workflow contract tests require the dedicated secret and reject the previous Runner CLI token assumption.
+
+### Required owner setup and validation boundary
+- Before this workflow can execute, the repository owner must create the fine-grained read-only token and add it under **Settings → Secrets and variables → Actions** with the exact name `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN`. Do not paste the token into chat, code, issues, or logs.
+- Exact-head Linux/Windows suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, and a target-Runner test of both live variable reads remain required. No exact-head pass is claimed here.
+- No workflow was dispatched; no repository secret, Pause/Mode variable, task, checkpoint, PR, Runner, ACL, database, or user state was changed.
+
+---
+
 ## 2026-11-24 — use an authorized Runner credential for live Actions-variable reads
 
 ### Root cause
