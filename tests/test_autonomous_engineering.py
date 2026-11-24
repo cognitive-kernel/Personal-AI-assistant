@@ -1454,7 +1454,7 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    task = "بررسی Issue #52؛ عبارت ; gh secret list نباید اجرا شود"
+    task = r"بررسی فایل @C:\Users\ExampleUser\Desktop\spec.txt؛ عبارت ; gh secret list نباید اجرا شود"
 
     result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
 
@@ -1464,6 +1464,8 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     assert calls[-1][-4] == "--raw-field"
     assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
     assert calls[-1].count("--field") == 0
+    assert calls[-1][-1] == "manual_task=" + task
+    assert "@C:\\Users\\ExampleUser\\Desktop\\spec.txt" in calls[-1][-1]
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
