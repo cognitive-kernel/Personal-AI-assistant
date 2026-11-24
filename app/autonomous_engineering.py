@@ -1012,7 +1012,11 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
     for item in runs:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
-        diagnostic = _read_run_diagnostics(item["id"])
+        diagnostic = (
+            _read_run_diagnostics(item["id"])
+            if item.get("status") == "completed" and item.get("conclusion") not in {"success", "neutral", "skipped"}
+            else None
+        )
         latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
         normalized.append({
             "id": item["id"],
@@ -1037,13 +1041,18 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
 def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
+    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
     expected_path = f".github/workflows/{_WORKFLOW}"
-    # Resolve the user-selected ID against the server-fetched, workflow-scoped
-    # run list. Only the canonical ID returned by GitHub is used by CLI calls.
-    for run in _workflow_runs(gh):
-        if run.get("id") == run_id and run.get("workflow_path") == expected_path:
-            return run
-    raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+    workflow_path = str(run.get("path") or "").split("@", 1)[0]
+    if run.get("id") != run_id or workflow_path != expected_path:
+        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+    return {
+        "id": run_id,
+        "status": str(run.get("status") or "unknown"),
+        "conclusion": run.get("conclusion"),
+        "workflow_path": workflow_path,
+        "url": run.get("html_url") if isinstance(run.get("html_url"), str) else None,
+    }
 
 
 def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
@@ -1128,7 +1137,10 @@ def _sanitize_workflow_log(value: str) -> str:
         r"\1[REDACTED]",
         value,
     )
+    value = re.sub(r"(?i)(authorization\s*:\s*basic\s+)\S+", r"\1[REDACTED]", value)
     value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", value)
+    value = re.sub(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
     value = re.sub(
         r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
@@ -1324,6 +1336,9 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
                 continue
             except OSError:
                 failed_files.append(str(path))
+
+    # Absolute cleanup paths can disclose usernames and host directory layout.
+    failed_files = sorted({Path(str(item)).name for item in failed_files if str(item).strip()})
 
     preserved = [
         "history.jsonl",
