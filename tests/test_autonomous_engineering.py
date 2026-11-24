@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -20,6 +20,12 @@ from app import main as main_module
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch):
     monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+
+    @contextmanager
+    def fake_dispatch_admission_lock():
+        yield {"last_accepted_at": 0.0}
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", fake_dispatch_admission_lock)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
@@ -279,74 +285,100 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
     ]
 
 
-def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
+def _paused_ready_snapshot(active_runs=None):
+    return {
+        "ready": True,
+        "paused": True,
+        "checks": {"durable_state_available": True},
+        "pending_work": {"available": True, "blocked": False, "checkpoint": {"available": False, "verified": True}},
+        "github": {"runs_available": True, "recent_runs": active_runs or []},
+    }
+
+
+def test_resume_uses_locked_dispatch_and_clears_pause_only_after_acceptance(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    monkeypatch.setattr(
-        agent, "_run",
-        lambda command, timeout=8, *, raise_os_error=False: (
-            calls.append((command, raise_os_error))
-            or subprocess.CompletedProcess(command, 0, "", "")
-        ),
-    )
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
 
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append((command, raise_os_error))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
     result = agent.resume_autonomous_engineering()
 
+    assert result["accepted"] is True
     assert result["paused"] is False
     assert "در حالت زمان‌بندی‌شده این اجرا یک‌باره است" in result["message"]
     assert len(result["correlation_id"]) == 32
-    assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][0][1:3] == ["workflow", "run"]
-    assert "--field" in calls[2][0]
-    assert "correlation_id=" + result["correlation_id"] in calls[2][0]
-    assert "resume_once=true" in calls[2][0]
-    assert calls[2][1] is True
+    workflow_call = next(call for call in calls if call[0][1:3] == ["workflow", "run"])
+    assert "--raw-field" in workflow_call[0]
+    assert "correlation_id=" + result["correlation_id"] in workflow_call[0]
+    assert "resume_once=true" in workflow_call[0]
+    assert workflow_call[1] is True
+    pause_update = next(call for call in calls if call[0][1:3] == ["variable", "set"])
+    assert pause_update[0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
+    assert pause_update[0][5] == "false"
+    assert calls.index(workflow_call) < calls.index(pause_update)
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
+
+
+def test_resume_refuses_active_run_without_mutating_pause_or_dispatching(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot([{"status": "in_progress"}]))
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert not any(command[1:3] == ["workflow", "run"] for command in calls)
+    assert not any(command[1:3] == ["variable", "set"] for command in calls)
 
 
 def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
     calls = []
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append((command, raise_os_error))
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["variable", "set"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         return None
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
     with pytest.raises(HTTPException) as error:
         agent.resume_autonomous_engineering()
 
     assert error.value.status_code == 502
-    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN"
     assert error.value.headers["X-Retryable"] == "false"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
     assert "تاریخچهٔ اجراها را بازخوانی کنید" in error.value.detail
     assert calls[-1][1] is True
+    assert not any(call[0][1:3] == ["variable", "set"] for call in calls)
 
 
 def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
-        if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
+        if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         raise FileNotFoundError("gh executable disappeared")
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
     with pytest.raises(HTTPException) as error:
         agent.resume_autonomous_engineering()
 
     assert error.value.status_code == 503
-    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED"
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
 
