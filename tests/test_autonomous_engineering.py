@@ -2117,12 +2117,19 @@ def test_autonomous_run_administration_routes_are_registered():
 def test_workflow_log_sanitizer_redacts_common_credentials():
     source = (
         "Authorization: Bearer bearer-secret-value\\n"
+        "Authorization: Basic dXNlcjpwYXNzd29yZA==\\n"
         "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\\n"
+        "sk-proj-0123456789abcdefghijklmnopqrstuv\\n"
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken\\n"
         "password=hunter2 api_key=secret-value\\n"
     )
     result = agent._sanitize_workflow_log(source)
     assert "bearer-secret-value" not in result
+    assert "dXNlcjpwYXNzd29yZA==" not in result
     assert "github_pat_0123456789abcdefghijklmnopqrstuvwxyz" not in result
+    assert "sk-proj-0123456789abcdefghijklmnopqrstuv" not in result
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+    assert "signaturelongtoken" not in result
     assert "hunter2" not in result
     assert "secret-value" not in result
     assert "[REDACTED]" in result
@@ -2151,6 +2158,26 @@ def test_workflow_run_list_uses_fixed_server_selected_limit(monkeypatch):
     )]
     assert runs[0]["id"] == 456
     assert runs[0]["workflow_path"] == ".github/workflows/autonomous-codex-engineering.yml"
+
+
+def test_workflow_run_list_reads_diagnostics_only_for_failed_runs(monkeypatch):
+    diagnostic_reads = []
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "workflow_runs": [
+            {"id": 1, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "in_progress"},
+            {"id": 2, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "completed", "conclusion": "success"},
+            {"id": 3, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "completed", "conclusion": "failure"},
+        ]
+    })
+    monkeypatch.setattr(agent, "_read_run_diagnostics", lambda run_id: (
+        diagnostic_reads.append(run_id) or {"diagnostics": [{"summary": "root cause"}]}
+    ))
+    runs = agent._workflow_runs("gh")
+    assert [run["id"] for run in runs] == [1, 2, 3]
+    assert diagnostic_reads == [3]
+    assert runs[0]["failure_summary"] is None
+    assert runs[1]["failure_summary"] is None
+    assert runs[2]["failure_summary"] == "root cause"
 
 
 def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
