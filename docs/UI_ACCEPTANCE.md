@@ -128,3 +128,14 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - Missing Pause variable (404) means false; missing mode variable means continuous. API errors and malformed values fail closed. Scheduled mode suppresses queued automatic and recovery runs, while explicit manual tasks and one-shot resume remain allowed.
 - ADR-024 records the admission and one-shot Resume contract. PR #866 contains the implementation. Its exact-head CI is pending; no real task/recovery workflow was dispatched for this validation.
 
+## 2026-11-24 — وضعیت پذیرش ماژول Autonomous Engineering
+
+- [x] Refresh وضعیت پس از چند mutation هم‌زمان سریالی شده است؛ regression مرورگر در PR #864 روی exact head موفق شد.
+- [x] Cancel اجرای واقعی Codex را از jobهای صرفاً preflight/concurrency تفکیک می‌کند؛ regressionهای queued/in-progress و bound بررسی job روی exact head PR #867 موفق شدند.
+- [x] شاخهٔ State Broker، regressionهای UI و broker را حفظ می‌کند؛ شاخهٔ live Pause/Mode، resume یک‌باره در حالت scheduled را نگه می‌دارد.
+- [ ] exact-head CI برای head نهایی PRهای #863/#869 و #866/#870 پس از آخرین اصلاحات.
+- [ ] پذیرش روی Windows واقعی: non-admin/UAC، Broker، Runner موجود با .runner محافظت‌شده، حالت بدون Runner، ACL و restart.
+- [ ] اجرای واقعی Ollama/Codex، dispatch، Pause/Resume/Cancel، timeout، crash/restart و حفظ checkpoint.
+- [ ] بازبینی دستی keyboard/screen-reader و تأیید نهایی مالک.
+- [ ] secret خواندن Variables برای workflowهای #870 باید توسط مالک ایجاد و روی Runner هدف آزمایش شود؛ تا آن زمان این مسیر عملیاتی پذیرفته نیست.
+
