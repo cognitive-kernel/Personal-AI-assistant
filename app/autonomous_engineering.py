@@ -820,7 +820,7 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
                 detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
                 headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
             ) from exc
-        except (StateBrokerError, DispatchAdmissionError) as exc:
+        except RuntimeError as exc:
             _STATUS_LOGGER.error("Persistent dispatch admission unavailable; correlation_id=%s", correlation_id)
             raise HTTPException(
                 status_code=503,
