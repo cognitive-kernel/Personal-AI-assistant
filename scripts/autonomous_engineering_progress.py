@@ -496,6 +496,11 @@ def run_codex(args: argparse.Namespace) -> int:
         attempt_status = {
             "schema_version": 1,
             "final_agent_message_present": bool(final_agent_message and final_agent_message.strip()),
+            "missing_message_reason": (
+                "turn_failed_or_tool_error" if final_turn_failed
+                else "turn_incomplete_or_tool_call_pending" if not final_turn_completed
+                else "turn_completed_without_agent_message"
+            ) if not (final_agent_message and final_agent_message.strip()) else None,
             "turn_completed": final_turn_completed,
             "turn_failed": final_turn_failed,
             "jsonl_event_count": event_count,
