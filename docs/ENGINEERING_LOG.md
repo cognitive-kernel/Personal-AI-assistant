@@ -1,3 +1,22 @@
+## 2026-11-24 — force broker ACL reconciliation through Windows PowerShell 5.1
+
+### User-host reproduction
+- A real Windows startup report showed the elevated broker setup failing while importing `Microsoft.PowerShell.Security`: duplicate `ObjectSecurity` type-data members (`AuditToString`, `AccessToString`, `Sddl`, `Access`, `Group`, `Owner`, `Path`).
+- This signature matches the PowerShell Core/Windows PowerShell cross-edition `PSModulePath` collision documented in PowerShell issue #18681 and the VS Code Windows PowerShell issue #251311. PowerShell Core can start Windows PowerShell with Core module paths inherited; Windows PowerShell then loads the wrong Security module and fails before ACL setup.
+
+### Correction
+- The setup script now re-executes non-Desktop hosts under the inbox Windows PowerShell 5.1 executable before loading the Windows identity/security modules.
+- It selects the native 64-bit host through `Sysnative` when a 32-bit caller runs on 64-bit Windows.
+- Administrator state and the explicit abandoned-mutex acknowledgement are forwarded. Non-admin callers receive one UAC elevation at the Desktop-host boundary; already elevated callers retain their elevated token without another UAC prompt.
+- If the Windows PowerShell host is absent or cannot start, setup stops before service or ACL mutation. The machine-wide mutex remains acquired only by the actual elevated child.
+
+### Validation boundary
+- Added a static regression contract proving the host switch happens before the machine-wide mutex and before any Security module import.
+- Exact-head Windows full-suite and target-host verification are required. This fixes the confirmed module-host selection path; it does not yet prove the user's broker is installed.
+- No service, ACL, Runner registration, task, checkpoint, database, or durable state was changed by this source update.
+
+---
+
 ## 2026-11-24 — make PR #863 Windows validation deterministic
 
 ### CI findings
