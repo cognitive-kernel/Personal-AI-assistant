@@ -258,8 +258,8 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 
@@ -2583,7 +2583,7 @@ def test_empty_dispatch_resumes_verified_checkpoint(monkeypatch):
 
     assert result["accepted"] is True
     assert result["manual_task_submitted"] is False
-    assert calls[-1][-2:] == ["--field", "manual_task="]
+    assert calls[-1][-2:] == ["--raw-field", "manual_task="]
 
 
 def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypatch):
@@ -2717,8 +2717,8 @@ def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatc
     assert response.headers["X-Correlation-ID"] == correlation_id
     assert response.json()["correlation_id"] == correlation_id
     assert calls[-1][-4:] == [
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 
