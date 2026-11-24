@@ -331,3 +331,9 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 
 The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-live-pause-and-execution-mode-admission.md). Exact-head CI and target-host acceptance remain pending; this table records the intended and tested contract, not a claim of end-to-end completion.
 
+## 2026-11-24 — inherited mainline regressions
+
+- PR #864's serialized post-mutation status refresh is now part of main and parent #863; PR #867's job-aware Cancel handler is carried by both parent branches. The child follow-ups must retain these changes when rebased.
+- The progress cleanup queue fix and dedicated read-only Variables credential remain specific to #870 and await exact-head CI and secret-backed Runner validation.
+- Broker Registry64 and same-thread/wrong-thread acknowledgement behavior remain specific to #869 and await Windows storage regression execution and target-host validation.
+
