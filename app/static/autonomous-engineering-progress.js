@@ -178,6 +178,6 @@
   });
   $("refresh-progress").addEventListener("click", () => refreshProgress({queueIfBusy: true}));
 
-  window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress(); });
+  window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress({queueIfBusy: true}); });
   window.autonomousEngineeringProgress = Object.freeze({version: 1, refresh: refreshProgress});
 })();
