@@ -1453,17 +1453,17 @@ def test_autonomous_cycle_requires_one_exact_completion_marker(tmp_path):
     from scripts import autonomous_engineering_cycle as cycle
 
     report = tmp_path / "report.md"
-    report.write_text("Task evidence\\nTASK_COMPLETE\\n", encoding="utf-8")
+    report.write_text("Task evidence\nTASK_COMPLETE\n", encoding="utf-8")
     assert cycle.task_marker(report) == "TASK_COMPLETE"
 
-    report.write_text("Task evidence\\n- `task_complete`.\\n", encoding="utf-8")
+    report.write_text("Task evidence\n- `task_complete`.\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="final non-empty report line"):
         cycle.task_marker(report)
 
-    report.write_text("- Example quote: TASK_COMPLETE\\nTASK_COMPLETE\\n", encoding="utf-8")
+    report.write_text("- Example quote: TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
     assert cycle.task_marker(report) == "TASK_COMPLETE"
 
-    report.write_text("TASK_COMPLETE\\nAdditional prose after the marker\\n", encoding="utf-8")
+    report.write_text("TASK_COMPLETE\nAdditional prose after the marker\n", encoding="utf-8")
     with pytest.raises(RuntimeError, match="final non-empty report line"):
         cycle.task_marker(report)
 
