@@ -214,9 +214,15 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
     ) or (
         method == "POST" and path == "/v1/cleanup"
     )
-    if not allowed and path in {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}:
+    task_paths = {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}
+    dispatch_paths = {"/v1/dispatch-admission/acquire", "/v1/dispatch-admission/complete"}
+    if path in task_paths:
         from .autonomous_engineering_state_broker_contract import validate_task_request
         validate_task_request(method, path, body)
+        allowed = True
+    elif path in dispatch_paths:
+        from .autonomous_engineering_state_broker_contract import validate_dispatch_admission_request
+        validate_dispatch_admission_request(method, path, body)
         allowed = True
     elif body is not None:
         raise ValueError("This state-broker endpoint does not accept a request body.")
