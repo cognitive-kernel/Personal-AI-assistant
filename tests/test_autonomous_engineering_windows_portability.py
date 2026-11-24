@@ -530,10 +530,13 @@ def test_state_broker_mutex_has_real_windows_process_integration_coverage():
     workflow = _read(".github/workflows/tests.yml")
 
     assert "Invoke-SetupMutexProcessIntegrationTest" in service_test
-    assert 'Start-SetupMutexTestChild -Mode "hold"' in service_test
+    assert 'Start-SetupMutexTestChild -Mode "proxy"' in service_test
+    assert 'Start-SetupMutexTestChild -Mode "busy"' in service_test
     assert 'Start-SetupMutexTestChild -Mode "abandoned"' in service_test
     assert 'Start-SetupMutexTestChild -Mode "acknowledge"' in service_test
-    assert "Stop-Process -Id $owner.Id -Force" in service_test
+    assert "Stop-Process -Id $proxy.Id -Force" in service_test
+    assert "StateBrokerSetupMutexOwnerThreadProbe" in service_test
+    assert "The holder PowerShell process must remain alive after its mutex owner thread exits" in service_test
     assert "The setup mutex was not cleanly reusable after explicit acknowledgement" in service_test
     assert "Exercise the live LocalService broker and Python named-pipe client" in workflow
     assert "Exercise the packaged broker under Windows PowerShell Desktop" in workflow
