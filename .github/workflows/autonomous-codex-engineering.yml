@@ -923,6 +923,7 @@ jobs:
         if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
           GH_REPO: ${{ github.repository }}
           AUTONOMOUS_ENGINEERING_STEP_ID: autonomous-engineering-cycle
         shell: powershell
