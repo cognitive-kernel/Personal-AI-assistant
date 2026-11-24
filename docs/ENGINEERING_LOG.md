@@ -1,3 +1,19 @@
+## 2026-11-24 — make PR #863 Windows validation deterministic
+
+### CI findings
+- Windows full-suite failures included a stale expected warning string, PATH-discovery tests that accidentally included real registry-installed PowerShell Core hosts, and an ACL rollback assertion that treated Windows' DACL auto-inherited control flag as an ACE mutation.
+
+### Corrections
+- Align the installer regression assertion with the actual rollback warning.
+- Isolate PATH-only PowerShell tests from host registry discovery while preserving the dedicated registry-discovery test.
+- Normalize only the DACL `AI` control flag during the rollback comparison; owner, group, and all ACE data remain exact.
+
+### Validation boundary
+- These changes correct test contracts and do not modify machine ACLs, services, or registry state.
+- PR #863 exact-head Linux/Windows and Windows storage CI must be rerun.
+
+---
+
 ## 2026-11-23 — State Broker startup diagnostics and Ollama legacy cleanup
 
 ### Findings
