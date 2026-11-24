@@ -2723,7 +2723,7 @@ def test_schedule_gate_suppresses_cross_process_duplicate_workflow_dispatches():
         / ".github" / "workflows" / "autonomous-codex-engineering.yml"
     ).read_text(encoding="utf-8")
     schedule_gate = workflow[
-        workflow.index("  schedule-gate:") : workflow.index("\\n  codex:")
+        workflow.index("  schedule-gate:") : workflow.index("\n  codex:")
     ]
 
     assert "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=30" in schedule_gate
