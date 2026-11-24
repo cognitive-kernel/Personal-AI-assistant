@@ -876,9 +876,15 @@ def run_cycle(args: argparse.Namespace) -> int:
     return 0
 
 
+def _settings_api(settings_token: str, repo: str, path: str) -> Any:
+    if not settings_token:
+        raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is required.")
+    return api(settings_token, repo, "GET", path)
+
+
 def _verify_repository_access(settings_token: str, repo: str) -> None:
     try:
-        metadata = api(settings_token, repo, "GET", "")
+        metadata = _settings_api(settings_token, repo, "")
     except RuntimeError as exc:
         raise RuntimeError(
             "Could not verify repository access; no automatic task will start."
@@ -896,7 +902,7 @@ def _live_pause_enabled(settings_token: str, repo: str) -> bool:
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live Pause setting.")
     _verify_repository_access(settings_token, repo)
     try:
-        setting = api(settings_token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+        setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
             return False
@@ -916,7 +922,7 @@ def _live_execution_mode(settings_token: str, repo: str) -> str:
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live execution mode.")
     _verify_repository_access(settings_token, repo)
     try:
-        setting = api(settings_token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+        setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
             return "continuous"
