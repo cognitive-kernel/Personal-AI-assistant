@@ -1,3 +1,19 @@
+## 2026-11-24 — fail closed when GitHub 404 may mean repository access is missing
+
+### Root cause
+- The live Pause/Mode readers treated any HTTP 404 from the repository-variable endpoint as an intentionally absent variable. GitHub can also return 404 when a token cannot access a private repository, so this could incorrectly default to `continuous` and `unpaused`.
+
+### Correction
+- The workflow now verifies repository metadata and exact `full_name` using the same token before reading variables. A repository-access failure stops the job; only a subsequent variable-specific 404 receives the documented default.
+- The recovery coordinator performs the same repository identity check before calling the live variable readers.
+- Added a regression proving an inaccessible repository cannot be mistaken for an unset execution-mode variable.
+
+### Validation boundary
+- No workflow was dispatched and no repository variable or durable task/checkpoint state was changed.
+- Exact-head Linux/Windows tests and workflow CI are required.
+
+---
+
 ## 2026-11-24 — align live repository-variable tests with the shared PowerShell reader
 
 ### CI findings
