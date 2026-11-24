@@ -106,7 +106,7 @@ def test_windows_broker_dispatch_admission_protocol_roundtrip():
         body={"request_id": second_id, "accepted": True},
     )
     with pytest.raises(broker.StateBrokerConflict):
-        broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": "c" * 32)
+        broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": "c" * 32})
 
 
 
