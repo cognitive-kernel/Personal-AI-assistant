@@ -462,7 +462,7 @@ def test_resume_preflight_failure_restores_pause(monkeypatch):
 
     assert error.value.status_code == 409
     variable_writes = [call for call in calls if call[1:3] == ["variable", "set"]]
-    assert [call[4] for call in variable_writes] == ["false", "true"]
+    assert [call[5] for call in variable_writes] == ["false", "true"]
     assert not any(call[1:3] == ["workflow", "run"] for call in calls)
     assert agent._LAST_RESUME_ACCEPTED_AT == 0.0
 
