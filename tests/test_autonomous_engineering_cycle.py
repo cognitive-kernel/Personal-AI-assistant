@@ -2135,3 +2135,86 @@ def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monk
 
     assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("live_mode", "paused", "expected_dispatch"),
+    [
+        ("scheduled", False, False),
+        ("continuous", True, False),
+        ("continuous", False, True),
+    ],
+)
+def test_recovered_owner_merged_pr_chains_only_when_live_mode_allows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    shared_state_tmp_path: Path,
+    live_mode: str,
+    paused: bool,
+    expected_dispatch: bool,
+):
+    records = []
+    dispatches = []
+    pending = {
+        "number": 77,
+        "task": 1,
+        "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
+    }
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv(
+        "AUTONOMOUS_ENGINEERING_PROGRESS_DIR",
+        str(shared_state_tmp_path / "recovered-merged-pr-live-gate"),
+    )
+    monkeypatch.setattr(cycle, "recover_pending_state_cleanup_unlocked", lambda _state_dir: None)
+    monkeypatch.setattr(
+        cycle,
+        "reconcile_pending_pr_state_unlocked",
+        lambda _state_dir, _repo, _open, _fetch: pending,
+    )
+    monkeypatch.setattr(
+        cycle,
+        "complete_merged_pr",
+        lambda _token, _repo, saved: {
+            "number": saved["number"],
+            "merge_sha": "c" * 40,
+        },
+    )
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+
+    def fake_api(token, repo, method, path, payload=None):
+        if path == "pulls?state=open&per_page=100":
+            return []
+        if path == "pulls/77":
+            return {"number": 77, "state": "closed", "merged": True}
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": live_mode}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "true" if paused else "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            dispatches.append(payload)
+            return {"accepted": True}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {
+        "run_id": "301",
+        "run_attempt": "1",
+        "mode": "continuous",
+        "correlation_id": "d" * 32,
+    })()
+
+    assert cycle.run_cycle(args) == 0
+    assert len(records) == 1
+    assert len(dispatches) == int(expected_dispatch)
+    if expected_dispatch:
+        assert dispatches[0]["ref"] == "main"
+        assert dispatches[0]["inputs"] == {
+            "manual_task": "",
+            "correlation_id": "d" * 32,
+        }
+
