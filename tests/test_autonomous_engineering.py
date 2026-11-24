@@ -2180,6 +2180,45 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
 
 
+
+
+def test_windows_cleanup_surfaces_bounded_broker_error_and_correlation_id(monkeypatch, caplog):
+    from app import autonomous_engineering_state_broker as broker
+
+    correlation_id = "9da051e21a854ffa8e6829265f2e11c3"
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_workflow_runs", lambda _gh: [])
+    monkeypatch.setattr(
+        agent,
+        "cleanup_shared_progress_data",
+        lambda: (_ for _ in ()).throw(
+            broker.StateBrokerError("Windows state broker is unavailable (WinError 2).")
+        ),
+    )
+    caplog.set_level("ERROR", logger=agent._STATUS_LOGGER.name)
+
+    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
+        "/api/autonomous-engineering/cleanup",
+        headers={"X-Correlation-ID": correlation_id},
+    )
+
+    payload = response.json()
+    assert response.status_code == 503
+    assert payload["code"] == "AUTONOMOUS_ENGINEERING_BROKER_UNAVAILABLE"
+    assert payload["correlation_id"] == correlation_id
+    assert payload["retryable"] is True
+    assert "WinError 2" in payload["detail"]
+    assert payload["safe_details"] == {
+        "operation": "cleanup",
+        "broker_error": "Windows state broker is unavailable (WinError 2).",
+    }
+    assert response.headers["X-Correlation-ID"] == correlation_id
+    assert f"correlation_id={correlation_id}" in caplog.text
+    assert "WinError 2" in caplog.text
+    assert "StateBrokerError" not in payload["detail"]
+
+
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
     from app import autonomous_engineering_execution_lock as execution_lock
 
