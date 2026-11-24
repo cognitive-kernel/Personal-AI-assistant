@@ -57,10 +57,8 @@ Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -For
 
 $setupMutexState = $null
 try {
-    $setupMutexState = Enter-AutonomousStateBrokerSetupMutex -Name "Global\PersonalAIAssistant.StateBrokerSetup" -AcknowledgeAbandoned:$AcknowledgeAbandonedSetup
-    if ($setupMutexState.AbandonedUnacknowledged) {
-        throw "A previous elevated state-broker setup terminated while holding the machine-wide lock. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
-    }
+    $setupMarkerRegistrySubKey = "SOFTWARE\PersonalAIAssistant\StateBroker"
+    $setupMutexState = Enter-AutonomousStateBrokerSetupMutex -Name "Global\PersonalAIAssistant.StateBrokerSetup" -MarkerRegistrySubKey $setupMarkerRegistrySubKey -AcknowledgeAbandoned:$AcknowledgeAbandonedSetup
 
     # The lock belongs to this elevated child, not the Python/PowerShell parent.
     # If the parent times out or is terminated, this child continues to own the
@@ -285,6 +283,9 @@ try {
 
 if ($setupFailure) { throw $setupFailure }
 
+# A recovery marker is cleared only after the complete setup and live health
+# verification succeed. Failed acknowledgement attempts leave it in place.
+Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $setupMarkerRegistrySubKey
 Write-Host "Machine state broker is installed and healthy."
 if ($resolvedRunnerServices.Count -gt 0) {
     Write-Host "Runner service identities configured: $($resolvedRunnerServices.Count)"
@@ -294,7 +295,7 @@ if ($resolvedRunnerServices.Count -gt 0) {
 Write-Host "Shared state root: $stateRoot"
 
 } finally {
-    if ($null -ne $setupMutexState -and -not $setupMutexState.AbandonedUnacknowledged) {
+    if ($null -ne $setupMutexState) {
         Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState
     }
 }
