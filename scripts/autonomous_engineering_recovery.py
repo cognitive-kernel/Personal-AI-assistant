@@ -157,7 +157,12 @@ def report(title: str, message: str, *, error: bool = False) -> None:
 
 
 def _verify_repository_access(client: GitHubActionsClient, expected_repository: str) -> None:
-    metadata = client.request("GET", "/")
+    try:
+        metadata = client.request("GET", "/")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "The GitHub token could not verify the configured repository; recovery fails closed."
+        ) from exc
     if not isinstance(metadata, dict):
         raise RuntimeError("GitHub returned invalid repository metadata; recovery fails closed.")
     actual_repository = str(metadata.get("full_name") or "").strip()
