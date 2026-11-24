@@ -97,20 +97,39 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         }
     }
     "abandoned" {
-        $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME
-        if (-not $lock.AbandonedUnacknowledged -or -not $lock.Abandoned) {
-            throw "The abandoned mutex was not detected and held fail-closed."
+        $rejected = $false
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+        } catch {
+            if ($_.Exception.Message -notmatch "A protected recovery marker was recorded") { throw }
+            $rejected = $true
+        }
+        if (-not $rejected -or -not (Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY)) {
+            throw "The abandoned mutex was not converted into a durable fail-closed recovery marker."
         }
         [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "abandoned")
-        # Exit without releasing the acquired mutex; it becomes abandoned again.
-        exit 0
+    }
+    "blocked" {
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "A second invocation bypassed the persisted recovery marker."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "blocked")
+        }
     }
     "acknowledge" {
-        $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -AcknowledgeAbandoned
-        if (-not $lock.Acquired -or -not $lock.Abandoned -or $lock.AbandonedUnacknowledged) {
-            throw "Explicit acknowledgement did not acquire the previously abandoned mutex."
+        $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
+        if (-not $lock.Acquired -or $lock.Abandoned -or -not $lock.RecoveryMarkerPresent) {
+            throw "Explicit acknowledgement did not acquire the clean mutex with the persisted recovery marker."
         }
         Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+        Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+        if (Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY) {
+            throw "Explicit acknowledgement did not clear the recovery marker after successful validation."
+        }
         [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "acknowledged")
     }
     default {
@@ -129,7 +148,8 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         "STATE_BROKER_LOCK_RELEASE",
         "STATE_BROKER_LOCK_STOP",
         "STATE_BROKER_LOCK_THREAD_EXITED",
-        "STATE_BROKER_LOCK_CHILD_PID_SIGNAL"
+        "STATE_BROKER_LOCK_CHILD_PID_SIGNAL",
+        "STATE_BROKER_LOCK_MARKER_KEY"
     )
     $previousEnvironment = @{}
     foreach ($name in $environmentNames) {
@@ -168,6 +188,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         $env:STATE_BROKER_LOCK_STOP = Join-Path $testRoot "stop-holder-process"
         $env:STATE_BROKER_LOCK_THREAD_EXITED = Join-Path $testRoot "owner-thread-exited"
         $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL = Join-Path $testRoot "holder-process-id"
+        $env:STATE_BROKER_LOCK_MARKER_KEY = "SOFTWARE\PersonalAIAssistant\Tests\StateBrokerSetupMutex-" + [guid]::NewGuid().ToString("N")
 
         # Keep a handle open in the coordinator so the named mutex object
         # remains available after the dedicated owner thread terminates.
@@ -223,7 +244,19 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         if ($abandoned.ExitCode -ne 0 -or
             -not (Test-Path -LiteralPath $abandonedSignal -PathType Leaf) -or
             [System.IO.File]::ReadAllText($abandonedSignal) -ne "abandoned") {
-            throw "The production setup-lock module did not fail closed on an abandoned mutex."
+            throw "The production setup-lock module did not persist a recovery marker after an abandoned mutex."
+        }
+
+        $blockedSignal = Join-Path $testRoot "blocked.signal"
+        $blocked = Start-SetupMutexTestChild -Mode "blocked" -SignalPath $blockedSignal
+        if (-not $blocked.WaitForExit(15000)) {
+            Stop-Process -Id $blocked.Id -Force -ErrorAction SilentlyContinue
+            throw "The unacknowledged recovery-marker probe did not exit within its deadline."
+        }
+        if ($blocked.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $blockedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($blockedSignal) -ne "blocked") {
+            throw "A subsequent invocation bypassed the persisted abandoned-setup marker."
         }
 
         $acknowledgedSignal = Join-Path $testRoot "acknowledged.signal"
@@ -238,16 +271,16 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             throw "Explicit acknowledgement did not release the abandoned setup mutex."
         }
 
-        $reacquired = Enter-AutonomousStateBrokerSetupMutex -Name $mutexName
+        $reacquired = Enter-AutonomousStateBrokerSetupMutex -Name $mutexName -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
         try {
-            if (-not $reacquired.Acquired -or $reacquired.Abandoned) {
-                throw "The setup mutex was not cleanly reusable after explicit acknowledgement."
+            if (-not $reacquired.Acquired -or $reacquired.Abandoned -or $reacquired.RecoveryMarkerPresent) {
+                throw "The setup mutex and recovery marker were not cleanly reusable after explicit acknowledgement."
             }
         } finally {
             Exit-AutonomousStateBrokerSetupMutex -Lock $reacquired
         }
 
-        Write-Host "Windows cross-process setup mutex, parent termination, child ownership, abandoned-owner fail-closed behavior, explicit acknowledgement, and lock reuse passed."
+        Write-Host "Windows cross-process setup mutex, parent termination, child ownership, durable abandoned-owner marker, same-process re-entry rejection, explicit acknowledgement, and lock reuse passed."
     } finally {
         if ($null -ne $holder -and -not $holder.HasExited) {
             [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_STOP, "stop")
@@ -263,6 +296,13 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             }
         }
         if ($null -ne $anchorMutex) { $anchorMutex.Dispose() }
+        if (-not [string]::IsNullOrWhiteSpace($env:STATE_BROKER_LOCK_MARKER_KEY)) {
+            Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            $markerParent = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SOFTWARE\PersonalAIAssistant\Tests", $true)
+            if ($null -ne $markerParent) {
+                try { $markerParent.DeleteSubKey((Split-Path -Leaf $env:STATE_BROKER_LOCK_MARKER_KEY), $false) } finally { $markerParent.Dispose() }
+            }
+        }
         foreach ($name in $environmentNames) {
             [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], "Process")
         }
