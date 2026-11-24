@@ -462,9 +462,12 @@ def publish_command(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
-def run_cycle(args: argparse.Namespace) -> int:
+def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> int:
     token = os.environ.pop("GH_TOKEN", "")
-    settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
+    if settings_token is None:
+        settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
+    else:
+        settings_token = settings_token.strip()
     repo = os.environ.get("GH_REPO", "")
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
@@ -989,7 +992,7 @@ def main() -> int:
         with timed_stage("cycle_total"):
             try:
                 token = os.environ.get("GH_TOKEN", "").strip()
-                settings_token = os.environ.get("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
+                settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
                 repo = os.environ.get("GH_REPO", "").strip()
                 if _live_pause_enabled(settings_token, repo):
                     print("Safe pause became active after repository execution admission; no task was started.")
@@ -1012,7 +1015,7 @@ def main() -> int:
                 ):
                     print("Live execution mode is scheduled; this automatic/recovery trigger will not start a task.")
                     return 0
-                return run_cycle(args)
+                return run_cycle(args, settings_token=settings_token)
             except Exception as exc:
                 persist_run_diagnostic(
                     args.run_id, args.run_attempt, task=1, attempt=None,
