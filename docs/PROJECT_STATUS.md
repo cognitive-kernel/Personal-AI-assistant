@@ -1,16 +1,35 @@
-## 2026-11-24 — snapshot زنده و اصلاح race در UI ماژول مهندسی
+## 2026-11-24 — وضعیت یکپارچهٔ ماژول مهندسی روی mainline جاری
 
-- مبنای main با PR #863 تأیید شد: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
-- PR #863 با عنوان اصلاح portability مربوط به Windows State Broker باز و Draft است؛ آخرین head مشاهده‌شده `5a4c5a37acc45b63d0cf00e7b1102a4c4ff66226` در حال اجرای Browser E2E، CodeQL و dependency audit بود. این runها به‌عنوان نتیجهٔ موفق تلقی نمی‌شوند و branch آن دست‌نخورده باقی مانده است.
-- ممیزی UI ماژول مهندسی یک race را در `refreshAfterMutation()` اثبات کرد: دو mutation که منتظر یک poll مشترک بودند، می‌توانستند هم‌زمان دو درخواست status ایجاد کنند و پاسخ‌ها با ترتیب نامطمئن UI را overwrite کنند.
-- اصلاح در branch مستقل `fix/autonomous-engineering-status-refresh-serialization-20261124` از main انجام شد: serialization درخواست‌های authoritative پس از mutation و افزودن regression Playwright برای سناریوی دو mutation روی poll معلق.
-- فایل‌های اجرایی تغییرکرده: `app/static/autonomous-engineering-status.js` و `tests/test_browser_e2e.py`. گزارش در `docs/ENGINEERING_LOG.md` و inventory UI ثبت شده است.
-- Browser E2E، full test suite، CodeQL، dependency audit و exact-head CI برای branch اصلاحی هنوز اجرا/تأیید نشده‌اند. PR باید Draft بماند؛ merge ممنوع است تا همهٔ گیت‌های لازم پاس شوند.
-- هیچ run فعال، task، checkpoint، branch قبلی، Runner، database، ACL یا durable state حذف/لغو/تغییر داده نشده است.
+- شاخهٔ تجمیعی از main با SHA `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1` ساخته شده و تغییرات PR #864 و #867 ادغام‌شده در main را حفظ می‌کند.
+- PR #864: race در status refresh پس از mutation رفع و تست واقعی مرورگر اضافه شده است؛ تست آن در شاخهٔ جدید حفظ شده است.
+- PR #867: لغو امن بر اساس وضعیت Job واقعی Codex انجام می‌شود؛ تست‌های اجرای فعال/queued در شاخهٔ جدید حفظ شده‌اند.
+- تغییرات Broker از PR #863 بدون بازنویسی شاخهٔ قدیمی به این شاخه منتقل شده‌اند: host-local `PSModulePath` برای Import ماژول Security، elevation با همان PowerShell host، named mutex در child ادمین، پاسخ پروتکلی خطاهای cleanup و diagnostic هم‌بسته با correlation ID.
+- Startup دیگر model aliasهای داخلی `*-codex-ctxN` را به عنوان مدل registry تلقی نمی‌کند و برای آن‌ها `ollama pull` اجرا نمی‌کند؛ تنظیم ذخیره‌شده تغییر داده نمی‌شود.
+- CI دقیق شاخهٔ تجمیعی هنوز باید اجرا و تأیید شود. تا تکمیل Linux/Windows full suites، Windows storage, Browser E2E, CodeQL و dependency audit، PR به صورت Draft می‌ماند.
+- پذیرش واقعی روی Windows هدف هنوز انجام نشده است؛ صحت UAC، LocalService، named pipe، ACL، Runner present/absent، restart و حفظ checkpoint باید روی میزبان کاربر تأیید شود.
+- هیچ task، checkpoint، history، database، Runner service، ACL یا دادهٔ پایدار کاربر در این یکپارچه‌سازی تغییر داده نشده است.
 
 ---
 
-## 2026-11-23 — snapshot زنده و ادامهٔ مهندسی Autonomous Engineering
+## 2026-11-24 — اصلاح Broker و تکمیل کنترل‌های ماژول مهندسی (PR #863، Draft)
+
+- شاخهٔ کاری: `fix/autonomous-engineering-broker-final-ci-20261123`؛ مبنا: `main` در SHA `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. هیچ تغییری به main ادغام نشده است.
+- **نقص‌های قطعی در کد قبلی:** نصب‌کنندهٔ main برای ساخت Broker به `csc.exe` روی میزبان کاربر متکی بود. در شاخهٔ prebuilt نیز فایل اجرایی و manifest هنوز در repository موجود نبودند؛ بنابراین حذف compiler بدون تولید و بسته‌بندی واقعی binary کافی نبود. workflow ساخت package هم یک بلوک PowerShell/YAML ناقص داشت که قبل از اجرای CI باید اصلاح می‌شد.
+- **اصلاح package:** workflow اکنون Broker را با SDK ثابت CI می‌سازد، SHA-256 را کنترل می‌کند، در صورت نبود package آن را برای تست stage می‌کند، artifact و attestation می‌سازد و job جداگانه package را idempotently به branch PR commit می‌کند. اجرای بعدی باید build تازه را با binary commitشده مقایسه کند. SDK و reference assemblies فقط build inputs در CI هستند، نه نیاز توسعه روی رایانهٔ کاربر.
+- **حذف قفل نسخهٔ PowerShell:** PowerShell Core و Windows PowerShell Desktop جداگانه کشف می‌شوند؛ انتخاب بر اساس وجود cmdlet/module/API و ابزارهای لازم است، نه شرط عددی 5.1 یا 7.x. میزبان انتخاب‌شده برای UAC relaunch نیز همان executable فعال است.
+- **حذف UAC خودکار از startup:** شروع برنامه فقط health check خواندنی انجام می‌دهد. نصب/ترمیم Broker فقط با دکمهٔ صریح UI و درخواست POST loopback-protected شروع می‌شود. لغو UAC، نبود میزبان سازگار، timeout و شکست health هرکدام کد خطای جدا دارند. نبود Runner مانع نصب Broker نیست؛ Runner فقط برای Workflow مهندسی لازم است.
+- **حذف نصب/اجرای خودکار Ollama از startup:** برنامه دیگر نصب‌کنندهٔ Ollama را دانلود/اجرا نمی‌کند، سرویس را خودکار start نمی‌کند و مدل کمبوددار را pull نمی‌کند. startup فقط CLI/API و وجود مدل‌های تنظیم‌شده را بررسی می‌کند؛ نصب Ollama، اجرای سرویس و دانلود مدل از مسیرهای صریح کاربر انجام می‌شوند.
+- **حفظ حالت محدود و داده:** در نبود Broker، داشبورد بالا می‌آید اما اجرای چرخه و پذیرش task جدید تا بررسی durable state مسدود می‌ماند. نصب‌کننده package، hash، runtime و service manager را پیش از توقف Runner یا تغییر ACL بررسی می‌کند؛ هیچ task/checkpoint/database روی میزبان کاربر تغییر داده نشده است.
+- **آزمون‌های اضافه‌شده:** انتخاب PowerShell بر اساس capability، عدم نصب خودکار هنگام startup، endpoint نصب Broker، خطای UAC/timeout، قفل thread و قفل OS بین‌پردازه‌ای (با تست process مستقل)، health پس از نصب، دکمهٔ UI و refresh وضعیت پس از نصب.
+- **محدودیت‌های باز:** مسیر native/PowerShell-free برای service-control و ACL هنوز پیاده‌سازی نشده؛ Windows target همچنان به میزبان PowerShell سازگار و .NET Framework 4.8+ runtime نیاز دارد. Linux/macOS و ماتریس معماری/relocation هنوز پذیرش کامل ندارند.
+- **CI نهایی هنوز تأیید نشده است:** اصلاح workflow و تست‌ها commit شده‌اند، اما تا ثبت نتیجهٔ کامل exact-head برای Linux، Windows، Windows storage، Browser E2E، CodeQL و dependency audit، موفقیت ادعا نمی‌شود. پس از commit شدن binary باید یک اجرای تازه روی همان head انجام شود.
+- پذیرش روی Windows واقعی کاربر هنوز pending است: نصب/ترمیم از حساب non-admin، UAC، LocalService، named pipe، Runner حاضر/غایب، restart و حفظ Checkpoint باید آزمایش شوند.
+- هیچ سرویس، ACL، Runner، دیتابیس، task، checkpoint یا دادهٔ durable روی میزبان کاربر تغییر نکرده است.
+
+
+---
+
+## snapshot تاریخی — وضعیت پیش از ادغام PRهای #851 تا #853
 
 - main با مقایسهٔ مستقیم روی SHA 31349a99b197fe702e11e8a5dd53d52ba924575c تأیید شد؛ این snapshot جایگزین وضعیت‌های تاریخی قدیمی‌تر در ادامهٔ فایل است.
 - PRهای باز: #844، #845 و #846؛ هر سه Draft هستند. هیچ PRی در این مرحله merge نشده و هیچ branchی حذف نشده است.
@@ -584,9 +603,3 @@ The subsequent documentation-only evidence update does not change runtime code a
 - پذیرش روی Windows واقعی کاربر هنوز pending است: اجرای عادی از حساب غیرادمین، UAC، Broker با Runner موجود و فایل .runner غیرقابل‌خواندن، نبود Runner، UI محلی، Ollama/Codex و dispatch واقعی. تا ثبت این شواهد، PR #846 merge نمی‌شود.
 
 ---
-
-
-### 2026-11-24 — regression harness correction
-
-- PR #864 first Browser E2E attempt failed in the newly added status-refresh regression because the test intercepted `fetch` after initial page polling had already started; the controlled resolver did not own that pre-existing request. This was a test-harness defect, not evidence that the serialization fix failed.
-- The test now stubs API responses before navigation and waits for the initial status snapshot before starting the controlled race. A new exact-head CI run is required; prior Browser E2E failure remains in the audit trail.
