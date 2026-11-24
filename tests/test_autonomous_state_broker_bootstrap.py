@@ -56,6 +56,8 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert "Start-Transcript -Path $brokerLogPath -Append -Force" in ensure
     assert 'MarkerRegistrySubKey $setupMarkerRegistrySubKey' in ensure
     assert "Clear-AutonomousStateBrokerSetupRecoveryMarker" in ensure
+    assert "OpenBaseKey" in lock_module
+    assert "RegistryView]::Registry64" in lock_module
     assert "Test-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
     assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
     assert "RecoveryMarkerPresent = $markerPresent" in lock_module
