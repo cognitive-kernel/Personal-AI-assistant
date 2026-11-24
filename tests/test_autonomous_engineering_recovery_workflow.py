@@ -21,6 +21,7 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "persist-credentials: false" in workflow
     assert "python scripts/autonomous_engineering_recovery.py" in workflow
     assert "FAILED_RUN_ID:" in workflow
+    assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in workflow
     policy = (
         Path(__file__).resolve().parents[1]
         / "scripts" / "autonomous_engineering_recovery.py"
@@ -31,6 +32,10 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert policy.rindex("_verify_repository_access(client, repository)") > policy.index("time.sleep(delay_seconds)")
     assert "def _live_execution_mode(client: GitHubActionsClient)" in policy
     assert "def _live_pause_enabled(client: GitHubActionsClient)" in policy
+    assert "def request_settings(" in policy
+    assert "def _settings_request(" in policy
+    assert "set_settings_token(settings_token)" in policy
+    assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in policy
     assert '"/actions/variables/AUTONOMOUS_ENGINEERING_MODE"' in policy
     assert '"/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"' in policy
     assert "Recovery failed closed" in policy
