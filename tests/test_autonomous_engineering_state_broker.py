@@ -85,6 +85,31 @@ def test_broker_client_validates_dispatch_admission_body_before_transport(monkey
         )
 
 
+
+def test_windows_broker_dispatch_admission_protocol_roundtrip():
+    if broker.os.name != "nt":
+        pytest.skip("Windows named-pipe integration only.")
+    if not broker.health(timeout_ms=1500):
+        pytest.skip("Protected Windows state broker is not installed in this test environment.")
+    first_id = "a" * 32
+    second_id = "b" * 32
+    broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": first_id})
+    with pytest.raises(broker.StateBrokerConflict):
+        broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": second_id})
+    broker.request(
+        "POST", "/v1/dispatch-admission/complete",
+        body={"request_id": first_id, "accepted": False},
+    )
+    broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": second_id})
+    broker.request(
+        "POST", "/v1/dispatch-admission/complete",
+        body={"request_id": second_id, "accepted": True},
+    )
+    with pytest.raises(broker.StateBrokerConflict):
+        broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": "c" * 32)
+
+
+
 def test_broker_dispatch_admission_is_allowlisted_in_both_service_transports():
     client = (ROOT / "app" / "autonomous_engineering_state_broker.py").read_text(encoding="utf-8")
     unix = (ROOT / "app" / "autonomous_engineering_state_broker_unix.py").read_text(encoding="utf-8")
