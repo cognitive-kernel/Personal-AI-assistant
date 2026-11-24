@@ -391,18 +391,20 @@ def test_resume_uses_locked_dispatch_and_clears_pause_only_after_acceptance(monk
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
 
-def test_resume_refuses_active_run_without_mutating_pause_or_dispatching(monkeypatch):
+def test_resume_unpauses_existing_active_run_without_dispatching_duplicate(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot([{"status": "in_progress"}]))
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot([{"id": 999, "status": "in_progress"}]))
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
         calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
     ))
-    with pytest.raises(HTTPException) as error:
-        agent.resume_autonomous_engineering()
-    assert error.value.status_code == 409
+    result = agent.resume_autonomous_engineering()
+    assert result["accepted"] is True
+    assert result["dispatch_status"] == "existing_run_active"
+    assert result["paused"] is False
     assert not any(command[1:3] == ["workflow", "run"] for command in calls)
-    assert not any(command[1:3] == ["variable", "set"] for command in calls)
+    pause_update = next(command for command in calls if command[1:3] == ["variable", "set"])
+    assert pause_update[3:6] == ["AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false"]
 
 
 def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
@@ -1541,6 +1543,10 @@ def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({
+                "jobs": [{"name": "Codex", "status": "in_progress"}]
+            }), "")
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
@@ -2121,6 +2127,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "refresh: () => progress.refresh()" in orchestrator
     assert "core.startPolling({" in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
+    assert "statusMutationRefreshPromise" in status
     assert "dispatchButton.disabled = false" not in controls
     assert 'await response.text()' in core
     assert 'try { payload = await response.json(); } catch (_) {}' not in core
