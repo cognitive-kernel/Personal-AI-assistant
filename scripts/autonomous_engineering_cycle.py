@@ -507,7 +507,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                     f"Recovered owner-merged PR #{recovered['number']}; "
                     "next cycle dispatched after live Pause/mode verification."
                 )
-            elif args.mode == "continuous":
+            else:
                 print(
                     f"Recovered owner-merged PR #{recovered['number']}; "
                     "no next cycle was dispatched because live mode/Pause blocked it or could not be verified."
@@ -858,13 +858,11 @@ def run_cycle(args: argparse.Namespace) -> int:
         request_file.unlink(missing_ok=True)
         if _dispatch_next_cycle_if_enabled(token, repo, args):
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
-        elif args.mode == "continuous":
+        else:
             print(
                 f"Owner-merged task {task} accepted as PR #{pr_number}; no next cycle was dispatched "
                 f"because live mode/Pause blocked it or could not be verified: {pr_url}"
             )
-        else:
-            print(f"Owner-merged task {task} accepted as PR #{pr_number}; scheduled mode resumes at its next interval: {pr_url}")
         return 0
     if published_pr.get("validated") is not True or published_pr.get("merged") is not False:
         raise RuntimeError("The candidate PR did not complete exact-head validation and durable owner-review handoff.")
