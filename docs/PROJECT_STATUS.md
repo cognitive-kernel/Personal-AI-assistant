@@ -1,3 +1,16 @@
+## 2026-11-24 — تطبیق ماژول با تغییرات ادغام‌شدهٔ main
+
+- مبنای فعلی main: ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1.
+- PR #864 (سریال‌سازی refresh وضعیت پس از mutation) با head 8303afa5d44f104c6e9a5d569868f3db248023b0 ادغام شده است؛ tests، Browser E2E، CodeQL و dependency-audit روی همان head موفق‌اند: runs 45274156477, 45274156612, 45274156480, 45274156497.
+- PR #867 (انتخاب اجرای واقعی Codex برای Cancel) با head 7238ea3da83678a06370160af9183d34ad4a6421 ادغام شده است؛ tests، Browser E2E، CodeQL و dependency-audit روی همان head موفق‌اند: runs 45278422049, 45278422535, 45278422335, 45278422171.
+- اصلاح‌های main به شاخه‌های والد #863 و #866 منتقل شدند: handler لغو اکنون job واقعی Codex را بررسی می‌کند؛ شاخهٔ #863 علاوه بر آن refreshهای post-mutation را سریالی می‌کند و regression مرورگر main را حفظ می‌کند.
+- PRهای #863 و #866 هنوز Draft هستند و بر مبنای قدیمی 3d1e843ff1d2726e74e16535cdff3ee3c1da44ea ساخته شده‌اند؛ main جلوتر است. پیش از merge باید اختلاف base بازبینی و exact-head CI دوباره اجرا شود.
+- follow-upها: #869 روی #863 و #870 روی #866 هستند. headهای ثبت‌شده هنگام این snapshot به‌ترتیب a187... و 0af50... بوده‌اند؛ CI نهایی پس از آخرین اصلاحات هنوز pending است.
+- پذیرش میزبان Windows واقعی، حساب غیرادمین/UAC، Runner و فایل محافظت‌شدهٔ .runner، نبود Runner، ACL، Ollama/Codex، dispatch و چرخهٔ pause/resume/cancel هنوز انجام نشده است. هیچ workflow/task واقعی dispatch یا لغو نشده و هیچ state محلی/دادهٔ کاربر تغییر نکرده است.
+- پیش‌نیاز #870: secret اختصاصی AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN با fine-grained permission محدود به همین repository و Variables: read. این secret توسط دستیار ایجاد نشده و مقدار آن نباید در chat یا issue ارسال شود.
+
+---
+
 ## 2026-11-24 — وضعیت زندهٔ Autonomous Engineering و اصلاحات در حال اعتبارسنجی
 
 - SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
