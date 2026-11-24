@@ -1,7 +1,7 @@
 ## 2026-11-24 — اصلاح نهایی منبع اعتبارنامهٔ خواندن متغیرهای Actions
 
 - اصلاح قبلی که از `gh auth token` حساب Runner استفاده می‌کرد، پس از بررسی واقعی `scripts/provision_autonomous_runner.ps1` کنار گذاشته شد: احراز هویت CLI در نشست نصب‌کننده انجام می‌شود، اما Runner تازه‌نصب‌شده معمولاً با حساب محلی جداگانه و غیرادمین اجرا می‌شود و اسکریپت، credential نصب‌کننده را به آن حساب منتقل نمی‌کند.
-- مسیر فعلی در branch #870 از secret اختصاصی `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` استفاده می‌کند. این باید یک fine-grained token محدود به همین repository با مجوز **Variables: read** باشد؛ فقط برای GETهای متغیرهای Pause/Mode و بررسی هویت مخزن استفاده می‌شود. `GITHUB_TOKEN` برای عملیات workflow/controller جدا باقی می‌ماند.
+- مسیر فعلی در branch #870 در هر سه لایهٔ PowerShell live gate، Python cycle controller و Python recovery coordinator از secret اختصاصی `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` استفاده می‌کند. این باید یک fine-grained token محدود به همین repository با مجوز **Variables: read** باشد؛ فقط برای GETهای متغیرهای Pause/Mode و بررسی هویت مخزن استفاده می‌شود. `GITHUB_TOKEN` برای عملیات workflow/controller جدا باقی می‌ماند. cycle controller پیش از اجرای Codex این secret را از environment حذف می‌کند.
 - نبودن secret یا هر خطای مجوز/اعتبارسنجی، اجرای task را متوقف می‌کند. مقدار token در log یا فایل ذخیره نمی‌شود.
 - پیش‌نیاز مالک: secret را در GitHub → Settings → Secrets and variables → Actions با نام دقیق `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` ایجاد کند. مقدار token نباید در ChatGPT، کد یا issue ارسال شود.
 - exact-head CI و آزمایش خواندن واقعی متغیرها روی Runner هدف همچنان pending است. تا تکمیل این موارد هیچ merge یا ادعای پذیرش مجاز نیست.
