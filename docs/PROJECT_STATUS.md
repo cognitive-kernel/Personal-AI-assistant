@@ -1,18 +1,20 @@
 ## 2026-11-24 — وضعیت زندهٔ Autonomous Engineering و اصلاحات در حال اعتبارسنجی
 
-- SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`. این snapshot بر snapshotهای قدیمی‌تر همین فایل مقدم است؛ تاریخچهٔ پایین فایل برای ردیابی حفظ شده است.
-- PRهای باز و مرتبط:
-  - [#863](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/863) — اصلاح startup و Windows State Broker؛ Draft، head `30b0141d8cfbff5f5e9b5354313335f5cd90528f`.
-  - [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864) — سریالی‌سازی refresh وضعیت UI بعد از mutation؛ Draft، head `8303afa5d44f104c6e9a5d569868f3db248023b0`.
-  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — PR پیرو #863 برای قفل machine-wide در پردازهٔ Elevated و بازیابی کنترل‌شدهٔ mutex abandoned؛ Draft و بر پایهٔ branch مربوط به #863، شاخهٔ `fix/state-broker-elevated-child-mutex-20261124` (head در حال تکمیل آزمون Windows).
-  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866) — خواندن زندهٔ Pause flag پس از گرفتن concurrency slot؛ Draft و بر پایهٔ main، شاخهٔ `fix/autonomous-engineering-live-pause-gate-20261124` (head در حال تغییر با ثبت همین snapshot).
-  - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867) — تشخیص job واقعی Codex و لغو اجرای درحال‌اجرا به‌جای workflow تازه‌صف‌شده؛ Draft و بر پایهٔ main، شاخهٔ `fix/autonomous-engineering-cancel-running-first-20261124` (head در حال تغییر با تکمیل regression).
-- شواهد PR #864 روی head فوق: Browser E2E، CodeQL، Dependency Audit، تست اصلی، Windows storage regressions و bootstrapهای Python روی Windows/Ubuntu/macOS موفق‌اند؛ Full test suite ویندوز هنگام ثبت این snapshot هنوز در حال اجرا بود. هیچ‌کدام از این شواهد جایگزین پذیرش روی میزبان واقعی کاربر نیست.
-- نقص تکمیلی #863: قفل Python والد در صورت timeout، پردازهٔ UAC-elevated فرزند را پوشش نمی‌دهد. این finding به‌صورت review ثبت شده و #865 برای قفل named mutex در خود فرزند ایجاد شده است. exact-head CI و آزمون Windows برای سناریوی زنده‌ماندن فرزند پس از timeout هنوز لازم است.
-- نقص تکمیلی Workflow: مرحلهٔ قبلی Pause را از `vars` در context اجرا می‌خواند و ممکن بود برای job منتظرمانده پشت concurrency قدیمی باشد. #866 مقدار جاری repository variable را از Actions Variables API بعد از گرفتن concurrency slot می‌خواند؛ خطاهای غیر 404 fail-closed هستند. exact-head CI هنوز لازم است.
-- CI دقیق #865 و #866 هنگام ثبت snapshot در صف بود؛ نتیجهٔ CI برای آن‌ها هنوز قابل ادعا نیست. PR #863 نیز تا بررسی exact-head و target-host acceptance باز می‌ماند.
-- هیچ PRی merge نشده و هیچ branchی حذف نشده است. هیچ workflow اجرایی، متغیر Pause، task، owner metadata، checkpoint، database، ACL، Runner registration یا دادهٔ پایدار تغییر نکرده است.
-- گیت‌های باز: Windows target-host integration برای UAC و mutex، pause/resume/cancel واقعی، Runner موجود/ناموجود، Ollama و Codex واقعی، crash/restart و بازیابی checkpoint، exact-head CI تمام PRها، و بازبینی نهایی امنیت/دسترسی. تا تکمیل شواهد، همهٔ PRها Draft می‌مانند.
+- SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
+- PRهای مرتبط:
+  - [#863](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/863) — اصلاح startup و Windows State Broker؛ Draft، head `760a32bfc35f26698af0f7af74f06b121288d782`. CI exact-head در حال اجراست؛ CodeQL و Dependency Audit موفق‌اند.
+  - [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864) — سریالی‌سازی refresh وضعیت UI بعد از mutation؛ Draft، head `8303afa5d44f104c6e9a5d569868f3db248023b0`. تمام workflowهای گزارش‌شده موفق‌اند.
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — Draft قدیمی قفل Elevated؛ بسته شد و diff باقی‌مانده بدون حذف تغییرات به [#868](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/868) منتقل شد.
+  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866) — خواندن زندهٔ Pause و Execution Mode پس از گرفتن concurrency slot؛ Draft، head `6ab6cea7c5dc2a2b4a13a95a1e2bd653a68ef8a6`. سه assertion قدیمی در تست‌ها اصلاح شده‌اند؛ exact-head CI جدید در صف است.
+  - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867) — انتخاب job واقعی Codex برای لغو؛ Draft، head `7238ea3da83678a06370160af9183d34ad4a6421`. تست‌ها، Browser E2E، CodeQL و Dependency Audit موفق‌اند.
+  - [#868](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/868) — قفل machine-wide در پردازهٔ Elevated و آزمون سناریوی orphaned child پس از timeout والد؛ Draft، head `ef7bc25cdc79ba4adb9d3bfc3848dee2a59496a4`، بر پایهٔ head جاری #863. Dependency Audit موفق؛ تست‌ها و آزمون‌های Windows در حال اجرا/صف هستند.
+- نقص Elevated setup: قفل Python والد به‌تنهایی پردازهٔ UAC-elevated فرزند را پوشش نمی‌دهد. #868 mutex را پیش از هر بارگذاری ماژول/کشف Runner/تغییر ACL یا سرویس می‌گیرد. آزمون Windows، والد را terminate می‌کند و بررسی می‌کند فرزند همچنان قفل را نگه می‌دارد؛ abandoned owner بدون تأیید صریح اپراتور fail-closed می‌ماند.
+- نقص Pause: خواندن snapshot متغیر GitHub پیش از concurrency برای job صف‌شده قابل اتکا نبود. #866 پس از گرفتن slot، مقدار زندهٔ Pause و Mode را از API می‌خواند؛ خطاهای غیر 404 و مقدار نامعتبر fail-closed هستند. Recovery policy نیز قبل و بعد از backoff تنظیمات زنده را بازخوانی می‌کند.
+- نقص Cancel: انتخاب صرفاً بر اساس وضعیت workflow می‌توانست اجرای تازه‌ای را که هنوز پشت concurrency منتظر است لغو کند. #867 وضعیت job به نام `codex` را بررسی می‌کند و اجرای واقعی را بر اجرای صرفاً صف‌شده مقدم می‌داند.
+- اصلاحات Windows CI در base #863: تست‌های PATH PowerShell از registry واقعی runner جدا شدند؛ assertion هشدار rollback با متن واقعی هماهنگ شد؛ مقایسهٔ ACL فقط bit سیستم‌عامل `D:AI` را normalize می‌کند و owner/group/ACEها را دقیق مقایسه می‌کند.
+- هیچ PRی merge نشده است. هیچ workflow اجرایی dispatch نشده و هیچ متغیر Pause، task، owner metadata، checkpoint، database، ACL، Runner registration یا دادهٔ پایدار روی میزبان کاربر تغییر نکرده است.
+- گیت‌های باز: exact-head CI تمام PRها، Windows target-host UAC/mutex، pause/resume/cancel واقعی، Runner موجود/ناموجود، Ollama و Codex واقعی، crash/restart و بازیابی checkpoint، و بازبینی نهایی امنیت/دسترسی. PRها تا تکمیل شواهد Draft باقی می‌مانند.
+
 
 ---
 
