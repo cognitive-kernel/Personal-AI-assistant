@@ -246,3 +246,8 @@ The installer uses a machine-wide named mutex owned by the elevated PowerShell c
 
 If the state tree or service identity is ambiguous, stop and preserve the state for manual recovery; do not broaden ACLs, delete the shared-state directory, or manually rewrite the machine ACL manifest.
 
+
+
+### PowerShell host compatibility for State Broker repair
+
+The State Broker setup always performs Windows service and ACL work under the inbox Windows PowerShell 5.1 host. If the app or its parent terminal is running PowerShell 7, the setup re-launches the script in Windows PowerShell before loading the Security module. This avoids cross-edition `PSModulePath` collisions that can make `Microsoft.PowerShell.Security` fail with duplicate `ObjectSecurity` type-data members. If the Windows PowerShell host cannot be started, setup stops before changing service or ACL state.
