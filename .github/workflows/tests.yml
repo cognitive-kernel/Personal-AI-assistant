@@ -218,6 +218,8 @@ jobs:
           dotnet-version: 11.0.100
 
       - name: Build and stage the Windows machine state broker
+        env:
+          CAN_COMMIT_PACKAGE: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         shell: pwsh
         working-directory: scripts
         run: |
@@ -252,9 +254,17 @@ jobs:
               throw "The committed broker executable does not match its SHA-256 manifest."
             }
             if ($freshHash -ne $committedHash) {
-              throw "The fresh deterministic broker build differs from the committed executable."
+              if ($env:CAN_COMMIT_PACKAGE -ne "true") {
+                throw "The committed broker package is stale relative to the current source; a trusted same-repository pull request is required to regenerate and commit it."
+              }
+              Copy-Item -LiteralPath $freshExe -Destination $packagedExe -Force -ErrorAction Stop
+              [System.IO.File]::WriteAllText($hashFile, $freshHash, [Text.Encoding]::ASCII)
+              Write-Host "Replaced the stale but manifest-valid broker package with the pinned deterministic build; the downstream PR job will commit the verified artifact."
             }
           } else {
+            if ($env:CAN_COMMIT_PACKAGE -ne "true") {
+              throw "The broker package is missing; a trusted same-repository pull request is required to generate and commit it."
+            }
             Copy-Item -LiteralPath $freshExe -Destination $packagedExe -ErrorAction Stop
             [System.IO.File]::WriteAllText($hashFile, $freshHash, [Text.Encoding]::ASCII)
             Write-Host "No committed broker package exists yet; staged the freshly built, hash-verified CI package."
