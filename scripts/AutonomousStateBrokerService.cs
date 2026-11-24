@@ -1515,7 +1515,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     }
                     if (lastAccepted > 0 && (now < lastAccepted || now - lastAccepted < 30.0))
                     {
-                        status = 409;
+                        responseStatus = 409;
                         return new Dictionary<string, object> {
                             { "conflict", true }, { "message", "dispatch_admission_conflict" },
                             { "blockers", new[] { "dispatch_recently_accepted" } }
@@ -1535,7 +1535,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
                 if (pending == null || !String.Equals(Convert.ToString(pending.ContainsKey("request_id") ? pending["request_id"] : null), requestId, StringComparison.Ordinal))
                 {
-                    status = 409;
+                    responseStatus = 409;
                     return new Dictionary<string, object> {
                         { "conflict", true }, { "message", "dispatch_admission_lease_not_owned" },
                         { "blockers", new[] { "dispatch_admission_lease_not_owned" } }
@@ -1546,7 +1546,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                     { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
                 };
                 WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(completed)));
-                status = 200;
+                responseStatus = 200;
                 return new Dictionary<string, object> { { "completed", true }, { "last_accepted_at", lastAccepted } };
             }, 2000);
             status = responseStatus;
