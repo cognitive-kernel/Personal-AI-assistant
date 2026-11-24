@@ -1818,10 +1818,14 @@ def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch)
             events.append("lock_exit")
 
     monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
-    monkeypatch.setattr(
-        cycle, "api",
-        lambda token, repo, method, path: events.append("live_pause_read") or {"value": "true"},
-    )
+    def fake_api(token, repo, method, path, payload=None):
+        if path == "":
+            events.append("repo_check")
+            return {"full_name": repo}
+        events.append("live_pause_read")
+        return {"value": "true"}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
     monkeypatch.setattr(cycle, "run_cycle", lambda args: pytest.fail("A paused task must not start"))
     monkeypatch.setattr(cycle.sys, "argv", [
         "autonomous_engineering_cycle.py", "run",
@@ -1833,11 +1837,28 @@ def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch)
     monkeypatch.setenv("GH_REPO", "owner/repository")
 
     assert cycle.main() == 0
-    assert events == ["lock_enter", "live_pause_read", "lock_exit"]
+    assert events == ["lock_enter", "repo_check", "live_pause_read", "lock_exit"]
 
+
+
+def test_cycle_repository_404_cannot_be_mistaken_for_missing_pause_variable(monkeypatch):
+    calls = []
+
+    def inaccessible(token, repo, method, path, payload=None):
+        calls.append(path)
+        if path == "":
+            raise RuntimeError("GitHub API GET repository failed (404): not found")
+        raise AssertionError("Variable lookup must not run without verified repository access")
+
+    monkeypatch.setattr(cycle, "api", inaccessible)
+    with pytest.raises(RuntimeError, match="Could not verify repository access"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
+    assert calls == [""]
 
 def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
     def missing_variable(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
 
     monkeypatch.setattr(cycle, "api", missing_variable)
@@ -1847,6 +1868,8 @@ def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
 
 def test_cycle_live_pause_api_failure_fails_closed(monkeypatch):
     def denied(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (403): forbidden")
 
     monkeypatch.setattr(cycle, "api", denied)
@@ -1870,6 +1893,8 @@ def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
 
     def fake_api(token, repo, method, path):
         events.append(path)
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
             return {"value": "false"}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
@@ -1893,7 +1918,9 @@ def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
     assert cycle.main() == 0
     assert events == [
         "lock_enter",
+        "",
         "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED",
+        "",
         "actions/variables/AUTONOMOUS_ENGINEERING_MODE",
         "lock_exit",
     ]
@@ -1901,6 +1928,8 @@ def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
 
 def test_cycle_live_mode_missing_variable_defaults_continuous(monkeypatch):
     def missing_variable(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_MODE failed (404): not found")
 
     monkeypatch.setattr(cycle, "api", missing_variable)
@@ -1910,6 +1939,8 @@ def test_cycle_live_mode_missing_variable_defaults_continuous(monkeypatch):
 
 def test_cycle_live_mode_api_failure_fails_closed(monkeypatch):
     def denied(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_MODE failed (403): forbidden")
 
     monkeypatch.setattr(cycle, "api", denied)
@@ -1926,6 +1957,8 @@ def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monk
         yield
 
     def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
             return {"value": "false"}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
@@ -1959,6 +1992,8 @@ def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monke
         yield
 
     def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
             return {"value": "false"}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
@@ -1992,6 +2027,8 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
         yield
 
     def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
             return {"value": "false"}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
@@ -2021,6 +2058,8 @@ def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
     calls = []
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
             return {"value": "scheduled"}
         return {}
@@ -2038,6 +2077,8 @@ def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
 
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
             return {"value": "continuous"}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -2057,6 +2098,8 @@ def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaus
 
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
         if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
             return {"value": "continuous"}
         if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
