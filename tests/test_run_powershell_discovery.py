@@ -287,3 +287,46 @@ def test_broker_startup_preflight_returns_when_health_is_ready(monkeypatch):
     monkeypatch.setattr(broker, "health", lambda **kwargs: True)
 
     assert run._ensure_state_broker() is True
+
+
+def test_run_ollama_preflight_rejects_missing_codex_context_variant_without_pull_or_setting_mutation(monkeypatch):
+    providers = {
+        "chat": "ollama",
+        "research_plan": "openai_compatible",
+        "learning": "openai_compatible",
+        "programming": "openai_compatible",
+        "embedding": "openai_compatible",
+        "factual_review": "openai_compatible",
+    }
+    saved = {"chat_ollama_model": "qwen2.5:7b-codex-ctx2048"}
+    installed = "NAME ID SIZE\ngpt-oss:20b abc 13GB\nqwen2.5:7b-codex-64k def 4GB\n"
+    pull_calls = []
+
+    monkeypatch.setattr(run, "_configured_llm_provider", lambda purpose: providers[purpose])
+    monkeypatch.setattr(
+        run,
+        "_configured_model_setting",
+        lambda key, _env, _default: saved[key],
+    )
+    monkeypatch.setattr(run, "_find_ollama", lambda: "ollama")
+    monkeypatch.setattr(
+        run,
+        "_ollama_list",
+        lambda executable: subprocess.CompletedProcess([executable, "list"], 0, installed, ""),
+    )
+    monkeypatch.setattr(
+        run,
+        "_run",
+        lambda command, **_kwargs: pull_calls.append(command)
+        or subprocess.CompletedProcess(command, 1, "", "unexpected pull"),
+    )
+
+    with pytest.raises(RuntimeError, match="variant داخلی Codex"):
+        run._ensure_ollama()
+
+    assert saved["chat_ollama_model"] == "qwen2.5:7b-codex-ctx2048"
+    assert pull_calls == []
+    assert run._internal_codex_context_base_model("qwen2.5:7b-codex-ctx2048") == "qwen2.5:7b"
+    assert run._internal_codex_context_base_model("qwen2.5:7b-codex-ctx") == "qwen2.5:7b"
+    assert run._internal_codex_context_base_model("qwen2.5:7b-codex-64k") == "qwen2.5:7b"
+    assert run._internal_codex_context_base_model("gpt-oss:20b") is None
