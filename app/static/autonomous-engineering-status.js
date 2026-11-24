@@ -2,7 +2,7 @@
   "use strict";
   const core = window.autonomousEngineeringCore;
   if (!core || core.version !== 1) return;
-  const { $, request, setMessage } = core;
+  const { $, request, setStatusMessage } = core;
   const dispatchButton = $("dispatch-agent");
   const cancelButton = $("cancel-agent");
   const pauseButton = $("pause-agent");
@@ -64,6 +64,7 @@
   let dispatchSubmitting = false;
   let lastCanDispatch = false;
   let lastActiveRun = false;
+  let lastActiveRunId = null;
   let statusKnown = false;
   function canStartDispatch() {
     return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
@@ -173,7 +174,7 @@
         ? "شروع صف پیوسته"
         : "اجرای یک چرخهٔ زمان‌بندی‌شده";
       if (document.activeElement !== $("interval-hours")) {
-        $("interval-hours").value = String(data.interval_hours || 24);
+        $("interval-hours").value = [1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours)) ? String(Number(data.interval_hours)) : "24";
       }
       labels.codex.textContent = checks.codex_installed ? "موجود" : "در حساب برنامه نصب نیست";
       $("codex-detail").textContent = data.codex && data.codex.version
@@ -261,8 +262,12 @@
       const pill = $("agent-readiness");
       pill.textContent = paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
-      const active = (data.github && data.github.recent_runs || []).some(run =>
+      const activeRun = (data.github && data.github.recent_runs || []).find(run =>
         ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
+      const active = Boolean(activeRun);
+      lastActiveRunId = activeRun && Number.isSafeInteger(Number(activeRun.id)) && Number(activeRun.id) > 0
+        ? Number(activeRun.id)
+        : null;
       if (active) dispatchPendingUntil = 0;
       lastCanDispatch = canDispatch;
       lastActiveRun = active;
@@ -275,25 +280,24 @@
       // Rendering this status snapshot here bypasses its request sequence and
       // can overwrite a newer, explicitly refreshed run list with stale data.
 
-      setMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
+      setStatusMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
       return true;
     } catch (error) {
       statusKnown = false;
       lastPendingWork = null;
-      setMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
+      setStatusMessage(error.message || "دریافت وضعیت با خطا مواجه شد.", "error");
       syncDispatchControls();
       dispatchButton.disabled = true;
       taskButton.disabled = true;
-      cancelButton.disabled = true;
-      pauseButton.disabled = true;
-      resumeButton.disabled = true;
+      // Keep safety controls in the last known state during a transient poll
+      // failure. A timeout must not remove the user's ability to cancel/pause.
       return false;
     } finally {
       $("refresh-agent").disabled = false;
     }
   }
 
-  $("refresh-agent").addEventListener("click", refresh);
+  $("refresh-agent").addEventListener("click", () => refresh());
   function armDispatchUnlockTimer() {
     if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
     dispatchUnlockTimer = null;
@@ -323,6 +327,7 @@
     canStartDispatch,
     canStartManualTask,
     getPendingWork: () => lastPendingWork,
+    getActiveRunId: () => lastActiveRunId,
     setDispatchSubmitting(value) { dispatchSubmitting = Boolean(value); syncDispatchControls(); },
     syncDispatchControls,
     lockDispatchVisibilityWindow
