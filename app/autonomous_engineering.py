@@ -994,93 +994,40 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
 
 
 @router.post("/cancel")
-def cancel_autonomous_engineering() -> dict[str, Any]:
-    gh = shutil.which("gh")
-    if not gh:
-        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    if not auth or auth.returncode != 0:
-        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
-    result = _run(
-        [
-            gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-            "--limit", "30", "--json", "databaseId,status",
-        ],
-        timeout=12,
-    )
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="وضعیت اجراهای GitHub قابل دریافت نیست.")
-    try:
-        runs = json.loads(result.stdout)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="پاسخ GitHub معتبر نیست.") from exc
-    active_runs = [
-        item for item in runs
-        if isinstance(item, dict)
-        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-        and isinstance(item.get("databaseId"), int)
-        and not isinstance(item.get("databaseId"), bool)
-    ]
-    if not active_runs:
-        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
-
-    def _codex_job_state(run: dict[str, Any]) -> str | None:
+def cancel_autonomous_engineering(payload: CancelRequest) -> dict[str, Any]:
+    gh = _authenticated_gh()
+    run = _verified_workflow_run(gh, payload.run_id)
+    status = run.get("status")
+    if status not in _ACTIVE_RUN_STATES:
+        raise HTTPException(status_code=409, detail="اجرای انتخاب‌شده دیگر فعال نیست؛ وضعیت را بازخوانی کنید.")
+    if status == "in_progress":
         details = _run(
-            [gh, "run", "view", str(run["databaseId"]), "--repo", _repository(), "--json", "jobs"],
+            [gh, "run", "view", str(payload.run_id), "--repo", _repository(), "--json", "jobs"],
             timeout=5,
         )
         if not details or details.returncode != 0:
-            raise HTTPException(
-                status_code=502,
-                detail="وضعیت jobهای اجرای فعال قابل تأیید نیست؛ برای جلوگیری از لغو اجرای اشتباه، عملیات متوقف شد.",
-            )
+            raise HTTPException(status_code=502, detail="وضعیت jobهای اجرای انتخاب‌شده قابل تأیید نیست؛ لغو ایمن متوقف شد.")
         try:
-            payload = json.loads(details.stdout)
+            jobs_payload = json.loads(details.stdout)
         except (TypeError, ValueError) as exc:
-            raise HTTPException(status_code=502, detail="جزئیات jobهای اجرای فعال معتبر نیست.") from exc
-        jobs = payload.get("jobs") if isinstance(payload, dict) else None
+            raise HTTPException(status_code=502, detail="جزئیات jobهای اجرای انتخاب‌شده معتبر نیست.") from exc
+        jobs = jobs_payload.get("jobs") if isinstance(jobs_payload, dict) else None
         if not isinstance(jobs, list):
-            raise HTTPException(status_code=502, detail="فهرست jobهای اجرای فعال در دسترس نیست.")
+            raise HTTPException(status_code=502, detail="فهرست jobهای اجرای انتخاب‌شده در دسترس نیست.")
         codex_jobs = [
             job for job in jobs
             if isinstance(job, dict) and str(job.get("name") or "").strip().casefold() == "codex"
         ]
         if len(codex_jobs) > 1:
-            raise HTTPException(status_code=502, detail="بیش از یک job با مالکیت Codex در یک اجرا گزارش شد؛ لغو ایمن ممکن نیست.")
-        if not codex_jobs:
-            return None
-        return str(codex_jobs[0].get("status") or "").strip().casefold().replace("-", "_")
-
-    # Workflow-run status alone is insufficient: a newer schedule-gate job can
-    # be in progress while its Codex job is still queued behind concurrency.
-    # Inspect only the bounded set of workflow runs reported in progress.
-    in_progress_runs = [item for item in active_runs if item.get("status") == "in_progress"]
-    queued_runs = [item for item in active_runs if item.get("status") in {"queued", "waiting", "requested", "pending"}]
-    if len(in_progress_runs) > 5:
-        raise HTTPException(
-            status_code=409,
-            detail="تعداد اجراهای درحال‌بررسی بیش از حد است؛ برای جلوگیری از لغو اجرای اشتباه، عملیات لغو متوقف شد.",
-        )
-    active = None
-    queued_candidates = []
-    for run in in_progress_runs:
-        job_state = _codex_job_state(run)
-        if job_state == "in_progress":
-            active = run
-            break
-        if job_state in {"queued", "waiting", "requested", "pending"}:
-            queued_candidates.append(run)
-    if active is None:
-        active = queued_candidates[0] if queued_candidates else (queued_runs[0] if queued_runs else active_runs[0])
-    if not active or not isinstance(active.get("databaseId"), int):
-        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
-    cancelled = _run(
-        [gh, "run", "cancel", str(active["databaseId"]), "--repo", _repository()],
-        timeout=12,
-    )
+            raise HTTPException(status_code=502, detail="بیش از یک job با مالکیت Codex در اجرای انتخاب‌شده گزارش شد؛ لغو ایمن ممکن نیست.")
+        if not codex_jobs or str(codex_jobs[0].get("status") or "").strip().casefold().replace("-", "_") not in _ACTIVE_RUN_STATES:
+            raise HTTPException(status_code=409, detail="در اجرای انتخاب‌شده job فعال Codex وجود ندارد؛ برای جلوگیری از لغو gate یا مرحلهٔ نامرتبط، عملیات متوقف شد.")
+    trusted_run_id = run["id"]
+    cancelled = _run([gh, "run", "cancel", str(trusted_run_id), "--repo", _repository()], timeout=12)
     if not cancelled or cancelled.returncode != 0:
-        raise HTTPException(status_code=502, detail="لغو اجرا توسط GitHub تأیید نشد.")
-    return {"accepted": True, "run_id": active["databaseId"], "message": "درخواست لغو به GitHub ارسال شد."}
+        raise HTTPException(status_code=502, detail="لغو اجرای انتخاب‌شده توسط GitHub تأیید نشد.")
+    return {"accepted": True, "run_id": trusted_run_id, "message": f"درخواست لغو اجرای #{trusted_run_id} به GitHub ارسال شد."}
+
 
 # Operational administration -------------------------------------------------
 _ACTIVE_RUN_STATES = {"queued", "in_progress", "waiting", "requested", "pending"}
@@ -1145,7 +1092,11 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
     for item in runs:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
-        diagnostic = _read_run_diagnostics(item["id"])
+        diagnostic = (
+            _read_run_diagnostics(item["id"])
+            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required"}
+            else None
+        )
         latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
         normalized.append({
             "id": item["id"],
@@ -1170,13 +1121,18 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
 def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
     if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
         raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
+    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
     expected_path = f".github/workflows/{_WORKFLOW}"
-    # Resolve the user-selected ID against the server-fetched, workflow-scoped
-    # run list. Only the canonical ID returned by GitHub is used by CLI calls.
-    for run in _workflow_runs(gh):
-        if run.get("id") == run_id and run.get("workflow_path") == expected_path:
-            return run
-    raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+    workflow_path = str(run.get("path") or "").split("@", 1)[0]
+    if run.get("id") != run_id or workflow_path != expected_path:
+        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
+    return {
+        "id": run_id,
+        "status": str(run.get("status") or "unknown"),
+        "conclusion": run.get("conclusion"),
+        "workflow_path": workflow_path,
+        "url": run.get("html_url") if isinstance(run.get("html_url"), str) else None,
+    }
 
 
 def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
@@ -1261,7 +1217,10 @@ def _sanitize_workflow_log(value: str) -> str:
         r"\1[REDACTED]",
         value,
     )
+    value = re.sub(r"(?i)(authorization\s*:\s*basic\s+)\S+", r"\1[REDACTED]", value)
     value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", value)
+    value = re.sub(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
     value = re.sub(
         r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
@@ -1458,6 +1417,9 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
             except OSError:
                 failed_files.append(str(path))
 
+    # Absolute cleanup paths can disclose usernames and host directory layout.
+    failed_files = sorted({Path(str(item).replace(chr(92), "/")).name for item in failed_files if str(item).strip()})
+
     preserved = [
         "history.jsonl",
         "scorecard-baseline.json",
@@ -1491,20 +1453,21 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
                 detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
             )
 
-    ensure_no_active_workflow()
     try:
         if _is_windows():
-            # The Windows broker owns the repository -> durable-state ->
-            # checkpoint-store lock order itself. Do not acquire the same
-            # repository lock in this client process or the broker would deadlock.
+            # The protected Windows Broker is authoritative: it acquires the
+            # repository, durable-state, and checkpoint-store locks itself and
+            # checks active/unknown progress while those locks are held. Do
+            # not perform a stale GitHub preflight in the dashboard process.
             return _cleanup_autonomous_engineering_temporary_data_locked()
+        ensure_no_active_workflow()
         # POSIX uses the same repository lock as the Runner, then the helper
         # acquires durable-state and checkpoint-store locks in that order.
         with repository_execution_lock("ui-cleanup", "1"):
             ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
     except RuntimeError as exc:
-        if "Another autonomous execution owns this repository worktree" in str(exc):
+        if "Another autonomous execution owns this repository worktree" in str(exc) or "repository lock busy" in str(exc):
             raise HTTPException(
                 status_code=409,
                 detail="اجرای دیگری مالک worktree است؛ پاک‌سازی تا آزادشدن قفل انجام نمی‌شود.",
