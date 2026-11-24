@@ -1,3 +1,22 @@
+## 2026-11-24 — use an authorized Runner credential for live Actions-variable reads
+
+### Root cause
+- The post-concurrency Pause/Mode gate called the repository Actions Variables REST API with `github.token`.
+- GitHub's documented `GITHUB_TOKEN` permission set does not include the repository `Variables` permission. The API's required permission for reading repository variables is `Variables: read`; adding `variables: read` to a workflow `permissions` block is not supported by the `GITHUB_TOKEN` workflow permission schema.
+- Consequently, the new live gate could fail with an authorization response on every run, preventing the workflow from reaching the task controller. Treating that response as an unset variable would be unsafe; the gate must fail closed.
+
+### Correction
+- The live gate now obtains a short-lived-in-process token from the already authenticated GitHub CLI session of the Windows Runner service account using `gh auth token --hostname github.com`.
+- That credential is used only for read-only repository identity and Actions-variable GET requests. The workflow's `GITHUB_TOKEN` remains separate for its existing narrowly scoped workflow/controller operations and is not used for variable reads.
+- Added a workflow contract assertion requiring the Runner CLI token source and rejecting the old `github.token` Authorization path.
+
+### Validation boundary
+- This is a source/test correction on the stacked #870 branch. Exact-head Linux/Windows suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, and an actual Runner-account `gh auth token`/Variables API read remain required.
+- If the Runner service account is not authenticated or cannot read repository variables, the gate fails closed and starts no task. No token is printed or persisted.
+- No workflow was dispatched and no Pause/Mode variable, task, checkpoint, PR, Runner, ACL, database, or user state was changed.
+
+---
+
 ## 2026-11-24 — align live-settings cycle assertions with the API call contract
 
 ### CI finding
