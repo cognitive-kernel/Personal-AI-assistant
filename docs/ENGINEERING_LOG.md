@@ -1,3 +1,19 @@
+## 2026-11-24 — isolate PATH PowerShell discovery tests from the host registry
+
+### CI finding
+- Three Windows discovery tests were intended to test mocked PATH candidates, but the hosted Windows runner also exposed real PowerShell Core registry installations. Those extra candidates were correctly discovered by production code and accidentally accepted by the test's permissive fake probe, making the tests depend on runner configuration.
+
+### Correction
+- The shared PATH-test helper now stubs `winreg` as unavailable; the explicit registry-discovery test continues to use its own fake registry.
+- The Desktop-only discovery test applies the same isolation.
+- Production discovery behavior is unchanged.
+
+### Validation boundary
+- The exact-head Windows full-suite run must confirm the isolation.
+- No runtime configuration or machine registry was changed.
+
+---
+
 ## 2026-11-24 — stabilize Windows broker mutex and ACL rollback regressions
 
 ### CI findings
