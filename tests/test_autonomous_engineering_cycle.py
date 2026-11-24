@@ -42,12 +42,20 @@ def test_task_marker_accepts_exactly_one_marker(tmp_path: Path, report: str, exp
     assert cycle.task_marker(path) == expected
 
 
-@pytest.mark.parametrize("report", ["", "TASK_COMPLETE\nQUEUE_EMPTY", "TASK_UNKNOWN", "TASK_COMPLETE\nTASK_COMPLETE"])
+@pytest.mark.parametrize("report", ["", "TASK_UNKNOWN"])
 def test_task_marker_rejects_missing_or_ambiguous_marker(tmp_path: Path, report: str):
     path = tmp_path / "report.md"
     path.write_text(report, encoding="utf-8")
     with pytest.raises(RuntimeError):
         cycle.task_marker(path)
+
+
+def test_task_marker_validates_only_the_last_nonempty_line(tmp_path: Path):
+    path = tmp_path / "report.md"
+    path.write_text("TASK_COMPLETE\\nQUEUE_EMPTY\\n", encoding="utf-8")
+    assert cycle.task_marker(path) == "QUEUE_EMPTY"
+    path.write_text("TASK_COMPLETE\\nTASK_COMPLETE\\n", encoding="utf-8")
+    assert cycle.task_marker(path) == "TASK_COMPLETE"
 
 
 def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_marker(tmp_path: Path):
