@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import os
 import time
 from contextlib import contextmanager
@@ -13,7 +14,7 @@ from .autonomous_engineering_state import execution_state_directory
 
 @contextmanager
 def maintenance_admission_lock(timeout_seconds: float = 0.0) -> Iterator[None]:
-    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or timeout_seconds < 0:
+    if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)) or not math.isfinite(timeout_seconds) or timeout_seconds < 0:
         raise ValueError("Maintenance lock timeout must be a non-negative number.")
     directory = execution_state_directory()
     directory.mkdir(parents=True, exist_ok=True)
