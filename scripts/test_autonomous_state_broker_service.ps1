@@ -132,6 +132,17 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "blocked")
         }
     }
+    "process-blocked" {
+        $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "The process-scoped recovery fallback did not block setup."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "process-blocked")
+        }
+    }
     "acknowledge" {
         $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
         if (-not $lock.Acquired -or $lock.Abandoned -or -not $lock.RecoveryMarkerPresent) {
@@ -161,7 +172,8 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         "STATE_BROKER_LOCK_STOP",
         "STATE_BROKER_LOCK_THREAD_EXITED",
         "STATE_BROKER_LOCK_CHILD_PID_SIGNAL",
-        "STATE_BROKER_LOCK_MARKER_KEY"
+        "STATE_BROKER_LOCK_MARKER_KEY",
+        "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED"
     )
     $previousEnvironment = @{}
     foreach ($name in $environmentNames) {
@@ -281,6 +293,18 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             -not (Test-Path -LiteralPath $acknowledgedSignal -PathType Leaf) -or
             [System.IO.File]::ReadAllText($acknowledgedSignal) -ne "acknowledged") {
             throw "Explicit acknowledgement did not release the abandoned setup mutex."
+        }
+
+        $processBlockedSignal = Join-Path $testRoot "process-blocked.signal"
+        $processBlocked = Start-SetupMutexTestChild -Mode "process-blocked" -SignalPath $processBlockedSignal
+        if (-not $processBlocked.WaitForExit(15000)) {
+            Stop-Process -Id $processBlocked.Id -Force -ErrorAction SilentlyContinue
+            throw "The process-scoped recovery fallback probe did not exit within its deadline."
+        }
+        if ($processBlocked.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $processBlockedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($processBlockedSignal) -ne "process-blocked") {
+            throw "The process-scoped recovery fallback did not fail closed."
         }
 
         $reacquired = Enter-AutonomousStateBrokerSetupMutex -Name $mutexName -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
