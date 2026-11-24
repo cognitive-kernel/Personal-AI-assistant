@@ -2068,6 +2068,8 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     core = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
     status = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
     controls = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    runs = (static / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
+    html = (static / "autonomous-engineering.html").read_text(encoding="utf-8")
     progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
     assert "new AbortController()" in core
@@ -2104,6 +2106,23 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "core.startPolling({" in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
     assert "dispatchButton.disabled = false" not in controls
+    assert 'await response.text()' in core
+    assert 'try { payload = await response.json(); } catch (_) {}' not in core
+    assert 'setStatusMessage(data.paused ?' in status
+    assert 'setMessage(data.paused ?' not in status
+    assert 'addEventListener("click", () => refresh())' in status
+    assert 'cancelButton.disabled = true' not in status[status.index('} catch (error) {'):status.index('} finally {')]
+    assert 'getActiveRunId: () => lastActiveRunId' in status
+    assert 'JSON.stringify({run_id: runId})' in controls
+    assert 'if (error.ambiguous || (error.status >= 500 && !error.retryable))' in controls
+    assert 'host.replaceChildren();' not in runs[:runs.index('let runsRequestSequence')]
+    assert 'const existing = new Map(' in runs
+    assert 'if (!panel.isConnected || item.dataset.runId !== runId) return;' in runs
+    assert 'result.cleaned === true ? "success" : "error"' in runs
+    assert 'updatedAtValid' in progress
+    assert '[1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours))' in status
+    assert 'agent-status-message' in html
+    assert '.\\\\scripts\\\\provision_autonomous_runner.ps1' not in html
 
 
 def test_autonomous_run_administration_routes_are_registered():
