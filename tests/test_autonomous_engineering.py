@@ -2728,6 +2728,10 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
 
     assert concurrency < start
+    assert "$repositoryUri = \"https://api.github.com/repos/$env:GITHUB_REPOSITORY\"" in gate
+    assert "$repositoryMetadata = Invoke-RestMethod -Method Get" in gate
+    assert "$repositoryMetadata.full_name" in gate
+    assert gate.index("$repositoryMetadata = Invoke-RestMethod") < gate.index('Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"')
     assert "function Get-LiveRepositoryVariable" in gate
     assert "/actions/variables/$Name" in gate
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in gate
