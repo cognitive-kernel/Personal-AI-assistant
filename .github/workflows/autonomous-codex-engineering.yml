@@ -843,7 +843,10 @@ jobs:
           # GITHUB_TOKEN cannot read repository Actions variables. Use the
           # already-authenticated Runner service account's GitHub CLI credential
           # for this read-only control-plane query; keep it out of logs and do
-          # not reuse it for workflow or repository mutations.
+          # not reuse it for workflow or repository mutations. Remove token
+          # overrides so gh auth token must read the persisted CLI login.
+          Remove-Item Env:GH_TOKEN -ErrorAction SilentlyContinue
+          Remove-Item Env:GITHUB_TOKEN -ErrorAction SilentlyContinue
           $ghCommand = Get-Command gh -ErrorAction Stop
           $settingsTokenOutput = & $ghCommand.Source auth token --hostname github.com 2>$null
           $settingsTokenExitCode = $LASTEXITCODE
