@@ -48,3 +48,7 @@ An empty workflow_dispatch was also ambiguous: it could represent an owner-reque
 - An unavailable settings API or missing/expired read-only Variables credential can temporarily stop autonomous progress. This is intentional fail-closed behavior; the owner must restore the repository secret before retrying.
 - The repository owner must provision and rotate `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN`; the token is never exposed to Codex or written to logs/files.
 - No task, checkpoint, Runner registration, ACL, repository variable, or active workflow is modified by the gate itself.
+
+### Resume dispatch idempotency
+
+Resume باید تحت همان dispatch lock اجرا شود، ولی grace آن از manual dispatch مستقل باشد. اگر workflow فعال وجود دارد، فقط Pause برداشته می‌شود و workflow دوم ساخته نمی‌شود. خطای قطعی preflight/launch باید Pause را بازگرداند؛ نتیجهٔ نامشخص باید non-retryable تلقی و با بررسی run history تعیین تکلیف شود. manual dispatch نیز باید بلافاصله پس از Resume پذیرفته‌شده تا پایان grace مسدود باشد.
