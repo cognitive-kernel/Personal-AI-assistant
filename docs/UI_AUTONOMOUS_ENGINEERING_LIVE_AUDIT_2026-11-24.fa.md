@@ -171,3 +171,19 @@ UI مهندسی مدل انتخابی را از وضعیت تنظیمات GitHub
 | K — Local-first و portability | IN PROGRESS | #863/#869 portability و Broker را هدف گرفته‌اند؛ ماتریس Runtime/PowerShell و محیط بدون integration باید روی head نهایی اجرا شود |
 
 هیچ Gate به‌دلیل وجود کد یا صرف سبز بودن pytest به‌عنوان ACCEPTED علامت نخورده است.
+
+## 12. به‌روزرسانی بررسی وابستگی‌ها و پیش‌نیاز اجرای واقعی
+
+### PR #868 و #869
+
+PR #868 با SHA `a1850e6e535b5f8c4b4ae7ab87965fc1cee6e21a` در 2026-11-24 ادغام شده، اما base آن شاخهٔ PR #863 بوده است؛ بنابراین ادغام آن به معنی ورود تغییرات به `main` نیست. این PR در شاخهٔ #863 mutex سراسری setup را برای محافظت در برابر orphan شدن فرایند UAC اضافه می‌کند. PR #869 ادامهٔ همین زنجیره است و recovery marker و رفتار abandoned mutex را سخت‌تر می‌کند. پس #863 و #869 باید به‌عنوان یک مجموعه بررسی شوند.
+
+### PR #872
+
+head فعلی PR #872 برابر `476bcdc76c777457131224c017ea48520fe1ccee` است و هر 8 check ثبت‌شده روی همین SHA موفق‌اند: full test، full Windows suite، Windows storage regressions، browser E2E، سه bootstrap پلتفرمی و pip-audit. این نسخه از `gh workflow run --raw-field` برای فیلدهای workflow استفاده می‌کند و تستی دارد که ارسال متن وظیفه را به‌عنوان یک فیلد untrusted بررسی می‌کند. این اصلاح مهم است، اما PR همچنان به #870 و #866 و شاخهٔ Broker وابسته است؛ CI سبز این head مجوز ادغام مستقل نیست.
+
+### پیش‌نیاز مسدودکنندهٔ اجرای واقعی: Repository Secret
+
+کد فعلی زنجیرهٔ #870 برای خواندن زندهٔ متغیرهای Pause و Execution Mode به secret با نام دقیق `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` نیاز دارد. این secret باید یک fine-grained token محدود به همین repository با مجوز **Variables: read** باشد. `GITHUB_TOKEN` معمولی مجوز خواندن Repository Variables را ندارد. workflow در نبود این secret باید fail-closed شود و task را اجرا نکند. مقدار token نباید در سورس، issue، log یا گفتگو قرار گیرد؛ فقط وجود و scope آن در GitHub Settings باید توسط مالک تأیید شود.
+
+این مورد یک پیش‌نیاز عملیاتی است، نه چیزی که از سبز بودن تست‌های CI بتوان نتیجه گرفت. در این ممیزی امکان مشاهدهٔ مقدار secret وجود ندارد و وجود آن در repository تأیید نشده است. هیچ secret یا repository variable تغییر داده نشده است.
