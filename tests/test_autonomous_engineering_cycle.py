@@ -2128,6 +2128,33 @@ def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaus
     assert "resume_once" not in calls[-1][2]["inputs"]
 
 
+
+def test_next_cycle_dispatch_uses_live_mode_instead_of_stale_workflow_snapshot(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((token, method, path, payload))
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            return {"accepted": True}
+        raise AssertionError((token, method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "scheduled", "correlation_id": "e" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled(
+        "workflow-token", "owner/repository", args, settings_token="settings-token"
+    ) is True
+    assert all(call[0] == "settings-token" for call in calls if call[2] == "" or "actions/variables/" in call[2])
+    assert calls[-1][0] == "workflow-token"
+    assert calls[-1][1] == "POST"
+
 def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
