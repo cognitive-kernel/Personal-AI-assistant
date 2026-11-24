@@ -35,6 +35,7 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
+from .autonomous_engineering_dispatch_lock import dispatch_admission_lock
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -224,6 +225,10 @@ class ManualTaskRequest(BaseModel):
 
 class ModelPullRequest(BaseModel):
     model: StrictStr = Field(min_length=1, max_length=120)
+
+
+class CancelRequest(BaseModel):
+    run_id: StrictInt = Field(gt=0)
 
 
 def _repository() -> str:
@@ -784,51 +789,57 @@ def _has_open_autonomous_pr(gh: str) -> bool:
     return False
 
 
-@router.post("/dispatch", status_code=202)
-def dispatch_autonomous_engineering(
-    payload: ManualTaskRequest | None = None,
-    request: Request = None,
-) -> dict[str, Any]:
+def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_id: str, resume_once: bool = False) -> dict[str, Any]:
     global _LAST_DISPATCH_ACCEPTED_AT
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"})
+    try:
+        try:
+            with dispatch_admission_lock() as admission:
+                now = time.time()
+                last_accepted = admission["last_accepted_at"]
+                if last_accepted and (now < last_accepted or now - last_accepted < _DISPATCH_VISIBILITY_GRACE_SECONDS):
+                    raise HTTPException(status_code=409, detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"})
+                try:
+                    result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id, resume_once=resume_once)
+                except HTTPException as exc:
+                    if (exc.headers or {}).get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
+                        admission["last_accepted_at"] = time.time()
+                        _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+                    raise
+                if result.get("accepted") is True:
+                    admission["last_accepted_at"] = time.time()
+                    _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
+                if resume_once:
+                    gh = _authenticated_gh()
+                    updated = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
+                    if not updated or updated.returncode != 0:
+                        raise HTTPException(status_code=502, detail="Workflow ادامه پذیرفته شد اما بازنشانی وضعیت توقف در GitHub تأیید نشد؛ وضعیت را بازخوانی کنید و درخواست را تکرار نکنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"})
+                    result["paused"] = False
+                return result
+        except RuntimeError as exc:
+            if "Another process is currently deciding" in str(exc):
+                raise HTTPException(status_code=409, detail="درخواست اجرای دیگری در پردازهٔ دیگر در حال ثبت است؛ وضعیت را بازخوانی کنید.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"}) from exc
+            _STATUS_LOGGER.error("Persistent dispatch admission unavailable; correlation_id=%s", correlation_id)
+            raise HTTPException(status_code=503, detail="قفل پایدار کنترل ارسال در دسترس یا معتبر نیست؛ برای جلوگیری از اجرای تکراری، درخواست متوقف شد.", headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_ADMISSION_UNAVAILABLE", "X-Retryable": "false"}) from exc
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()
+
+
+@router.post("/dispatch", status_code=202)
+def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None, request: Request = None) -> dict[str, Any]:
     request_state = getattr(request, "state", None)
     correlation_id = getattr(request_state, "correlation_id", None)
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
-    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
-        raise HTTPException(
-            status_code=409,
-            detail="درخواست اجرای دیگری در حال ثبت است؛ از ارسال هم‌زمان در چند زبانه خودداری کنید.",
-            headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
-        )
-    try:
-        if (
-            _LAST_DISPATCH_ACCEPTED_AT
-            and time.monotonic() - _LAST_DISPATCH_ACCEPTED_AT < _DISPATCH_VISIBILITY_GRACE_SECONDS
-        ):
-            raise HTTPException(
-                status_code=409,
-                detail="درخواست اجرای قبلی تازه پذیرفته شده یا نتیجهٔ آن نامشخص است؛ پیش از ارسال دوباره، سوابق اجرا را بازخوانی کنید.",
-                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
-            )
-        try:
-            result = _dispatch_autonomous_engineering_locked(payload, correlation_id=correlation_id)
-        except HTTPException as exc:
-            exc.headers = dict(exc.headers or {})
-            exc.headers.setdefault("X-Correlation-ID", correlation_id)
-            if exc.headers.get("X-Error-Code") == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN":
-                _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
-            raise
-        if result.get("accepted") is True:
-            _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
-        return result
-    finally:
-        _DISPATCH_REQUEST_LOCK.release()
+    return _dispatch_with_admission(payload, correlation_id=correlation_id)
 
 
 def _dispatch_autonomous_engineering_locked(
     payload: ManualTaskRequest | None = None,
     *,
     correlation_id: str | None = None,
+    resume_once: bool = False,
 ) -> dict[str, Any]:
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
@@ -838,55 +849,34 @@ def _dispatch_autonomous_engineering_locked(
     readiness = collect_status()
     if not readiness.get("github", {}).get("runs_available", False):
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
-    if readiness.get("paused", False):
+    if readiness.get("paused", False) and not resume_once:
         raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف ایمن است؛ ابتدا ادامه را فعال کنید.")
+    if resume_once and not readiness.get("paused", False):
+        raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف نیست؛ درخواست ادامهٔ یک‌باره لازم نیست.")
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     pending = readiness.get("pending_work")
     if manual_task and not isinstance(pending, dict):
-        # New work requires an explicit, current Broker snapshot. Empty dispatch
-        # is a resume/reconcile request; the serialized controller makes the
-        # authoritative recovery decision and must not be treated as new work.
         pending = pending_work_status()
-    if manual_task:
-        if not isinstance(pending, dict) or pending.get("available") is not True:
-            raise HTTPException(
-                status_code=503,
-                detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ وظیفهٔ جدید ارسال نشد.",
-            )
-    elif isinstance(pending, dict) and pending.get("available") is not True:
-        raise HTTPException(
-            status_code=503,
-            detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.",
-        )
-    elif not isinstance(pending, dict):
+    if manual_task and (not isinstance(pending, dict) or pending.get("available") is not True):
+        raise HTTPException(status_code=503, detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ وظیفهٔ جدید ارسال نشد.")
+    if not manual_task and isinstance(pending, dict) and pending.get("available") is not True:
+        raise HTTPException(status_code=503, detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.")
+    if not isinstance(pending, dict):
         checks = readiness.get("checks", {})
         if isinstance(checks, dict) and checks.get("durable_state_available") is False:
-            raise HTTPException(
-                status_code=503,
-                detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.",
-            )
-
-    checkpoint = (
-        pending.get("checkpoint")
-        if isinstance(pending, dict) and isinstance(pending.get("checkpoint"), dict)
-        else {}
-    )
+            raise HTTPException(status_code=503, detail="وضعیت پایدار وظایف و checkpoint قابل بررسی نیست؛ اجرای ادامه متوقف شد.")
+    checkpoint = pending.get("checkpoint") if isinstance(pending, dict) and isinstance(pending.get("checkpoint"), dict) else {}
     if checkpoint.get("available") is True and checkpoint.get("verified") is not True:
-        raise HTTPException(
-            status_code=409,
-            detail="checkpoint ذخیره‌شده وجود دارد اما یکپارچگی آن قابل تأیید نیست؛ اجرا متوقف شد تا تغییرات قبلی حفظ شوند.",
-        )
+        raise HTTPException(status_code=409, detail="checkpoint ذخیره‌شده وجود دارد اما یکپارچگی آن قابل تأیید نیست؛ اجرا متوقف شد تا تغییرات قبلی حفظ شوند.")
     if manual_task and pending.get("blocked"):
         if checkpoint.get("available") is True:
-            run_id = str(checkpoint.get("run_id") or "نامشخص")
-            task = checkpoint.get("task", 1)
-            detail = f"یک checkpoint تأییدشده برای اجرای {run_id} و وظیفهٔ {task} باقی مانده است. درخواست جدید پذیرفته نشد؛ اجرای بدون متن وظیفه همان کار را ادامه می‌دهد."
+            detail = f"یک checkpoint تأییدشده برای اجرای {checkpoint.get('run_id') or 'نامشخص'} و وظیفهٔ {checkpoint.get('task', 1)} باقی مانده است. درخواست جدید پذیرفته نشد؛ اجرای بدون متن وظیفه همان کار را ادامه می‌دهد."
         else:
             detail = "یک تسک، PR یا عملیات پاک‌سازی قبلی هنوز تعیین‌تکلیف نشده است؛ متن وظیفهٔ جدید پذیرفته نشد."
         raise HTTPException(status_code=409, detail=detail)
     active_runs = readiness.get("github", {}).get("recent_runs", [])
-    if any(item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"} for item in active_runs):
+    if any(item.get("status") in _ACTIVE_RUN_STATES for item in active_runs):
         raise HTTPException(status_code=409, detail="یک اجرای عامل در حال انجام است؛ ابتدا وضعیت آن را بررسی کنید.")
     gh = shutil.which("gh")
     if not gh:
@@ -895,91 +885,29 @@ def _dispatch_autonomous_engineering_locked(
     if not auth or auth.returncode != 0:
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
     if manual_task and _has_open_autonomous_pr(gh):
-        raise HTTPException(
-            status_code=409,
-            detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.",
-        )
+        raise HTTPException(status_code=409, detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.")
+    command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--raw-field", f"correlation_id={correlation_id}"]
+    if manual_task:
+        command.extend(["--raw-field", f"manual_task={manual_task}"])
+    if resume_once:
+        command.extend(["--raw-field", "resume_once=true"])
     try:
-        result = _run(
-            [
-                gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
-                "--field", f"correlation_id={correlation_id}",
-                "--field", f"manual_task={manual_task}",
-            ],
-            timeout=20,
-            raise_os_error=True,
-        )
-    except OSError:
-        _STATUS_LOGGER.error(
-            "Autonomous workflow dispatch could not start; correlation_id=%s",
-            correlation_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. پس از رفع مشکل، "
-                "می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED",
-                "X-Retryable": "true",
-            },
-        )
+        result = _run(command, timeout=20, raise_os_error=True)
+    except OSError as exc:
+        _STATUS_LOGGER.error("Autonomous workflow dispatch could not start; correlation_id=%s", correlation_id)
+        raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
     if result is None:
-        _STATUS_LOGGER.warning(
-            "Autonomous workflow dispatch outcome is unknown; correlation_id=%s",
-            correlation_id,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. "
-                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
-                + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN",
-                "X-Retryable": "false",
-            },
-        )
+        _STATUS_LOGGER.warning("Autonomous workflow dispatch outcome is unknown; correlation_id=%s", correlation_id)
+        raise HTTPException(status_code=502, detail="نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"})
     if result.returncode != 0:
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
-        stderr_fingerprint = (
-            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
-            if safe_stderr else "empty"
-        )
-        _STATUS_LOGGER.error(
-            "Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
-            correlation_id,
-            result.returncode,
-            stderr_fingerprint,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"ارسال Workflow ناموفق بود (exit code {result.returncode}). "
-                "پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: "
-                + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_DISPATCH_FAILED",
-                "X-Retryable": "false",
-            },
-        )
+        stderr_fingerprint = hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16] if safe_stderr else "empty"
+        _STATUS_LOGGER.error("Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s", correlation_id, result.returncode, stderr_fingerprint)
+        raise HTTPException(status_code=502, detail=f"ارسال Workflow ناموفق بود (exit code {result.returncode}). پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_FAILED", "X-Retryable": "false"})
     return {
-        "accepted": True,
-        "repository": _repository(),
-        "workflow": _WORKFLOW,
-        "manual_task_submitted": bool(manual_task),
-        "correlation_id": correlation_id,
-        "message": (
-            "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
-            if manual_task else
-            "درخواست اجرای چرخهٔ خودکار ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید."
-        ),
+        "accepted": True, "repository": _repository(), "workflow": _WORKFLOW,
+        "manual_task_submitted": bool(manual_task), "correlation_id": correlation_id,
+        "message": "وظیفهٔ دستی ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید." if manual_task else "درخواست اجرای چرخهٔ خودکار ارسال شد؛ شروع واقعی را در GitHub Actions تأیید کنید.",
     }
 
 
@@ -1003,120 +931,23 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
     correlation_id = getattr(request_state, "correlation_id", None)
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
-    gh = shutil.which("gh")
-    if not gh:
-        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    if not auth or auth.returncode != 0:
-        raise HTTPException(status_code=503, detail="دسترسی GitHub در حساب برنامه آماده نیست.")
-    result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()], timeout=15)
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="ثبت ادامه در GitHub ناموفق بود.")
-    try:
-        dispatched = _run(
-            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--field", f"correlation_id={correlation_id}", "--field", "resume_once=true"],
-            timeout=20,
-            raise_os_error=True,
-        )
-    except OSError:
-        _STATUS_LOGGER.error(
-            "Autonomous resume dispatch could not start; correlation_id=%s",
-            correlation_id,
-        )
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "ادامه ثبت شد اما GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. "
-                "پس از رفع مشکل می‌توانید دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED",
-                "X-Retryable": "true",
-            },
-        )
-    if dispatched is None:
-        _STATUS_LOGGER.warning(
-            "Autonomous resume dispatch outcome is unknown; correlation_id=%s",
-            correlation_id,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "ادامه ثبت شد اما نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub اجرا را در صف گذاشته باشد. "
-                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN",
-                "X-Retryable": "false",
-            },
-        )
-    if dispatched.returncode != 0:
-        safe_stderr = _sanitize_workflow_log(str(dispatched.stderr or ""))
-        stderr_fingerprint = (
-            hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16]
-            if safe_stderr else "empty"
-        )
-        _STATUS_LOGGER.error(
-            "Autonomous resume dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s",
-            correlation_id,
-            dispatched.returncode,
-            stderr_fingerprint,
-        )
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"ثبت ادامه انجام شد اما ارسال Workflow ناموفق بود (exit code {dispatched.returncode}). "
-                "پیش از تلاش دوباره، تاریخچهٔ اجراها را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id
-            ),
-            headers={
-                "X-Correlation-ID": correlation_id,
-                "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_FAILED",
-                "X-Retryable": "false",
-            },
-        )
-    return {"accepted": True, "paused": False, "correlation_id": correlation_id, "message": "ادامه از وضعیت ذخیره‌شده درخواست شد؛ در حالت زمان‌بندی‌شده این اجرا یک‌باره است."}
+    result = _dispatch_with_admission(None, correlation_id=correlation_id, resume_once=True)
+    result["message"] = "ادامه از وضعیت ذخیره‌شده درخواست شد؛ در حالت زمان‌بندی‌شده این اجرا یک‌باره است."
+    return result
 
 
 @router.post("/cancel")
-def cancel_autonomous_engineering() -> dict[str, Any]:
-    gh = shutil.which("gh")
-    if not gh:
-        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    if not auth or auth.returncode != 0:
-        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
-    result = _run(
-        [
-            gh, "run", "list", "--repo", _repository(), "--workflow", _WORKFLOW,
-            "--limit", "30", "--json", "databaseId,status",
-        ],
-        timeout=12,
-    )
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="وضعیت اجراهای GitHub قابل دریافت نیست.")
-    try:
-        runs = json.loads(result.stdout)
-    except ValueError as exc:
-        raise HTTPException(status_code=502, detail="پاسخ GitHub معتبر نیست.") from exc
-    active = next(
-        (
-            item for item in runs
-            if isinstance(item, dict)
-            and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-        ),
-        None,
-    )
-    if not active or not isinstance(active.get("databaseId"), int):
-        raise HTTPException(status_code=409, detail="اجرای فعالی برای لغو وجود ندارد.")
-    cancelled = _run(
-        [gh, "run", "cancel", str(active["databaseId"]), "--repo", _repository()],
-        timeout=12,
-    )
+def cancel_autonomous_engineering(payload: CancelRequest) -> dict[str, Any]:
+    gh = _authenticated_gh()
+    run = _verified_workflow_run(gh, payload.run_id)
+    if run.get("status") not in _ACTIVE_RUN_STATES:
+        raise HTTPException(status_code=409, detail="اجرای انتخاب‌شده دیگر فعال نیست؛ وضعیت را بازخوانی کنید.")
+    trusted_run_id = run["id"]
+    cancelled = _run([gh, "run", "cancel", str(trusted_run_id), "--repo", _repository()], timeout=12)
     if not cancelled or cancelled.returncode != 0:
-        raise HTTPException(status_code=502, detail="لغو اجرا توسط GitHub تأیید نشد.")
-    return {"accepted": True, "run_id": active["databaseId"], "message": "درخواست لغو به GitHub ارسال شد."}
+        raise HTTPException(status_code=502, detail="لغو اجرای انتخاب‌شده توسط GitHub تأیید نشد.")
+    return {"accepted": True, "run_id": trusted_run_id, "message": f"درخواست لغو اجرای #{trusted_run_id} به GitHub ارسال شد."}
+
 
 # Operational administration -------------------------------------------------
 _ACTIVE_RUN_STATES = {"queued", "in_progress", "waiting", "requested", "pending"}
