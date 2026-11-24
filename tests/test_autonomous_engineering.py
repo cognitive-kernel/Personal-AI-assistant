@@ -3173,3 +3173,78 @@ def test_cancel_lock_busy_fails_before_inspecting_github(monkeypatch):
     assert error.value.status_code == 409
     assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_CANCEL_IN_PROGRESS"
     assert calls == []
+
+def test_cancel_fails_closed_when_codex_job_state_cannot_be_read(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps([{"databaseId": 501, "status": "in_progress"}]), "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 1, "", "temporary GitHub error")
+        raise AssertionError("Cancel must fail closed before issuing run cancel")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert "jobهای اجرای فعال قابل تأیید نیست" in error.value.detail
+    assert not any(call[1:3] == ["run", "cancel"] for call in calls)
+
+
+def test_cancel_fails_closed_when_codex_job_payload_is_malformed(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps([{"databaseId": 502, "status": "in_progress"}]), "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, "not-json", "")
+        raise AssertionError("Malformed job state must prevent cancellation")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert "جزئیات jobهای اجرای فعال معتبر نیست" in error.value.detail
+
+
+def test_cancel_fails_closed_when_one_run_reports_multiple_codex_jobs(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps([{"databaseId": 503, "status": "in_progress"}]), "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps({"jobs": [
+                    {"name": "Codex", "status": "in_progress"},
+                    {"name": "codex", "status": "queued"},
+                ]}),
+                "",
+            )
+        raise AssertionError("Duplicate Codex jobs must prevent cancellation")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert "بیش از یک job با مالکیت Codex" in error.value.detail
