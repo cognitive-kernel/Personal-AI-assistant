@@ -1,3 +1,11 @@
+## 2026-11-24 — mainline regression coverage retained
+
+- The inventory's Broker setup and failure-state transitions now coexist with the mainline status-refresh serialization fix from PR #864 and Codex-job-aware cancellation from PR #867.
+- Regression coverage retained in the consolidated branch: `test_autonomous_engineering_status_mutation_refreshes_are_serialized`, mainline cancellation tests, and Broker setup/cleanup Browser E2E coverage.
+- These tests remain pending a fresh exact-head CI run; target-host Windows acceptance is still separate.
+
+---
+
 # Inventory و تحلیل ریشه‌ای UI ماژول Autonomous Engineering
 
 - تاریخ snapshot: 2026-11-22
@@ -269,9 +277,36 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 ---
 
 
-## الحاقیهٔ 2026-11-24 — race در refresh وضعیت پس از mutation
+## 2026-11-24 addendum — Broker setup control and startup side-effect removal
 
-- **Root cause اثبات‌شده در main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`:** `refreshAfterMutation()` فقط poll موجود را await می‌کرد. اگر دو mutation هنگام اجرای یک poll تمام می‌شدند، هر دو continuation پس از پایان همان poll به‌طور مستقل `refreshStatus()` را اجرا می‌کردند؛ در نتیجه دو snapshot هم‌زمان می‌توانستند UI را با ترتیب پاسخ غیرقابل‌پیش‌بینی به‌روزرسانی کنند.
-- **اصلاح در branch `fix/autonomous-engineering-status-refresh-serialization-20261124`:** refreshهای پس از mutation با `statusMutationRefreshPromise` سریالی شده‌اند. هر refresh منتظر mutation قبلی و poll پیشین می‌ماند و سپس یک درخواست authoritative مستقل اجرا می‌کند.
-- **Regression:** تست Playwright جدید، poll قبلی را معلق نگه می‌دارد، دو refresh پس از mutation را هم‌زمان درخواست می‌کند و حداکثر یک درخواست status فعال و به‌روزرسانی نهایی پس از هر دو mutation را assert می‌کند.
-- **وضعیت:** کد و تست به branch اضافه شده‌اند؛ اجرای Browser E2E و exact-head CI هنوز pending است. Gate D تا عبور تست‌ها بسته نمی‌شود.
+### کنترل جدید و قرارداد API
+
+| selector/control | event | API | مالک state / رفتار |
+|---|---|---|---|
+| `#setup-state-broker` | click صریح کاربر | `POST /api/autonomous-engineering/broker/setup` | فقط همین درخواست مجاز به provisioning سرویس Broker است؛ endpoint زیر dependency loopback router اجرا می‌شود و خطاهای ساختاریافته برمی‌گرداند |
+| startup preflight | process start | health/verify فقط read-only | هیچ UAC، نصب سرویس، توقف Runner یا ACL mutation انجام نمی‌شود |
+
+### transition جدید
+
+| transition | precondition | owner/lock | postcondition/failure |
+|---|---|---|---|
+| Broker unavailable → setup requested | کاربر دکمه را می‌زند؛ status قبلی صرفاً برای نمایش است و server دوباره health را بررسی می‌کند | API route + setup lock بین‌پردازه‌ای OS در temp همان حساب؛ سپس installer | نصب فقط پس از preflight package/hash/runtime/service tools آغاز می‌شود |
+| setup requested → elevated | میزبان PowerShell با capability probe پیدا شده؛ یا POSIX adapter و `sudo -n` موجود است | همان executable فعال برای UAC relaunch؛ setup lock تا پایان عملیات نگه داشته می‌شود | UAC cancel، نبود host، timeout و install failure کدهای جدا دارند؛ retry خودکار وجود ندارد |
+| elevated → ready | installer exit code موفق و health/verify پاسخ معتبر | LocalService named-pipe Broker | فقط پس از health موفق، UI وضعیت آماده نشان می‌دهد؛ task/checkpoint قبلی دست‌نخورده می‌مانند |
+| elevated → blocked | hash/runtime/service preflight یا health نهایی شکست بخورد | installer و API error boundary | چرخهٔ جدید مسدود می‌ماند؛ ACL گسترده، fallback به per-user state، حذف task یا بازنویسی checkpoint انجام نمی‌شود |
+
+### root cause و اصلاح
+
+- `main` قبلی Broker را روی میزبان کاربر با `csc.exe` کامپایل می‌کرد؛ این وابستگی به compiler/SDK روی target بود.
+- اولین installer prebuilt به فایل `scripts/bin/PersonalAIAssistant.StateBroker.exe` و manifest نیاز داشت که در repo موجود نبودند. workflow ساخت package هم دارای بلوک ناقص و duplicate/orphaned YAML بود؛ به همین علت نمی‌توانست package و تست exact-head معتبر تولید کند.
+- startup قبلاً فقط `powershell.exe` را کشف می‌کرد و UI نبود Runner را به‌اشتباه blocker نصب Broker معرفی می‌کرد.
+- startup همچنین مسیرهایی برای نصب/اجرای Ollama و pull مدل داشت. اکنون preflight فقط وجود CLI/API و مدل‌های تنظیم‌شده را می‌خواند؛ نصب، start و pull بدون اقدام کاربر انجام نمی‌شوند.
+- اصلاحات فعلی: capability-based discovery برای Core/Desktop بدون gate عددی نسخه؛ package prebuilt و SHA-256؛ CI attestation؛ نصب Broker با دکمهٔ صریح؛ عدم نیاز Runner؛ health verification پس از نصب؛ setup lock بین‌پردازه‌ای در سطح OS.
+
+### Gate و محدودیت شواهد
+
+- تست‌های unit/API/Browser برای route، UAC cancellation، timeout، post-install health، قفل بین‌پردازه‌ای، UI button و refresh اضافه شده‌اند.
+- exact-head CI نهایی هنوز باید تمام شود؛ پس از commit binary، یک اجرای تازه باید build deterministic را با binary commitشده تطبیق دهد.
+- CI hosted جایگزین Windows target acceptance نیست. دو حساب غیرادمین، نبود/وجود Runner، LocalService، named pipe، UAC، restart و حفظ task/checkpoint هنوز روی میزبان هدف NOT RUN هستند.
+- PowerShell-free native installer هنوز وجود ندارد؛ نبود میزبان سازگار فقط Broker provisioning را unavailable می‌کند و داشبورد در حالت محدود باز می‌ماند. این محدودیت صریح است و به‌عنوان portability کامل ادعا نمی‌شود.
+- هیچ task، owner metadata، checkpoint، database، ACL، Runner registration یا durable state روی میزبان کاربر تغییر نکرده است.
