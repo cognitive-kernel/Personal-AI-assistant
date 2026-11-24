@@ -2764,12 +2764,14 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "modeValue -eq \"scheduled\"" in gate
     assert "Invoke-RestMethod -Method Get" in gate
     assert 'Get-Command gh -ErrorAction Stop' in gate
-    assert 'Remove-Item Env:GH_TOKEN' in gate
-    assert 'Remove-Item Env:GITHUB_TOKEN' in gate
-    assert 'auth token --hostname github.com' in gate
+    assert 'VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}' in gate
+    assert '$env:VARIABLES_TOKEN' in gate
+    assert 'Remove-Item Env:VARIABLES_TOKEN' in gate
+    assert 'Variables: read' in gate
     assert 'Authorization = "Bearer $settingsToken"' in gate
     assert 'Authorization = "Bearer $env:GH_TOKEN"' not in gate
     assert 'GH_TOKEN: ${{ github.token }}' not in gate
+    assert 'auth token --hostname github.com' not in gate
     assert 'if ($statusCode -eq 404)' in gate
     assert "Failing closed; no new task will start." in gate
     assert "[System.IO.File]::AppendAllText" in gate
