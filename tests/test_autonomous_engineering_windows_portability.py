@@ -466,36 +466,41 @@ def test_broker_installer_preflights_net48_and_service_control_before_mutation()
 
 def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
 
-    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
-    assert mutex > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
-    assert mutex < ensure.index('$brokerLogDirectory =')
-    assert mutex < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
-    assert mutex < ensure.index("Get-CimInstance Win32_Service")
-    assert mutex < ensure.index("Stop-Service -Name $service.Name")
-    assert mutex < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
-    assert "$setupMutex.WaitOne(0)" in ensure
-    assert "Another elevated state-broker setup is already running" in ensure
-    assert "catch [System.Threading.AbandonedMutexException]" in ensure
-    assert "fail closed" in ensure
-    assert "$setupMutex.ReleaseMutex()" in ensure
-    assert "$setupMutex.Dispose()" in ensure
-    assert ensure.rfind("$setupMutex.ReleaseMutex()") < ensure.rfind("$setupMutex.Dispose()")
+    elevation_end = ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1")')
+    acquire = ensure.index("Enter-AutonomousStateBrokerSetupMutex")
+    assert ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs") < elevation_end < acquire
+    assert acquire < ensure.index('$brokerLogDirectory =')
+    assert acquire < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert acquire < ensure.index("Get-CimInstance Win32_Service")
+    assert acquire < ensure.index("Stop-Service -Name $service.Name")
+    assert acquire < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert "Global\\PersonalAIAssistant.StateBrokerSetup" in ensure
+    assert "Enter-AutonomousStateBrokerSetupMutex" in lock_module
+    assert "Exit-AutonomousStateBrokerSetupMutex" in lock_module
+    assert "WaitOne(0)" in lock_module
+    assert "AbandonedMutexException" in lock_module
+    assert "Another elevated state-broker setup is already running" in lock_module
+    assert "ReleaseMutex()" in lock_module
+    assert "Dispose()" in lock_module
+    finalizer = ensure[ensure.rfind("} finally {"):]
+    assert "Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState" in finalizer
 
 
 def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
     parameters = ensure[:ensure.index("$ErrorActionPreference")]
-    parent = ensure[:ensure.index("$setupMutexName")]
-    abandoned = ensure[ensure.index("catch [System.Threading.AbandonedMutexException]"):ensure.index("if (-not $setupMutexAcquired)")]
+    parent = ensure[:ensure.index('$setupMutexState = $null')]
 
     assert "[switch]$AcknowledgeAbandonedSetup" in parameters
     assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in parent
-    assert "if (-not $AcknowledgeAbandonedSetup)" in abandoned
-    assert "$setupMutexAbandonedUnacknowledged = $true" in abandoned
-    assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
-    assert "$setupMutex.ReleaseMutex()" not in abandoned
-    assert "$setupMutexAbandonedUnacknowledged" in ensure
+    assert "-AcknowledgeAbandoned:$AcknowledgeAbandonedSetup" in ensure
+    assert "$setupMutexState.AbandonedUnacknowledged" in ensure
+    assert "rerun with -AcknowledgeAbandonedSetup" in ensure
+    assert "AbandonedUnacknowledged = ($abandoned -and -not $AcknowledgeAbandoned)" in lock_module
+    assert "if ($null -eq $Lock -or $Lock.AbandonedUnacknowledged)" in lock_module
     python_setup = _read("app/autonomous_engineering_broker_setup.py")
     assert "-AcknowledgeAbandonedSetup" not in python_setup
 
@@ -503,7 +508,7 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
 def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_mutation():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
     parameters = ensure[:ensure.index("$ErrorActionPreference")]
-    elevation = ensure[:ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')]
+    elevation = ensure[:ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1")')]
 
     assert "[switch]$ElevatedChild" in parameters
     assert "[switch]$AcknowledgeAbandonedSetup" in parameters
@@ -514,11 +519,27 @@ def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_m
     assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in elevation
     assert elevation.index('Join-Path $PSHOME "Modules"') < elevation.index("Start-Process -FilePath $hostExecutable")
     assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index(
-        'Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")'
+        'Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1")'
     )
-    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index("$setupMutexName")
     assert "$env:PSModulePath = $previousModulePath" in elevation
     assert "$windowsPowerShellPath" not in elevation
+
+
+def test_state_broker_mutex_has_real_windows_process_integration_coverage():
+    service_test = _read("scripts/test_autonomous_state_broker_service.ps1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert "Invoke-SetupMutexProcessIntegrationTest" in service_test
+    assert 'Start-SetupMutexTestChild -Mode "hold"' in service_test
+    assert 'Start-SetupMutexTestChild -Mode "abandoned"' in service_test
+    assert 'Start-SetupMutexTestChild -Mode "acknowledge"' in service_test
+    assert "Stop-Process -Id $owner.Id -Force" in service_test
+    assert "The setup mutex was not cleanly reusable after explicit acknowledgement" in service_test
+    assert "Exercise the live LocalService broker and Python named-pipe client" in workflow
+    assert "Exercise the packaged broker under Windows PowerShell Desktop" in workflow
+    assert workflow.index("Exercise the live LocalService broker and Python named-pipe client") < workflow.index(
+        "Exercise the packaged broker under Windows PowerShell Desktop"
+    )
 
 
 def test_security_module_import_is_isolated_to_the_active_powershell_host():
