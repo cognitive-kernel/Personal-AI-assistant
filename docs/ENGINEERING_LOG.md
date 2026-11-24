@@ -1,4 +1,4 @@
-## 2026-11-24 — PR #871 regression-harness correction and Resume idempotency follow-up
+## 2026-11-24 — PR #872 regression-harness correction and Resume idempotency follow-up
 
 ### Exact-head CI evidence
 - Prior tested code head: `82c44e04d44f6366c307440175352fe847621781`.
@@ -15,7 +15,7 @@
   - An obsolete autouse fixture still monkeypatched the removed in-memory grace variable, causing setup errors across otherwise unrelated dispatch-safety tests.
 - No existing test was skipped or deleted. The obsolete fixture was removed because the durable broker, not an in-memory timestamp, is now the source of truth. Marker coverage was replaced with an explicit regression proving that only the final non-empty line is authoritative.
 
-### Corrections on the PR #871 branch
+### Corrections on the PR #872 branch
 - Corrected the resume-timeout fake to acknowledge the Pause=false variable update and then simulate an ambiguous workflow dispatch.
 - Made a definitive process-launch failure explicitly retryable in its user-facing detail, consistent with `X-Retryable=true`.
 - Updated static contract tests to assert the actual process boundary and the exported sticky-status API.
@@ -29,7 +29,7 @@
 ### Validation boundary
 - The latest code head at this log update is `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`; exact-head tests, Browser E2E and dependency audit were queued. No success is claimed until all jobs finish on the final SHA.
 - The actual Windows target-host acceptance, live Runner/Ollama/Codex, dispatch/pause/resume/cancel, crash/restart, checkpoint restore, manual accessibility and owner UI acceptance remain separate gates.
-- PR #871 remains stacked on #870/#866. No merge, workflow dispatch/cancel, repository setting/secret change, task/checkpoint mutation, Runner/ACL change, database migration or user-data mutation was performed.
+- PR #872 remains stacked on #870/#866. No merge, workflow dispatch/cancel, repository setting/secret change, task/checkpoint mutation, Runner/ACL change, database migration or user-data mutation was performed.
 
 ---
 
