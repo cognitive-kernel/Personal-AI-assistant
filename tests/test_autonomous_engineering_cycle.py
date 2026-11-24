@@ -50,6 +50,29 @@ def test_task_marker_rejects_missing_or_ambiguous_marker(tmp_path: Path, report:
         cycle.task_marker(path)
 
 
+def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_marker(tmp_path: Path):
+    from scripts.autonomous_engineering_cycle_workspace import TaskReportError, TaskReportFailureKind
+
+    report = tmp_path / "report.md"
+    report.write_text("", encoding="utf-8")
+    with pytest.raises(TaskReportError) as empty:
+        cycle.task_marker(report)
+    assert empty.value.kind == TaskReportFailureKind.NO_LAST_AGENT_MESSAGE
+
+    report.write_text("Implementation summary without a marker.\\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as missing:
+        cycle.task_marker(report)
+    assert missing.value.kind == TaskReportFailureKind.MISSING_TERMINAL_MARKER
+
+    report.write_text("TASK_COMPLETE\\nMore prose after the marker.\\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as misplaced:
+        cycle.task_marker(report)
+    assert misplaced.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("- quoted marker: TASK_COMPLETE\\nTASK_BLOCKED\\n", encoding="utf-8")
+    assert cycle.task_marker(report) == "TASK_BLOCKED"
+
+
 def test_validate_paths_accepts_only_reviewable_project_paths():
     cycle.validate_paths(["app/example.py", "tests/test_example.py", "docs/example.md", "scripts/example.py"])
 
@@ -207,9 +230,11 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
         lambda *args: (_ for _ in ()).throw(AssertionError("invalid report must not clear the task checkpoint")),
     )
     calls = {"codex": 0}
+    codex_invocations = []
 
     def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        codex_invocations.append((command, capture, timeout_seconds))
         calls["codex"] += 1
         if calls["codex"] == 1:
             report = Path(command[command.index("--report") + 1])
@@ -229,13 +254,19 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert calls["codex"] == 2
-    assert "exactly one valid completion marker" in retry_text
+    assert codex_invocations[0][1] is True
+    assert "--timeout-seconds" not in codex_invocations[0][0]
+    assert codex_invocations[1][1] is True
+    timeout_index = codex_invocations[1][0].index("--timeout-seconds")
+    assert 1 <= int(codex_invocations[1][0][timeout_index + 1]) <= 600
+    assert codex_invocations[1][2] <= 630
+    assert "valid terminal completion marker" in retry_text
     assert "do not reset or discard the existing worktree/checkpoint" in retry_text
     assert "do not repeat implementation or rerun broad tests" in retry_text
     assert "Fix the root cause, add or update regression tests" not in retry_text
     assert cycle.CODEX_RETRY_POLICY.max_elapsed_seconds == 45 * 60
     assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
-    assert "on its own final line" in retry_text
+    assert "last non-empty line is exactly one plain marker" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
     assert "Continue the SAME task" in retry_text
     assert len(stopped) == 2
