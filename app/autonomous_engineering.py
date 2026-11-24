@@ -1015,7 +1015,7 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
             continue
         diagnostic = (
             _read_run_diagnostics(item["id"])
-            if item.get("status") == "completed" and item.get("conclusion") not in {"success", "neutral", "skipped"}
+            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required"}
             else None
         )
         latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
@@ -1390,7 +1390,7 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
     except RuntimeError as exc:
-        if "Another autonomous execution owns this repository worktree" in str(exc):
+        if "Another autonomous execution owns this repository worktree" in str(exc) or "Repository maintenance is already in progress" in str(exc):
             raise HTTPException(
                 status_code=409,
                 detail="اجرای دیگری مالک worktree است؛ پاک‌سازی تا آزادشدن قفل انجام نمی‌شود.",
