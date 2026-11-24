@@ -363,7 +363,7 @@ def _paused_ready_snapshot(active_runs=None):
     }
 
 
-def test_resume_uses_locked_dispatch_and_clears_pause_only_after_acceptance(monkeypatch):
+def test_resume_uses_locked_dispatch_and_clears_pause_before_workflow_gate(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
@@ -388,7 +388,7 @@ def test_resume_uses_locked_dispatch_and_clears_pause_only_after_acceptance(monk
     pause_update = next(call for call in calls if call[0][1:3] == ["variable", "set"])
     assert pause_update[0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
     assert pause_update[0][5] == "false"
-    assert calls.index(workflow_call) < calls.index(pause_update)
+    assert calls.index(pause_update) < calls.index(workflow_call)
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
 
 
@@ -481,15 +481,19 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     assert "نامشخص" in error.value.detail
     assert "تاریخچهٔ اجراها را بازخوانی کنید" in error.value.detail
     assert calls[-1][1] is True
-    assert not any(call[0][1:3] == ["variable", "set"] for call in calls)
+    pause_updates = [call[0] for call in calls if call[0][1:3] == ["variable", "set"]]
+    assert len(pause_updates) == 1
+    assert pause_updates[0][5] == "false"
 
 
 def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
 
+    calls = []
     def fake_run(command, timeout=8, *, raise_os_error=False):
-        if command[1:3] == ["auth", "status"]:
+        calls.append(command)
+        if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         raise FileNotFoundError("gh executable disappeared")
@@ -502,6 +506,29 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    pause_updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in pause_updates] == ["false", "true"]
+
+
+def test_resume_definite_workflow_rejection_restores_pause(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] in (["auth", "status"], ["variable", "set"]):
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", "dispatch rejected")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_FAILED"
+    pause_updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in pause_updates] == ["false", "true"]
 
 
 def test_autonomous_recovery_uses_the_durable_policy_module():
