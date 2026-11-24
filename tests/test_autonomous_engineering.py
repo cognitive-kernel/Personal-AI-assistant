@@ -1143,7 +1143,10 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
     assert "pending-manual-task.txt" in workflow
-    assert "actions/variables" not in workflow
+    assert "function Get-LiveRepositoryVariable" in workflow
+    assert "/actions/variables/$Name" in workflow
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in workflow
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in workflow
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "ensure_autonomous_state_broker.ps1" in acl_script
@@ -2725,8 +2728,10 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
 
     assert concurrency < start
-    assert "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED" in gate
-    assert "actions/variables/AUTONOMOUS_ENGINEERING_MODE" in gate
+    assert "function Get-LiveRepositoryVariable" in gate
+    assert "/actions/variables/$Name" in gate
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in gate
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in gate
     assert "EVENT_NAME" in gate and "RECOVERY_ATTEMPT" in gate
     assert "RESUME_ONCE" in gate and "unmarkedEmptyDispatch" in gate
     assert "resume_once:" in workflow
