@@ -1,3 +1,18 @@
+## 2026-11-24 — align live-settings cycle assertions with the API call contract
+
+### CI finding
+- Exact-head tests on the #870 stack reported two failures in `test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode` and `test_next_cycle_dispatch_is_suppressed_by_live_pause`.
+- The fake API records `(method, path, payload)`; the assertions still expected two-element tuples even though GET calls explicitly pass the default `payload=None`. The product behavior and call ordering matched the expected values.
+
+### Correction
+- Updated both expected call lists to include the explicit third `None` field. No product code or safety behavior was changed.
+
+### Validation boundary
+- A new exact-head test run is required. The previous run had 2 failing assertions, 2,601 passed, 15 skipped, and 78 deselected; the skips/deselections were unchanged repository markers and are not counted as passed.
+- No workflow, repository variable, task, checkpoint, or durable state was changed by the test correction.
+
+---
+
 ## 2026-11-24 — allow explicit Resume to reach the authoritative live Pause gate
 
 ### Root cause
