@@ -1,3 +1,19 @@
+## 2026-11-24 — apply live Pause/mode gate to recovered merged-PR chaining
+
+### Root cause
+- The normal completion path used `_dispatch_next_cycle_if_enabled()` to re-read the live execution mode and Pause flag before dispatching the next continuous cycle.
+- The recovery path for a durable pending PR that had already been manually merged bypassed that helper and dispatched the next cycle unconditionally whenever the workflow's original `--mode` argument was `continuous`. A Pause or switch to scheduled mode made after that workflow started could therefore still queue a new run from the recovered-PR branch.
+
+### Correction
+- Reuse the same live mode/Pause gate after completing a recovered owner-merged PR.
+- Added a parameterized regression for live scheduled mode, live Pause enabled, and continuous/unpaused mode; only the last case may dispatch.
+
+### Validation boundary
+- Exact-head CI is required. No workflow was dispatched by the test; GitHub API calls are mocked.
+- No task, checkpoint, pending PR record, database, service, or user state was changed by this source update.
+
+---
+
 ## 2026-11-24 — correct live settings admission regression expectations and diagnostics
 
 ### Exact-head CI findings
