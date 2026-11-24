@@ -58,7 +58,6 @@ _STATUS_LOGGER = logging.getLogger(__name__)
 # durable pending-task marker and GitHub workflow concurrency remain the
 # cross-process/restart safety layer.
 _DISPATCH_REQUEST_LOCK = threading.Lock()
-_DISPATCH_VISIBILITY_GRACE_SECONDS = 15.0
 _LAST_DISPATCH_ACCEPTED_AT = 0.0
 
 _HTTP_ERROR_CODES = {
