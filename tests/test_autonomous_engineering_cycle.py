@@ -72,6 +72,11 @@ def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_mark
     report.write_text("- quoted marker: TASK_COMPLETE\\nTASK_BLOCKED\\n", encoding="utf-8")
     assert cycle.task_marker(report) == "TASK_BLOCKED"
 
+    report.write_text("- quoted marker: TASK_COMPLETE\\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as quoted:
+        cycle.task_marker(report)
+    assert quoted.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
 
 def test_validate_paths_accepts_only_reviewable_project_paths():
     cycle.validate_paths(["app/example.py", "tests/test_example.py", "docs/example.md", "scripts/example.py"])
