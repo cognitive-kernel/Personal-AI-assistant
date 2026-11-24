@@ -977,7 +977,7 @@ def _dispatch_autonomous_engineering_locked(
                 headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED", "X-Retryable": "false"},
             ) from exc
         _STATUS_LOGGER.error("Autonomous workflow dispatch could not start; correlation_id=%s", correlation_id)
-        raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED" if resume_once else "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
+        raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ درخواست به GitHub ارسال نشده است و می‌توانید پس از بررسی نصب و دسترسی، دوباره تلاش کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED" if resume_once else "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
     if result is None:
         _STATUS_LOGGER.warning("Autonomous workflow dispatch outcome is unknown; correlation_id=%s", correlation_id)
         raise HTTPException(status_code=502, detail="نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN" if resume_once else "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"})
