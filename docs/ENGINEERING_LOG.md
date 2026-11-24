@@ -1,3 +1,9 @@
+## 2026-11-24 — make Resume idempotent and fail closed
+
+- Resume now uses the shared dispatch lock and a separate resume-acceptance timestamp; the manual dispatch route also checks the most recent Resume acceptance. This prevents a second workflow from being queued immediately after Resume.
+- An already-active workflow is allowed to continue after Pause is cleared, without dispatching a duplicate. Definitive preflight/launch failures restore Pause; ambiguous outcomes retain a short no-retry window and require history inspection.
+- Added regression coverage for lock contention, existing active runs, duplicate/cross-action dispatch, rollback, and unexpected status failures.
+
 ## 2026-11-24 — reconcile Autonomous Engineering branches with merged UI and cancellation fixes
 
 - PR #864 merged the serialized post-mutation status refresh. Its exact head 8303afa5d44f104c6e9a5d569868f3db248023b0 passed tests, Browser E2E, CodeQL, and dependency audit.
