@@ -22,6 +22,7 @@ _INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
 _ERROR_IO_PENDING = 997
 _ERROR_PIPE_BUSY = 231
 _ERROR_FILE_NOT_FOUND = 2
+_ERROR_FILE_NOT_FOUND_RETRIES = 50
 _ERROR_SEM_TIMEOUT = 121
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
@@ -159,6 +160,7 @@ def _overlapped_transfer(
 
 def _open_pipe(kernel32, deadline: float):
     """Open the service pipe while tolerating the brief gap between instances."""
+    missing_instance_attempts = 0
     while True:
         handle = kernel32.CreateFileW(
             _PIPE_NAME,
@@ -174,12 +176,20 @@ def _open_pipe(kernel32, deadline: float):
 
         error = ctypes.get_last_error()
         if error == _ERROR_FILE_NOT_FOUND:
-            # A worker disposes its instance after each response and immediately
-            # creates the next one. During that tiny gap the pipe name may have
-            # no instance yet; retry within the caller's single deadline.
+            # A worker can briefly dispose an instance before publishing the next
+            # one. Retry that short handoff window, but fail with the real Win32
+            # error when the service is absent/stopped instead of hiding it as a
+            # generic request timeout.
+            missing_instance_attempts += 1
+            if missing_instance_attempts >= _ERROR_FILE_NOT_FOUND_RETRIES:
+                raise StateBrokerError(
+                    "Windows state broker pipe is unavailable (WinError 2); "
+                    "verify that the PersonalAIAssistantStateBroker service is installed and running."
+                )
             remaining = _remaining_ms(deadline)
             time.sleep(min(0.01, remaining / 1000.0))
             continue
+        missing_instance_attempts = 0
 
         if error == _ERROR_PIPE_BUSY:
             remaining = _remaining_ms(deadline)
