@@ -25,6 +25,9 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
         Path(__file__).resolve().parents[1]
         / "scripts" / "autonomous_engineering_recovery.py"
     ).read_text(encoding="utf-8")
+    assert "def _verify_repository_access(client: GitHubActionsClient, expected_repository: str)" in policy
+    assert "_verify_repository_access(client, repository)" in policy
+    assert policy.index("_verify_repository_access(client, repository)") < policy.index("if _live_execution_mode(client)")
     assert "def _live_execution_mode(client: GitHubActionsClient)" in policy
     assert "def _live_pause_enabled(client: GitHubActionsClient)" in policy
     assert '"/actions/variables/AUTONOMOUS_ENGINEERING_MODE"' in policy
