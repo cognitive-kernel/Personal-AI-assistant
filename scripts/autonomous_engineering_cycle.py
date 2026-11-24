@@ -558,6 +558,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
     attempt = 0
     codex_elapsed_seconds = 0.0
     failure_feedback = ""
+    failure_kind = None
     trusted_head = base_sha
     published_pr: dict[str, Any] | None = None
 
@@ -592,10 +593,13 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             )
         attempt += 1
         active_prompt = Path(args.prompt)
+        report_only_retry = failure_kind in {
+            _cycle_workspace.TaskReportFailureKind.MISSING_TERMINAL_MARKER,
+            _cycle_workspace.TaskReportFailureKind.MARKER_NOT_FINAL_LINE,
+        }
         if failure_feedback:
             active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
             original = Path(args.prompt).read_text(encoding="utf-8")
-            report_only_retry = "did not contain exactly one valid completion marker" in failure_feedback
             repair_instruction = (
                 "This is a report-finalization repair. Inspect the existing plan, diff, and report; do not repeat completed implementation or rerun broad tests. "
                 "If verification evidence already exists, write the concise final report and its single required marker.\n"
@@ -630,52 +634,74 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             remaining = min(task_remaining, codex_remaining)
             if remaining <= 0:
                 raise RuntimeError("Codex or task execution budget expired before Codex could start; preserving the current task state.")
+            attempt_timeout_seconds = min(600, int(remaining)) if report_only_retry else CODEX_TASK_TIMEOUT_SECONDS
+            command = [
+                sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
+                "--run-id", args.run_id, "--run-attempt", args.run_attempt,
+                "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
+            ]
+            if report_only_retry:
+                command.extend(["--timeout-seconds", str(max(1, attempt_timeout_seconds))])
             with timed_stage(f"codex_attempt_{attempt}"):
-                result = run([
-                    sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
-                    "--run-id", args.run_id, "--run-attempt", args.run_attempt,
-                    "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-                ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
+                result = run(command, timeout_seconds=min(attempt_timeout_seconds + 30, remaining))
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
             codex_elapsed_seconds += time.monotonic() - codex_attempt_started
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
+            diagnostic_detail = report_detail or _sanitize_run_diagnostic_text(
+                (result.stderr or result.stdout or "")[-_MAX_RUN_DIAGNOSTIC_CHARS:]
+            )
+            diagnostic_summary = f"Codex process exited with code {result.returncode}."
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
                 stage="codex", category="process_exit",
-                summary=f"Codex process exited with code {result.returncode}.",
-                detail=report_detail or _sanitize_run_diagnostic_text(
-                    (result.stderr or result.stdout or "")[-_MAX_RUN_DIAGNOSTIC_CHARS:]
-                ),
+                summary=diagnostic_summary,
+                detail=diagnostic_detail,
             )
+            failure_kind = None
             failure_feedback = (
-                f"Attempt {attempt}: Codex exited with code {result.returncode}. "
-                "Inspect the current worktree and repair the same task.\n"
+                f"Attempt {attempt}: {diagnostic_summary}\n"
+                "Sanitized diagnostic from the failed Codex attempt follows; use it to diagnose and repair the SAME task.\n"
+                + (diagnostic_detail[-6000:] if diagnostic_detail else "No report or process diagnostic was captured.") + "\n"
+                "Inspect the existing worktree and checkpoint before changing files.\n"
             )
             continue
 
         try:
             marker = task_marker(report)
-        except RuntimeError as exc:
-            print(f"Codex final report validation failed: {exc}", file=sys.stderr)
+        except _cycle_workspace.TaskReportError as exc:
+            print(f"Codex final report validation failed ({exc.kind.value}): {exc}", file=sys.stderr)
+            detail = _read_report_diagnostic(report)
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
-                stage="report_validation", category="invalid_final_report",
-                summary=str(exc), detail=_read_report_diagnostic(report),
+                stage="report_validation", category=exc.kind.value,
+                summary=str(exc),
+                detail=detail,
             )
+            if exc.kind == _cycle_workspace.TaskReportFailureKind.NO_LAST_AGENT_MESSAGE:
+                record(
+                    args.run_id, args.run_attempt, "retry",
+                    f"وظیفهٔ {task} برای بازیابی نگه داشته شد",
+                    "Codex پیام نهایی عامل را تولید نکرد؛ اجرای کورکورانه تکرار نشد و checkpoint حفظ شد",
+                    status="failed",
+                )
+                raise RuntimeError(
+                    "Codex produced no final agent message. The task/checkpoint is preserved; inspect the turn's context limit, incomplete tool call, and terminal JSONL events before retrying."
+                ) from exc
+            failure_kind = exc.kind
             failure_feedback = (
-                f"Attempt {attempt}: {exc}\n"
-                "The Codex --output-last-message report did not contain exactly one valid completion marker. "
-                "Continue the SAME task; do not reset or discard the existing worktree/checkpoint and do not choose another task.\n"
-                "First inspect .agent-progress.json, the current git diff, and the existing report. If the implementation and plan are already complete, do not repeat implementation or rerun broad tests; write a concise evidence report and add the required terminal marker. If anything is incomplete, finish only the remaining plan item.\n"
-                "Write your final report through the supplied --output-last-message file. End that report with exactly one of these plain-text markers on its own final line, without a Markdown code fence or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
-                "Use TASK_COMPLETE only after the selected task, required regression tests, and engineering documentation are complete; use TASK_BLOCKED only with a concrete blocker; use QUEUE_EMPTY only when no actionable task remains and there is no unfinished checkpoint.\n"
+                f"Attempt {attempt}: report validation failed ({exc.kind.value}): {exc}\n"
+                "This is a report-finalization repair for the SAME task, not a new implementation attempt.\n"
+                "Inspect the existing plan, diff, and report. Do not repeat completed implementation or broad tests.\n"
+                "If evidence is complete, write a concise final report whose last non-empty line is exactly one plain marker with no Markdown, quote, or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
+                "If work is incomplete, finish only the remaining plan item and verify it.\n"
+                + (detail[-4000:] if detail else "The report had no additional diagnostic text.") + "\n"
             )
             record(
                 args.run_id, args.run_attempt, "retry",
                 f"اصلاح گزارش نهایی وظیفهٔ {task}",
-                "گزارش Codex نشانگر پایان معتبر نداشت؛ همان وظیفه با دستور اصلاحی دوباره اجرا می‌شود",
+                "گزارش نهایی نشانگر پایانی معتبر نداشت؛ نشست اصلاح گزارش با مهلت کوتاه اجرا می‌شود",
             )
             continue
 
