@@ -911,6 +911,12 @@ def _dispatch_autonomous_engineering_locked(
         and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
         for item in active_runs
     )
+    if resume_once and not readiness.get("paused", False) and not has_active_run:
+        raise HTTPException(
+            status_code=409,
+            detail="صف مهندسی در وضعیت توقف نیست و اجرای فعالی برای ادامه وجود ندارد؛ درخواست Resume تکراری ارسال نشد.",
+            headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_NOT_PAUSED", "X-Retryable": "false"},
+        )
     if resume_once and has_active_run:
         gh = _authenticated_gh()
         if not _set_autonomous_engineering_pause(gh, False):
