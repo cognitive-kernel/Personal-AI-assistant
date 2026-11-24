@@ -302,3 +302,27 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - CI hosted جایگزین Windows target acceptance نیست. دو حساب غیرادمین، نبود/وجود Runner، LocalService، named pipe، UAC، restart و حفظ task/checkpoint هنوز روی میزبان هدف NOT RUN هستند.
 - PowerShell-free native installer هنوز وجود ندارد؛ نبود میزبان سازگار فقط Broker provisioning را unavailable می‌کند و داشبورد در حالت محدود باز می‌ماند. این محدودیت صریح است و به‌عنوان portability کامل ادعا نمی‌شود.
 - هیچ task، owner metadata، checkpoint، database، ACL، Runner registration یا durable state روی میزبان کاربر تغییر نکرده است.
+
+## الحاقیهٔ 2026-11-24 — وضعیت فعلی state ownership و کنترل‌های UI
+
+| مسیر/رویداد | مالک state | قرارداد و وضعیت |
+|---|---|---|
+| status poll و post-mutation refresh | autonomous-engineering-status.js | statusRefreshPromise برای single-flight و statusMutationRefreshPromise برای سریال‌سازی refreshهای پس از mutation؛ پاسخ قدیمی نباید snapshot جدیدتر را overwrite کند. |
+| pause/resume/cancel | UI controls → API → GitHub Actions | Pause فقط admission آینده را متوقف می‌کند؛ Resume در حالت scheduled باید یک dispatch یک‌بارهٔ صریح بسازد؛ Cancel باید job واقعی Codex را تشخیص دهد و task/checkpoint را حذف نکند. |
+| run history/log/delete | autonomous-engineering-runs.js → API | sequence guard پاسخ‌های قدیمی؛ حذف فقط run پایان‌یافته و متعلق به workflow؛ cleanup از مسیر lockهای repository → durable state → checkpoint. |
+| progress/chart | autonomous-engineering-progress.js → API | progress owner مستقل؛ refreshهای هم‌زمان coalesce می‌شوند. follow-up #870 رویداد cleanup را با queueIfBusy: true به refresh بعدی تبدیل می‌کند تا درخواست درحال اجرا باعث drop شدن refresh نشود. |
+| live Pause/Mode | PowerShell gate + cycle/recovery controllers | خواندن Variables فقط با credential اختصاصی read-only؛ GITHUB_TOKEN برای عملیات workflow باقی می‌ماند؛ cycle secret را پیش از اجرای Codex از environment حذف می‌کند. |
+| Broker setup mutex | PowerShell setup-lock module + Windows registry marker | marker با Registry64 ثابت؛ در شکست marker-write، process fallback fail-closed؛ acknowledgement فقط از thread مالک می‌تواند ownership قبلی را آزاد و قفل تازه بگیرد. |
+
+### Root causes و شواهد به‌روز
+- Refresh race: دو mutation می‌توانستند پس از انتظار برای یک poll مشترک، دو درخواست status موازی بسازند؛ در main با promise queue حل و در PR #864 روی exact head تست شد.
+- Cancel race: workflow status به‌تنهایی کافی نبود؛ job Codex می‌تواند پشت schedule gate در صف باشد. main اکنون gh run view --json jobs را بررسی و اجرای دارای Codex job فعال را انتخاب می‌کند؛ exact-head PR #867 موفق شد.
+- Cleanup/progress: اگر event پاک‌سازی هنگام درخواست progress فعال می‌رسید، refresh event بدون queue حذف می‌شد؛ اصلاح queueIfBusy: true در follow-up #870 است و CI آن هنوز pending است.
+- Live settings: GITHUB_TOKEN مجوز Variables:read ندارد؛ #870 credential read-only جداگانه را در PowerShell، cycle و recovery به کار می‌گیرد و fail-closed است.
+- Windows setup: marker رجیستری باید cross-bitness باشد و fallback فرایندی نباید با recursive mutex ownership دور زده شود؛ #869 مسیر Registry64 و acknowledgement same-thread/wrong-thread را تست می‌کند.
+
+### وضعیت Gateها
+- Repository-level UI tests برای #864 و #867: موفق روی exact head.
+- Exact-head CI برای شاخه‌های فعلی #863/#869 و #866/#870: pending تا اجرای کامل روی آخرین SHA.
+- Windows target-host، Runner واقعی، Ollama/Codex واقعی و owner acceptance: NOT RUN؛ هیچ‌کدام با CI شبیه‌سازی‌شده جایگزین نمی‌شوند.
+
