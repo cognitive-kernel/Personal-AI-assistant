@@ -62,6 +62,7 @@ def test_windows_broker_setup_discovers_runner_identity_and_path():
     assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
     assert "RecoveryMarkerPresent = $markerPresent" in lock_module
     assert "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED" in lock_module
+    assert "retainedMutex.ReleaseMutex()" in lock_module
     assert "A protected recovery marker was recorded" in lock_module
     assert "AbandonedUnacknowledged" not in ensure
     assert "Start-Service -Name $serviceNameToRestart" in ensure
