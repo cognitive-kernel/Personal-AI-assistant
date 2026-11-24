@@ -1,3 +1,13 @@
+## 2026-11-24 — reconciliation after mainline UI/cancel merges
+
+- Current main: ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1.
+- PR #864 (serialized status refresh) and PR #867 (job-aware Cancel) are merged. Their exact-head tests, Browser E2E, CodeQL and dependency-audit checks passed; the feature branches now carry these regressions so later integration does not revert them.
+- Parent branches #863 and #866 were updated with the mainline Cancel handler; #863 also carries the serialized status refresh implementation and browser regression. Child branches #869/#870 must be rebased/merged onto their updated parent heads before merge.
+- Exact-head CI for the latest child commits is pending. Windows target-host acceptance, Runner/UAC/ACL, Ollama/Codex and actual dispatch/pause/resume/cancel tests remain NOT RUN.
+- No workflow was dispatched and no repository secret was created by the assistant. For #870, the owner must create AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN as a fine-grained, repository-scoped token with Variables: read; never paste its value into chat or issues.
+
+---
+
 ## 2026-11-24 — اصلاح دور زدن قفل Broker در نشست تعاملی PowerShell
 
 - مبنای فعلی بررسی‌شدهٔ `main`: `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1`. PR #863 بر پایهٔ head قدیمی `3d1e843...` است؛ PR #869 به‌صورت stack روی head #863 قرار دارد و هنوز CI دقیق روی main فعلی ندارد.
