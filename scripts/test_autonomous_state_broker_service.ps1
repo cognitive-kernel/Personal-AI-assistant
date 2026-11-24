@@ -108,6 +108,18 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         if (-not $rejected -or -not (Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY)) {
             throw "The abandoned mutex was not converted into a durable fail-closed recovery marker."
         }
+        $sameSessionReentryRejected = $false
+        try {
+            $reentrant = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $reentrant
+            throw "The same PowerShell process bypassed the abandoned-setup recovery marker."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            $sameSessionReentryRejected = $true
+        }
+        if (-not $sameSessionReentryRejected) {
+            throw "The same-session recovery marker did not block recursive mutex re-entry."
+        }
         [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "abandoned")
     }
     "blocked" {
