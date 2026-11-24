@@ -244,7 +244,12 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
-_CODEX_COMPLETION_MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\s*`{1,3})?[.!]?\s*$")
+_CODEX_TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)", re.IGNORECASE)
+
+
+def _has_terminal_completion_marker(value: str) -> bool:
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    return bool(lines and _CODEX_TERMINAL_MARKER.fullmatch(lines[-1]))
 
 
 def recover_final_agent_message_report(
@@ -254,23 +259,21 @@ def recover_final_agent_message_report(
     turn_completed: bool,
     turn_failed: bool,
 ) -> bool:
-    """Recover a missing or invalid report from a successful JSONL final message."""
+    """Persist the final agent message even when its terminal marker is missing."""
     if not turn_completed or turn_failed or not isinstance(final_agent_message, str):
         return False
     message = final_agent_message.strip()
-    if len(_CODEX_COMPLETION_MARKERS.findall(message)) != 1:
+    if not message:
         return False
     report = Path(report_path)
     try:
         try:
             existing = report.read_text(encoding="utf-8-sig") if report.is_file() else ""
         except UnicodeError:
-            # A corrupt temporary report is invalid, not a reason to discard
-            # the independently validated final message from the JSONL turn.
             existing = ""
-        if len(_CODEX_COMPLETION_MARKERS.findall(existing)) == 1:
+        if _has_terminal_completion_marker(existing):
             return False
-        report.write_text(message + "\n", encoding="utf-8")
+        report.write_text(message + "\\n", encoding="utf-8")
     except OSError:
         return False
     return True
@@ -284,6 +287,7 @@ def run_codex(args: argparse.Namespace) -> int:
     arguments = codex_arguments(args.model, args.report)
     command = codex_command(
         executable, arguments,
+        timeout_seconds=getattr(args, "timeout_seconds", None),
         parent_job_managed=os.name == "nt",
         parent_group_managed=os.name != "nt",
     )
@@ -633,6 +637,7 @@ def main() -> int:
     codex.add_argument("--model", required=True)
     codex.add_argument("--prompt", required=True)
     codex.add_argument("--report", required=True)
+    codex.add_argument("--timeout-seconds", type=int)
     codex.add_argument("--require-command-output")
     codex.add_argument("--expected-agent-message")
     codex.add_argument("--events-report")
