@@ -882,8 +882,6 @@ def _dispatch_autonomous_engineering_locked(
         raise HTTPException(status_code=503, detail="وضعیت اجراهای GitHub قابل دریافت نیست؛ اجرای جدید به‌صورت ایمن متوقف شد.")
     if readiness.get("paused", False) and not resume_once:
         raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف ایمن است؛ ابتدا ادامه را فعال کنید.")
-    if resume_once and not readiness.get("paused", False):
-        raise HTTPException(status_code=409, detail="صف مهندسی در وضعیت توقف نیست؛ درخواست ادامهٔ یک‌باره لازم نیست.")
     if not readiness["ready"]:
         raise HTTPException(status_code=409, detail="پیش‌نیازهای عامل کامل نیست؛ ابتدا وضعیت محلی را بررسی کنید.")
     pending = readiness.get("pending_work")
@@ -933,24 +931,22 @@ def _dispatch_autonomous_engineering_locked(
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
     if manual_task and _has_open_autonomous_pr(gh):
         raise HTTPException(status_code=409, detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.")
-    command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--raw-field", f"correlation_id={correlation_id}"]
-    if manual_task:
-        command.extend(["--raw-field", f"manual_task={manual_task}"])
+    command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--raw-field", f"correlation_id={correlation_id}", "--raw-field", f"manual_task={manual_task}"]
     if resume_once:
         command.extend(["--raw-field", "resume_once=true"])
     try:
         result = _run(command, timeout=20, raise_os_error=True)
     except OSError as exc:
         _STATUS_LOGGER.error("Autonomous workflow dispatch could not start; correlation_id=%s", correlation_id)
-        raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
+        raise HTTPException(status_code=503, detail="GitHub CLI اجرا نشد؛ نصب و دسترسی اجرای آن را بررسی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED" if resume_once else "WORKFLOW_DISPATCH_LAUNCH_FAILED", "X-Retryable": "true"}) from exc
     if result is None:
         _STATUS_LOGGER.warning("Autonomous workflow dispatch outcome is unknown; correlation_id=%s", correlation_id)
-        raise HTTPException(status_code=502, detail="نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"})
+        raise HTTPException(status_code=502, detail="نتیجهٔ ارسال Workflow نامشخص است؛ ممکن است GitHub درخواست را دریافت کرده باشد. پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN" if resume_once else "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"})
     if result.returncode != 0:
         safe_stderr = _sanitize_workflow_log(str(result.stderr or ""))
         stderr_fingerprint = hashlib.sha256(safe_stderr.encode("utf-8")).hexdigest()[:16] if safe_stderr else "empty"
         _STATUS_LOGGER.error("Autonomous workflow dispatch failed; correlation_id=%s exit_code=%s stderr_sha256=%s", correlation_id, result.returncode, stderr_fingerprint)
-        raise HTTPException(status_code=502, detail=f"ارسال Workflow ناموفق بود (exit code {result.returncode}). پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_FAILED", "X-Retryable": "false"})
+        raise HTTPException(status_code=502, detail=f"ارسال Workflow ناموفق بود (exit code {result.returncode}). پیش از تلاش مجدد، سوابق اجرا را بازخوانی کنید. شناسهٔ پیگیری: " + correlation_id, headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_DISPATCH_FAILED" if resume_once else "WORKFLOW_DISPATCH_FAILED", "X-Retryable": "false"})
     return {
         "accepted": True,
         "repository": _repository(),
@@ -996,6 +992,15 @@ def resume_autonomous_engineering(request: Request = None) -> dict[str, Any]:
 
 @router.post("/cancel")
 def cancel_autonomous_engineering(payload: CancelRequest) -> dict[str, Any]:
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="ثبت، ادامه یا لغو اجرای دیگری در حال انجام است؛ پس از پایان آن دوباره تلاش کنید.", headers={"X-Error-Code": "AUTONOMOUS_CANCEL_IN_PROGRESS", "X-Retryable": "false"})
+    try:
+        return _cancel_autonomous_engineering_locked(payload)
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()
+
+
+def _cancel_autonomous_engineering_locked(payload: CancelRequest) -> dict[str, Any]:
     gh = _authenticated_gh()
     run = _verified_workflow_run(gh, payload.run_id)
     status = run.get("status")
