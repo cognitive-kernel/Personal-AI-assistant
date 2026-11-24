@@ -245,7 +245,10 @@ _MAX_RUN_DIAGNOSTIC_CHARS = 12000
 def _sanitize_run_diagnostic_text(value: str) -> str:
     value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(value))
     value = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)\S+", r"\1[REDACTED]", value)
+    value = re.sub(r"(?i)(authorization\s*:\s*basic\s+)\S+", r"\1[REDACTED]", value)
     value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", value)
+    value = re.sub(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
     value = re.sub(
         r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
