@@ -807,7 +807,18 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
                         correlation_id=correlation_id,
                         resume_once=resume_once,
                     )
-                except StateBrokerConflict as exc:
+                except HTTPException as exc:
+                    error_code = (exc.headers or {}).get("X-Error-Code")
+                    if error_code in {
+                        "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN",
+                        "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN",
+                    }:
+                        admission["accepted"] = True
+                    raise
+                if result.get("accepted") is True:
+                    admission["accepted"] = True
+                return result
+        except StateBrokerConflict as exc:
             raise HTTPException(
                 status_code=409,
                 detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
