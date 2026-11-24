@@ -45,3 +45,7 @@ An empty workflow_dispatch was also ambiguous: it could represent an owner-reque
 - Scheduled mode has an explicit distinction between owner-requested one-shot Resume and automatic chaining.
 - An unavailable settings API can temporarily stop autonomous progress. This is intentional fail-closed behavior; the owner can retry after the GitHub API becomes available.
 - No task, checkpoint, Runner registration, ACL, repository variable, or active workflow is modified by the gate itself.
+
+### Resume dispatch idempotency
+
+Resume باید تحت همان dispatch lock اجرا شود، ولی grace آن از manual dispatch مستقل باشد. اگر workflow فعال وجود دارد، فقط Pause برداشته می‌شود و workflow دوم ساخته نمی‌شود. خطای قطعی preflight/launch باید Pause را بازگرداند؛ نتیجهٔ نامشخص باید non-retryable تلقی و با بررسی run history تعیین تکلیف شود. manual dispatch نیز باید بلافاصله پس از Resume پذیرفته‌شده تا پایان grace مسدود باشد.
