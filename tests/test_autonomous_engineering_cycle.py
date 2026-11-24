@@ -74,6 +74,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -552,6 +553,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
 
 def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GH_TOKEN", "secret-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
 
     env = cycle.git_auth_env("secret-token")
@@ -2055,6 +2057,7 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
 
 
 def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
     def fake_api(token, repo, method, path, payload=None):
         calls.append((method, path, payload))
@@ -2075,6 +2078,7 @@ def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
 
 
 def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
 
     def fake_api(token, repo, method, path, payload=None):
@@ -2100,6 +2104,7 @@ def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
 
 
 def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaused(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
 
     def fake_api(token, repo, method, path, payload=None):
@@ -2124,6 +2129,7 @@ def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaus
 
 
 def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
 
     def denied(token, repo, method, path, payload=None):
@@ -2146,6 +2152,7 @@ def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monk
     ],
 )
 def test_recovered_owner_merged_pr_chains_only_when_live_mode_allows(
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     shared_state_tmp_path: Path,
