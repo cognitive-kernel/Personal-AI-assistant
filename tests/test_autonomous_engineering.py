@@ -2767,6 +2767,8 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert 'VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}' in gate
     assert '$env:VARIABLES_TOKEN' in gate
     assert 'Remove-Item Env:VARIABLES_TOKEN' in gate
+    assert 'Repository secret AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is missing' in gate
+    assert 'No task will start.' in gate
     assert 'Variables: read' in gate
     assert 'Authorization = "Bearer $settingsToken"' in gate
     assert 'Authorization = "Bearer $env:GH_TOKEN"' not in gate
