@@ -500,20 +500,21 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert "-AcknowledgeAbandonedSetup" not in python_setup
 
 
-
-def test_state_broker_forces_windows_powershell_51_before_loading_security_modules():
+def test_security_module_import_isolated_to_the_active_powershell_host():
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
-    parameters = ensure[:ensure.index("$ErrorActionPreference")]
-    host_gate = ensure[:ensure.index("$identity = [Security.Principal.WindowsIdentity]::GetCurrent()", ensure.index("$windowsPowerShellPath"))]
-    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
 
-    assert "[switch]$WindowsPowerShellHost" in parameters
-    assert '$PSVersionTable.PSEdition -ne "Desktop" -and -not $WindowsPowerShellHost' in host_gate
-    assert "WindowsPowerShell\\v1.0\\powershell.exe" in host_gate
-    assert "Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe" in host_gate
-    assert 'ArgumentList = $argumentLine' in host_gate
-    assert '$argumentLine += " -ElevatedChild"' in host_gate
-    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in host_gate
-    assert host_gate.index("Start-Process @startArguments") < mutex
-    assert "Microsoft.PowerShell.Security" not in host_gate
-    assert "service or ACL changes were not started" in host_gate
+    assert "$previousModulePath = $env:PSModulePath" in module
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in module
+    assert "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop" in module
+    assert "$env:PSModulePath = $previousModulePath" in module
+    assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
+        "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop"
+    )
+    assert module.index("Import-Module Microsoft.PowerShell.Security -ErrorAction Stop") < module.index(
+        "$env:PSModulePath = $previousModulePath"
+    )
+    assert "Get-Process -Id $PID -ErrorAction Stop).Path" in ensure
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in ensure
+    assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in ensure
+    assert "[switch]$WindowsPowerShellHost" not in ensure
