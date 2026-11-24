@@ -670,9 +670,14 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             turn_completed = attempt_status.get("turn_completed") is True
             turn_failed = attempt_status.get("turn_failed") is True
             event_count = attempt_status.get("jsonl_event_count")
+            missing_reason = str(attempt_status.get("missing_message_reason") or (
+                "turn_failed_or_tool_error" if turn_failed
+                else "turn_incomplete_or_tool_call_pending" if not turn_completed
+                else "turn_completed_without_agent_message"
+            ))
             summary = (
                 "Codex emitted no final agent message; "
-                f"turn_completed={turn_completed}, turn_failed={turn_failed}, "
+                f"reason={missing_reason}, turn_completed={turn_completed}, turn_failed={turn_failed}, "
                 f"jsonl_event_count={event_count if isinstance(event_count, int) else 'unknown'}."
             )
             detail = captured_error or captured_output
