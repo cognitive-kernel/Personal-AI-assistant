@@ -91,9 +91,12 @@ def test_windows_broker_dispatch_admission_protocol_roundtrip():
         pytest.skip("Windows named-pipe integration only.")
     if not broker.health(timeout_ms=1500):
         pytest.skip("Protected Windows state broker is not installed in this test environment.")
-    first_id = "a" * 32
-    second_id = "b" * 32
-    broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": first_id})
+    first_id = uuid.uuid4().hex
+    second_id = uuid.uuid4().hex
+    try:
+        broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": first_id})
+    except broker.StateBrokerConflict:
+        pytest.skip("The shared broker currently has an active reservation or grace window.")
     with pytest.raises(broker.StateBrokerConflict):
         broker.request("POST", "/v1/dispatch-admission/acquire", body={"request_id": second_id})
     broker.request(
