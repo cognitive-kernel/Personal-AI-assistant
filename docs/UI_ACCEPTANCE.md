@@ -138,3 +138,6 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [ ] اجرای واقعی Ollama/Codex، dispatch، Pause/Resume/Cancel، timeout، crash/restart و حفظ checkpoint.
 - [ ] بازبینی دستی keyboard/screen-reader و تأیید نهایی مالک.
 - [ ] secret خواندن Variables برای workflowهای #870 باید توسط مالک ایجاد و روی Runner هدف آزمایش شود؛ تا آن زمان این مسیر عملیاتی پذیرفته نیست.- [x] Resume یک مسیر idempotent دارد: lock مشترک، grace مستقل، جلوگیری از dispatch تکراری هنگام active بودن run، rollback امن Pause و مدیریت نتیجهٔ نامشخص.
+
+- [x] منطق Cancel در کد fail-closed شده و lock مشترک دارد؛ تست‌های ambiguity و contention اضافه شده‌اند.
+- [ ] اجرای این regressionها روی exact headهای نهایی #863/#869 و #866/#870 و تأیید CI.
