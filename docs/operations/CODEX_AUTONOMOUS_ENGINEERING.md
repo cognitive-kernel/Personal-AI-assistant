@@ -10,7 +10,7 @@ The worker is event-driven and periodic. It is not a model process generating co
 
 The post-concurrency workflow gate reads the current repository Actions variables through the REST API. The workflow's `GITHUB_TOKEN` cannot be granted the repository `Variables: read` permission, and a newly provisioned non-administrator Runner account is not assumed to inherit the installer's GitHub CLI login.
 
-Before enabling autonomous execution, create a fine-grained token restricted to this repository with **Variables: read** and save it as the repository Actions secret `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` (GitHub repository → Settings → Secrets and variables → Actions). The workflow uses this token only for read-only repository identity and Pause/Mode variable GET requests. All other workflow/controller operations continue to use the separate `GITHUB_TOKEN`.
+Before enabling autonomous execution, create a fine-grained token restricted to this repository with **Variables: read** and save it as the repository Actions secret `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` (GitHub repository → Settings → Secrets and variables → Actions). The post-concurrency PowerShell gate, the Python cycle controller, and the Python recovery coordinator use this token only for read-only repository identity and Pause/Mode variable GET requests. All other workflow/controller operations continue to use the separate `GITHUB_TOKEN`. The cycle controller removes the secret from its process environment before launching Codex, so the model subprocess does not inherit it.
 
 If the secret is missing, cannot read variables, or returns malformed settings, the live gate fails closed and starts no task. Never put the token in source files, workflow inputs, issues, logs, or chat.
 
