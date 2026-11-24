@@ -1,3 +1,16 @@
+## 2026-11-24 — live audit: Autonomous Engineering UI to Runner/Codex
+
+- Captured the live main baseline at `8a879d0962b00897744e114ff7297e5c6228ff1d`.
+- Inspected the Persian RTL page, all six UI JavaScript modules, the API router, the browser E2E suite, the current workflow files, and the two governing engineering prompts.
+- Inventory: 7 UI assets/modules, 13 API routes, and 21 browser tests specifically named for Autonomous Engineering. The browser-e2e workflow runs the marked browser suite and uploads browser evidence.
+- Live main checks: 10/11 succeeded; autonomous Codex job in run `45413836616` was queued. No active run or durable state was modified.
+- Open PR dependency chain: #863 -> #869 and #866 -> #870 -> #872. #872 exact head `476bcdc76c777457131224c017ea48520fe1ccee` has 8 successful checks, including Windows full tests, Windows storage regressions, browser E2E, bootstraps and pip-audit; however it is stacked on #870, while its chain starts from the older `3d1e843...` main base. #863/#866/#869/#870 have no check-runs on their current heads. Do not merge/rebase/delete these branches until the complete dependency diffs and current-main conflicts are reconciled.
+- Owner-confirmed engineering model: `gpt-oss:20b`. Actual live repository model variable and complete host inventory remain unverified from this connection.
+- The detailed inventory, endpoint/control map, state-flow table, evidence and acceptance gaps are in `docs/UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md`.
+- Next work is restricted to this module: reconcile PR dependencies without losing healthy changes; prove state/lease/lock/recovery invariants; complete browser fault-injection coverage; then obtain real Windows host acceptance from UI through Ollama/Codex/Runner/GitHub PR. No claims of target-host operational success are made by this static/GitHub audit.
+
+---
+
 ## 2026-11-24 — bound job-level inspection during emergency cancellation
 
 - The job-level Codex ownership check now inspects only workflow runs reported in_progress, not every queued run.
