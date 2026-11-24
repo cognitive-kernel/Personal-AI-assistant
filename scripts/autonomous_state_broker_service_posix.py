@@ -42,10 +42,11 @@ CLEANUP_NAMES = (
 
 
 class BrokerFailure(Exception):
-    def __init__(self, status: int, code: str):
+    def __init__(self, status: int, code: str, blockers: list[str] | None = None):
         super().__init__(code)
         self.status = status
         self.code = code
+        self.blockers = list(blockers or [])
 
 
 class RestrictedStateBroker:
@@ -422,7 +423,7 @@ class RestrictedStateBroker:
             if path.endswith("/acquire"):
                 if pending is not None:
                     if now < pending["lease_expires_at"]:
-                        raise BrokerFailure(409, "dispatch_admission_conflict")
+                        raise BrokerFailure(409, "dispatch_admission_conflict", ["dispatch_reservation_active"])
                     # An expired caller may have dispatched before it died.
                     # Start a fresh grace interval from lease recovery.
                     last_accepted = max(last_accepted, now)
@@ -433,7 +434,7 @@ class RestrictedStateBroker:
                         "pending": None,
                     })
                 if last_accepted and (now < last_accepted or now - last_accepted < 30.0):
-                    raise BrokerFailure(409, "dispatch_admission_conflict")
+                    raise BrokerFailure(409, "dispatch_admission_conflict", ["dispatch_recently_accepted"])
                 next_state = {
                     "schema_version": 1,
                     "last_accepted_at": last_accepted,
@@ -637,7 +638,7 @@ class RestrictedStateBroker:
                 return 200, self.dispatch_admission(path, body)
             except BrokerFailure as exc:
                 if exc.status == 409:
-                    return 409, {"conflict": True, "message": exc.code, "blockers": [exc.code]}
+                    return 409, {"conflict": True, "message": exc.code, "blockers": exc.blockers or [exc.code]}
                 raise
         if "body" in request:
             raise BrokerFailure(400, "request_body_not_supported")
