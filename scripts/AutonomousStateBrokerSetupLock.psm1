@@ -73,7 +73,8 @@ function Enter-AutonomousStateBrokerSetupMutex {
     }
 
     $markerPresent = Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $MarkerRegistrySubKey
-    if ($markerPresent -and -not $AcknowledgeAbandoned) {
+    $processRecoveryBlock = ([string]$env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -eq "true")
+    if (($markerPresent -or $processRecoveryBlock) -and -not $AcknowledgeAbandoned) {
         throw "A previous elevated state-broker setup left an unacknowledged recovery marker. Inspect broker health, service state, and ACL integrity, then rerun with -AcknowledgeAbandonedSetup."
     }
 
@@ -99,7 +100,14 @@ function Enter-AutonomousStateBrokerSetupMutex {
             # Persist the recovery requirement before releasing the abandoned
             # mutex. This prevents same-process recursive acquisition from
             # bypassing the explicit acknowledgement requirement.
-            Set-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $MarkerRegistrySubKey
+            try {
+                Set-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $MarkerRegistrySubKey
+            } catch {
+                # If HKLM marker persistence is denied, keep the mutex owned and
+                # block same-process re-entry with a process-scoped fail-closed flag.
+                $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+                throw "Could not persist the protected abandoned-setup marker. This PowerShell process remains fail-closed; close it before retrying with -AcknowledgeAbandonedSetup. $($_.Exception.GetType().Name)"
+            }
             try { $mutex.ReleaseMutex() } finally {
                 $mutex.Dispose()
                 $mutex = $null
