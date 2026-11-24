@@ -55,12 +55,9 @@ _STATUS_EXECUTOR = ThreadPoolExecutor(
 _STATUS_EXECUTOR_SLOTS = threading.BoundedSemaphore(_STATUS_EXECUTOR_MAX_WORKERS)
 _STATUS_LOGGER = logging.getLogger(__name__)
 
-# Serialize UI-originated workflow dispatches within the local API process. The
-# durable pending-task marker and GitHub workflow concurrency remain the
-# cross-process/restart safety layer.
+# Fast local contention guard; the protected State Broker owns the
+# cross-process, restart-durable dispatch reservation and grace window.
 _DISPATCH_REQUEST_LOCK = threading.Lock()
-_DISPATCH_VISIBILITY_GRACE_SECONDS = 15.0
-_LAST_DISPATCH_ACCEPTED_AT = 0.0
 
 _HTTP_ERROR_CODES = {
     400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
@@ -791,7 +788,6 @@ def _has_open_autonomous_pr(gh: str) -> bool:
 
 
 def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_id: str, resume_once: bool = False) -> dict[str, Any]:
-    global _LAST_DISPATCH_ACCEPTED_AT
     if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
         raise HTTPException(
             status_code=409,
