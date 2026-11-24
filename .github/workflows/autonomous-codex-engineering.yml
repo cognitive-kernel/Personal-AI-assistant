@@ -841,6 +841,13 @@ jobs:
             Authorization = "Bearer $env:GH_TOKEN"
             "X-GitHub-Api-Version" = "2022-11-28"
           }
+          # Verify that the token can see this repository before treating a
+          # variable-endpoint 404 as an intentionally unset variable.
+          $repositoryUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY"
+          $repositoryMetadata = Invoke-RestMethod -Method Get -Uri $repositoryUri -Headers $headers -TimeoutSec 15
+          if ([string]$repositoryMetadata.full_name -ine $env:GITHUB_REPOSITORY) {
+            throw "Could not verify repository identity. Failing closed; no new task will start."
+          }
           function Get-LiveRepositoryVariable {
             param(
               [string]$Name,
