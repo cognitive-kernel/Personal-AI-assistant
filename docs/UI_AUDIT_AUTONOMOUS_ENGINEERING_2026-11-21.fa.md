@@ -182,3 +182,10 @@
 - در بازبینی مجدد، رویداد cleanup-completed در progress module می‌توانست هنگام busy بودن درخواست جاری refresh را drop کند. follow-up #870 آن را به صف coalesced منتقل می‌کند؛ این اصلاح هنوز exact-head CI نهایی ندارد.
 - گیت‌های میزبان واقعی، از جمله Windows non-admin/UAC، Runner، Broker/ACL، Ollama/Codex و dispatch واقعی، همچنان NOT RUN هستند. بنابراین وضعیت repository CI نباید به‌عنوان پذیرش عملیاتی UI گزارش شود.
 
+
+
+## الحاقیهٔ ممیزی — Cancel ambiguity، 2026-11-24
+
+- بازبینی endpoint نشان داد انتخاب اولین queued candidate یا اولین active run در حالت چندتایی می‌تواند اجرای اشتباه را لغو کند؛ همچنین Cancel می‌توانست با Dispatch/Resume هم‌زمان اجرا شود.
+- اصلاح فعلی lock مشترک را اعمال می‌کند و در چند Codex job فعال، چند candidate صف‌شده یا چند workflow بدون هدف یکتا fail-closed است. fallback فقط برای یک workflow فعال مجاز است.
+- تست‌های regression اضافه شده‌اند؛ تا اجرای exact-head CI و Windows target-host، این اصلاح هنوز پذیرش نهایی ندارد.
