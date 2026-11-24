@@ -25,7 +25,10 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "def _live_pause_enabled(client: GitHubActionsClient)" in policy
     assert '"/actions/variables/AUTONOMOUS_ENGINEERING_MODE"' in policy
     assert '"/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"' in policy
-    assert "Recovery fails closed" in policy
+    assert "Recovery failed closed" in policy
+    assert policy.index("if _live_execution_mode(client)") < policy.index("time.sleep(delay_seconds)")
+    assert policy.rindex("if _live_execution_mode(client)") > policy.index("time.sleep(delay_seconds)")
+    assert policy.rindex("if _live_pause_enabled(client)") > policy.index("time.sleep(delay_seconds)")
     assert "AUTONOMOUS_ENGINEERING_MODE:" not in workflow
     assert "AUTONOMOUS_ENGINEERING_PAUSED:" not in workflow
 
