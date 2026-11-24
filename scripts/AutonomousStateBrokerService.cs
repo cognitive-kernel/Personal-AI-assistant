@@ -1456,6 +1456,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             accepted = (Boolean)body["accepted"];
         }
 
+        int responseStatus = 200;
         try
         {
             result = WithStateLock(delegate
@@ -1498,7 +1499,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
                         if (now < expiresAt)
                         {
-                            status = 409;
+                            responseStatus = 409;
                             return new Dictionary<string, object> {
                                 { "conflict", true }, { "message", "dispatch_admission_conflict" },
                                 { "blockers", new[] { "dispatch_reservation_active" } }
@@ -1528,7 +1529,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                         } }
                     };
                     WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(next)));
-                    status = 200;
+                    responseStatus = 200;
                     return new Dictionary<string, object> { { "acquired", true }, { "last_accepted_at", lastAccepted }, { "lease_seconds", 120 } };
                 }
 
@@ -1548,6 +1549,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 status = 200;
                 return new Dictionary<string, object> { { "completed", true }, { "last_accepted_at", lastAccepted } };
             }, 2000);
+            status = responseStatus;
             if (result is Dictionary<string, object>)
             {
                 Dictionary<string, object> response = (Dictionary<string, object>)result;
