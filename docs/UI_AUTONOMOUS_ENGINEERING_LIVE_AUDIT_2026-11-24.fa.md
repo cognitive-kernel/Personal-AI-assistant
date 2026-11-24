@@ -130,3 +130,26 @@ UI مهندسی مدل انتخابی را از وضعیت تنظیمات GitHub
 ## 9. محدودیت ادعا
 
 این snapshot فقط ثابت می‌کند کد، UI، API، تست‌ها و وضعیت GitHub در SHAهای فوق چه وضعی دارند. این snapshot اثبات نمی‌کند که برنامه روی رایانهٔ مالک اکنون نصب و آماده است یا یک task واقعی از مرورگر تا PR موفق شده است.
+
+## 10. تحلیل تعارض و هم‌پوشانی PRها با main
+
+سه commit جدید main نسبت به base قدیمی PRهای #863 و #866 عبارت‌اند از:
+
+- `b2e058771f6dc2ef191839483b5971503bdbbe8e`: serialization refreshهای status پس از mutation و regression مرورگر؛
+- `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1`: انتخاب run فعال بر اساس job واقعی Codex و محدودسازی تعداد بررسی‌ها برای cancel؛
+- `8a879d0962b00897744e114ff7297e5c6228ff1d`: ارتقای `actions/setup-node` به 7.1.0.
+
+این سه commit هشت فایل را تغییر داده‌اند؛ از جمله `app/autonomous_engineering.py`، `app/static/autonomous-engineering-status.js`، workflow مهندسی و تست‌های backend/browser. این دقیقاً با فایل‌های تغییرکرده در PRهای قدیمی هم‌پوشانی دارد؛ بنابراین `mergeable=false` در #863 و #866 صرفاً یک هشدار ظاهری نیست و انتقال باید با حل معنایی تغییرات انجام شود.
+
+هم‌پوشانی فایل‌های PRها نیز گسترده است:
+
+| جفت PR | تعداد فایل مشترک | نمونهٔ حساس |
+|---|---:|---|
+| #863 / #869 | 17 | Broker executable/hash، installer، backend، تست Windows |
+| #863 / #866 | 8 | backend، تست‌ها، runbook و وضعیت پروژه |
+| #863 / #872 | 15 | backend، Broker، UI controls/core/status/HTML و تست‌ها |
+| #866 / #870 | 15 | workflow، backend، cycle/recovery و تست‌ها |
+| #866 / #872 | 10 | backend، cycle، recovery و تست‌ها |
+| #870 / #872 | 13 | backend، status/progress UI، cycle/recovery و browser tests |
+
+**نتیجهٔ فنی:** ادغام مستقل یا حذف هرکدام از این PRها ممکن است بخشی از اصلاحات وابسته را از بین ببرد. قبل از هر rebase/merge باید diffهای هر جفت در فایل‌های مشترک بررسی شود، به‌ویژه ترتیب #863→#869 و #866→#870→#872. سپس یک شاخهٔ integration از main فعلی ساخته و تغییرات به‌صورت منطقی و قابل آزمون منتقل شوند؛ هیچ PR یا branch قدیمی تا پایان تطبیق حذف نشود.
