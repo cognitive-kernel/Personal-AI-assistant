@@ -464,9 +464,12 @@ def publish_command(args: argparse.Namespace) -> int:
 
 def run_cycle(args: argparse.Namespace) -> int:
     token = os.environ.pop("GH_TOKEN", "")
+    settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
     repo = os.environ.get("GH_REPO", "")
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
+    if not settings_token:
+        raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is required; no task will start.")
 
     state_dir = _autonomous_state_dir()
     with durable_state_lock(state_dir):
@@ -499,7 +502,7 @@ def run_cycle(args: argparse.Namespace) -> int:
                 status="completed",
             )
             snapshot(args.run_id, args.run_attempt)
-            if _dispatch_next_cycle_if_enabled(token, repo, args):
+            if _dispatch_next_cycle_if_enabled(token, repo, args, settings_token=settings_token):
                 print(
                     f"Recovered owner-merged PR #{recovered['number']}; "
                     "next cycle dispatched after live Pause/mode verification."
@@ -875,9 +878,9 @@ def run_cycle(args: argparse.Namespace) -> int:
     return 0
 
 
-def _verify_repository_access(token: str, repo: str) -> None:
+def _verify_repository_access(settings_token: str, repo: str) -> None:
     try:
-        metadata = api(token, repo, "GET", "")
+        metadata = api(settings_token, repo, "GET", "")
     except RuntimeError as exc:
         raise RuntimeError(
             "Could not verify repository access; no automatic task will start."
@@ -890,12 +893,12 @@ def _verify_repository_access(token: str, repo: str) -> None:
 
 
 
-def _live_pause_enabled(token: str, repo: str) -> bool:
-    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-        raise RuntimeError("A valid workflow token and repository are required to verify the live Pause setting.")
-    _verify_repository_access(token, repo)
+def _live_pause_enabled(settings_token: str, repo: str) -> bool:
+    if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid read-only Variables token and repository are required to verify the live Pause setting.")
+    _verify_repository_access(settings_token, repo)
     try:
-        setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+        setting = api(settings_token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
             return False
@@ -910,12 +913,12 @@ def _live_pause_enabled(token: str, repo: str) -> bool:
     return value == "true"
 
 
-def _live_execution_mode(token: str, repo: str) -> str:
-    if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
-        raise RuntimeError("A valid workflow token and repository are required to verify the live execution mode.")
-    _verify_repository_access(token, repo)
+def _live_execution_mode(settings_token: str, repo: str) -> str:
+    if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid read-only Variables token and repository are required to verify the live execution mode.")
+    _verify_repository_access(settings_token, repo)
     try:
-        setting = api(token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+        setting = api(settings_token, repo, "GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
             return "continuous"
@@ -930,13 +933,20 @@ def _live_execution_mode(token: str, repo: str) -> str:
     return value
 
 
-def _dispatch_next_cycle_if_enabled(token: str, repo: str, args: Any) -> bool:
-    if getattr(args, "mode", None) != "continuous":
-        return False
+def _dispatch_next_cycle_if_enabled(
+    token: str,
+    repo: str,
+    args: Any,
+    *,
+    settings_token: str | None = None,
+) -> bool:
+    # The live repository setting, not the workflow-start snapshot, is the
+    # authority for whether a completed owner-merged task may chain.
+    settings_token = (settings_token or os.environ.get("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")).strip()
     try:
-        if _live_execution_mode(token, repo) != "continuous":
+        if _live_execution_mode(settings_token, repo) != "continuous":
             return False
-        if _live_pause_enabled(token, repo):
+        if _live_pause_enabled(settings_token, repo):
             return False
     except RuntimeError as exc:
         print(f"Live mode/Pause could not be verified; suppressing next-cycle dispatch: {exc}")
@@ -975,11 +985,12 @@ def main() -> int:
         with timed_stage("cycle_total"):
             try:
                 token = os.environ.get("GH_TOKEN", "").strip()
+                settings_token = os.environ.get("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
                 repo = os.environ.get("GH_REPO", "").strip()
-                if _live_pause_enabled(token, repo):
+                if _live_pause_enabled(settings_token, repo):
                     print("Safe pause became active after repository execution admission; no task was started.")
                     return 0
-                live_mode = _live_execution_mode(token, repo)
+                live_mode = _live_execution_mode(settings_token, repo)
                 event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip().lower()
                 try:
                     recovery_attempt = int(os.environ.get("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0"))
