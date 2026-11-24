@@ -250,4 +250,4 @@ If the state tree or service identity is ambiguous, stop and preserve the state 
 
 ### PowerShell host compatibility for State Broker repair
 
-The State Broker setup always performs Windows service and ACL work under the inbox Windows PowerShell 5.1 host. If the app or its parent terminal is running PowerShell 7, the setup re-launches the script in Windows PowerShell before loading the Security module. This avoids cross-edition `PSModulePath` collisions that can make `Microsoft.PowerShell.Security` fail with duplicate `ObjectSecurity` type-data members. If the Windows PowerShell host cannot be started, setup stops before changing service or ACL state.
+The State Broker setup discovers a compatible PowerShell host by testing the required modules and commands, rather than requiring a particular major version. During elevation it relaunches the same host executable and temporarily restricts module discovery to that host's own PSHOME/Modules. The Security module performs the same scoped import and restores the prior PSModulePath afterwards, preventing custom or inherited module paths from another edition from injecting duplicate ObjectSecurity type data.
