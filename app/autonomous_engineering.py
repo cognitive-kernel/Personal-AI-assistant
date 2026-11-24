@@ -802,9 +802,10 @@ def dispatch_autonomous_engineering(
             headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_IN_PROGRESS", "X-Retryable": "false"},
         )
     try:
+        recent_acceptance_at = max(_LAST_DISPATCH_ACCEPTED_AT, _LAST_RESUME_ACCEPTED_AT)
         if (
-            _LAST_DISPATCH_ACCEPTED_AT
-            and time.monotonic() - _LAST_DISPATCH_ACCEPTED_AT < _DISPATCH_VISIBILITY_GRACE_SECONDS
+            recent_acceptance_at
+            and time.monotonic() - recent_acceptance_at < _DISPATCH_VISIBILITY_GRACE_SECONDS
         ):
             raise HTTPException(
                 status_code=409,
