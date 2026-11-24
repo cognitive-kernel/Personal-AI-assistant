@@ -22,6 +22,7 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "python scripts/autonomous_engineering_recovery.py" in workflow
     assert "FAILED_RUN_ID:" in workflow
     assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in workflow
+    assert "github.event.workflow_run.head_branch == 'main'" in workflow
     policy = (
         Path(__file__).resolve().parents[1]
         / "scripts" / "autonomous_engineering_recovery.py"
