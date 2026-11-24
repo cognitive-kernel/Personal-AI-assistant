@@ -1,3 +1,10 @@
+## 2026-11-24 — mainline regression preservation in stacked follow-ups
+
+- The child branches are being reconciled with mainline PR #864 (serialized status refresh) and PR #867 (job-aware Cancel), both merged with exact-head CI green.
+- #869/#870 remain stacked on parent branches #863/#866. Their base updates must be integrated before merge; current child exact-head CI and target-host validation remain pending.
+
+---
+
 ## 2026-11-24 — replace the unprovisioned Runner CLI assumption with a dedicated read-only credential
 
 ### Follow-up audit and correction
