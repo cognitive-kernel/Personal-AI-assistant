@@ -1,40 +1,108 @@
-## 2026-11-24 — bound job-level inspection during emergency cancellation
+## 2026-11-24 — mainline changes retained in the consolidated engineering branch
 
-- The job-level Codex ownership check now inspects only workflow runs reported in_progress, not every queued run.
-- If more than five workflow runs are simultaneously reported in_progress, cancellation fails closed with 409 rather than making an unbounded series of GitHub CLI calls.
-- When no Codex job is executing, the endpoint falls back to a queued Codex candidate found among preflight runs, then to the newest queued workflow.
-- Per-run job inspection has a five-second command deadline. Regression coverage verifies queued-only fallback and the fail-closed inspection bound.
+- The branch is based on current main, retaining the merged PR #864 fix that serializes authoritative UI status refreshes after concurrent mutations.
+- The branch also retains the merged PR #867 cancellation logic: it inspects the Codex job state before cancelling and does not cancel a newer workflow whose Codex job is merely waiting for the concurrency slot.
+- Broker setup, PowerShell security-module isolation, elevated-child named-mutex ownership, cleanup diagnostics, and the guard against pulling generated Codex context aliases are integrated alongside those mainline fixes.
+- The combined branch has not yet passed exact-head CI. Linux/Windows full suites, Windows storage, Browser E2E, CodeQL, dependency audit, and target-host Windows acceptance remain required before merge.
 
 ---
 
-## 2026-11-24 — select the actual Codex job when cancelling queued workflow runs
+## 2026-11-24 — preserve State Broker cleanup failure diagnostics
 
-### Additional root cause
-- Workflow-run status can be `in_progress` while a newer run is still executing its schedule gate and its `codex` job is queued behind the job-level concurrency group. Workflow-run status alone can therefore still select the wrong run.
+### User-host evidence
+- The local UI reported `AUTONOMOUS_ENGINEERING_UNAVAILABLE` while cleanup said durable state was preserved. The cleanup API caught every broker `RuntimeError` and returned only its class name, concealing whether the local named pipe was absent, timed out, denied, or the service rejected the operation.
+- The C# broker cleanup route could also let an I/O/ACL exception escape to the generic worker loop. That closed the named pipe without a protocol response, making the Python client observe only a broken-pipe/transport error.
 
-### Correction
-- The cancel endpoint now inspects `gh run view --json jobs` and selects the run whose `codex` job is actually `in_progress`.
-- If no Codex job is executing, it falls back to a queued Codex job, then to the first active preflight run.
-- Failure to retrieve or parse job state fails closed; the endpoint does not guess which workflow to cancel.
-- Added a regression with two workflow runs both reported `in_progress`, where the newer run has a queued Codex job and the older run owns the active Codex job.
+### Corrections
+- The API now preserves a bounded, broker-originated diagnostic (for example the Win32 error number or protocol error code), returns the specific code `AUTONOMOUS_ENGINEERING_BROKER_UNAVAILABLE`, marks the operation retryable, and logs the diagnostic with the existing correlation ID.
+- The broker service now catches cleanup-operation exceptions and returns a bounded protocol error code: access denied, missing state directory, unverified durable state, lock timeout, I/O failure, or generic cleanup failure. It does not send local paths or raw exception messages over the pipe.
+- Added regressions for the API correlation/diagnostic contract and for a protocol response on cleanup exceptions.
+- Restored the setup script's elevation preamble: it relaunches the exact selected PowerShell executable, isolates the child `PSModulePath`, forwards operator acknowledgement, and acquires the machine-wide setup mutex before service/ACL work. No forced PowerShell 5.1 switch remains.
 
 ### Validation boundary
-- Exact-head Linux/Windows tests and target-host GitHub CLI behavior remain required. No workflow was cancelled by this source change.
+- The prior Windows report still indicates the user's Broker was not installed/ready. These source fixes do not claim that the local machine service is repaired; exact-head Windows CI and target-host setup/health verification remain required.
+- No task, checkpoint, current progress, history, Runner service, ACL, database, or shared-state content was deleted or rewritten by these source changes.
 
 ---
 
-## 2026-11-24 — cancel the executing workflow before newer queued runs
+## 2026-11-24 — isolate Windows Security module loading to the active PowerShell edition
+
+### User-host reproduction
+- The Windows startup report showed Microsoft.PowerShell.Security failing during broker setup with duplicate System.Security.AccessControl.ObjectSecurity extended type-data members. The prior implementation filtered a few known PowerShell 7 directories from PSModulePath, which was not exhaustive and could leave custom or inherited paths from another edition.
+
+### Correction
+- AutonomousWindowsIdentity.psm1 now temporarily limits module discovery to the active host's own PSHOME/Modules while importing Microsoft.PowerShell.Security, then restores the caller's PSModulePath.
+- The broker's elevated child retains the selected compatible PowerShell edition and receives the same host-local module path. This avoids forcing Windows PowerShell 5.1 when a tested PowerShell Core host exposes the required capabilities.
+- Added a regression contract for module-path isolation and ordering. Existing Windows CI exercises both Windows PowerShell 5.1 with contaminated inherited paths and PowerShell Core imports.
+
+### Validation boundary
+- This is the code-level correction for the exact reported TypeData failure. Exact-head CI and a retry on the user's target host are still required before declaring the Broker repaired.
+- No service, ACL, Runner registration, task, checkpoint, database, or durable state was changed by this source update.
+
+---
+
+## 2026-11-24 — make PR #863 Windows validation deterministic
+
+### CI findings
+- Windows full-suite failures included a stale expected warning string, PATH-discovery tests that accidentally included real registry-installed PowerShell Core hosts, and an ACL rollback assertion that treated Windows' DACL auto-inherited control flag as an ACE mutation.
+
+### Corrections
+- Align the installer regression assertion with the actual rollback warning.
+- Isolate PATH-only PowerShell tests from host registry discovery while preserving the dedicated registry-discovery test.
+- Normalize only the DACL `AI` control flag during the rollback comparison; owner, group, and all ACE data remain exact.
+
+### Validation boundary
+- These changes correct test contracts and do not modify machine ACLs, services, or registry state.
+- PR #863 exact-head Linux/Windows and Windows storage CI must be rerun.
+
+---
+
+## 2026-11-24 — isolate PATH PowerShell discovery tests from the host registry
+
+### CI finding
+- Three Windows discovery tests were intended to test mocked PATH candidates, but the hosted Windows runner also exposed real PowerShell Core registry installations. Those extra candidates were correctly discovered by production code and accidentally accepted by the test's permissive fake probe, making the tests depend on runner configuration.
+
+### Correction
+- The shared PATH-test helper now stubs `winreg` as unavailable; the explicit registry-discovery test continues to use its own fake registry.
+- The Desktop-only discovery test applies the same isolation.
+- Production discovery behavior is unchanged.
+
+### Validation boundary
+- The exact-head Windows full-suite run must confirm the isolation.
+- No runtime configuration or machine registry was changed.
+
+---
+
+## 2026-11-24 — stabilize Windows broker mutex and ACL rollback regressions
+
+### CI findings
+- The first named-mutex integration test terminated the entire PowerShell process and expected `AbandonedMutexException`; the Windows runner did not observe the expected condition in that harness. The revised regression launches a child PowerShell process from a parent, terminates only the parent (the timeout/orphan scenario), verifies a competing process still cannot acquire the mutex, then lets the child's dedicated .NET owner thread exit without releasing it and verifies `AbandonedMutexException` while the child process remains alive.
+- The static release assertion selected the nested `finally` that resets a Boolean rather than the outer mutex finalizer. It now verifies release and disposal ordering in the complete script.
+- The service rollback test expected wording that no longer matched the actual warning; it now asserts the real warning emitted when `sc.exe config` restoration fails.
+- Windows ACL rollback added the OS-maintained DACL auto-inherited control flag (`D:AI`) while preserving owner/group and ACE entries. The integration assertion now normalizes only that flag and compares the remaining SDDL exactly.
+
+### Validation boundary
+- Exact-head Windows full-suite and storage-regression reruns are required.
+- No service, ACL, Runner registration, task, checkpoint, or durable state was modified.
+
+---
+
+## 2026-11-24 — serialize elevated State Broker setup across parent timeout
 
 ### Root cause
-- `gh run list` returns recent runs first. The cancel endpoint selected the first run in any active state, so a newer queued run could be cancelled while an older `in_progress` workflow continued executing the actual engineering task.
+- Python holds a same-user cross-process setup lock, but the Windows installer launches a separate UAC-elevated PowerShell child with `Start-Process -Wait`.
+- If the Python timeout terminates the non-elevated parent, the elevated child may continue. The Python lock is released while the child can still stop Runner services or reconcile machine ACLs.
 
 ### Correction
-- The endpoint now selects an `in_progress` workflow run first and only falls back to queued/waiting/requested/pending work when no run is executing.
-- Added a regression where the newest run is queued and the older run is in progress; cancellation must target the in-progress run.
+- The elevated child now acquires a machine-wide named mutex before importing installer modules, querying Runner services, or changing service/ACL state.
+- A concurrent elevated setup fails closed without starting mutations.
+- An abandoned mutex is treated as an interrupted machine-state transaction and fails closed for explicit inspection; it is not silently treated as a clean lock release.
+- The child releases and disposes the mutex in a script-level `finally`, while Windows also releases ownership if the child process terminates.
 
 ### Validation boundary
-- Exact-head tests and Windows/browser CI are required. This selection is based on workflow-run status; if GitHub reports multiple in-progress runs, the endpoint still chooses the first in list order and a later audit should inspect job-level concurrency state.
-- No workflow was cancelled and no task/checkpoint/durable state was modified by this source update.
+- Added a static portability regression contract proving mutex acquisition precedes all service/ACL mutation paths and that abandoned-owner and release paths remain present.
+- This source-level regression does not replace execution on a Windows target host. Exact-head Windows CI and a real parent-timeout/elevated-child integration test remain required.
+- No Runner service, ACL, task, checkpoint, database, or durable state was modified by this source change.
 
 ---
 
@@ -2441,29 +2509,125 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
 
 
-## 2026-11-24 — serialize Autonomous Engineering post-mutation status refreshes
+## 2026-11-23 — Autonomous Engineering: PowerShell runtime portability
 
 ### Root cause
-- `refreshAfterMutation()` waited for the current status poll before starting a fresh read, but did not serialize multiple mutation refreshes that were waiting on the same poll. If two controls completed while one status request was in flight, both continuations could start independent status requests. Their responses could overlap and a slower snapshot could overwrite a newer UI state.
+- The Windows broker bootstrap in `run.py` only searched for `powershell.exe`; it could not use an otherwise compatible PowerShell Core-only installation.
+- The elevated relaunch in `ensure_autonomous_state_broker.ps1` constructed `$PSHOME\\powershell.exe`, which is not the PowerShell Core executable. The legacy progress-repair entry point and optional Windows GPU telemetry also hard-coded `powershell.exe`.
+- Broker status UI text incorrectly suggested that an absent Runner was a reason to run broker setup, even though the broker is intentionally independent of Runner registration.
 
-### Correction
-- Added a mutation-refresh queue in `app/static/autonomous-engineering-status.js`. Each post-mutation read now waits for the preceding mutation refresh and any pre-existing poll before issuing its authoritative status request.
-- Added a Playwright regression that holds the pre-mutation poll open, completes two mutation refresh requests concurrently, and asserts that no more than one status request is active and that the final snapshot is refreshed after both mutations.
+### Changes prepared on `fix/autonomous-engineering-powershell-portability-20261123`
+- Added shared, capability-based PowerShell discovery: PATH plus registered Core installation locations; runtime edition/version is probed before use, and broken candidates are skipped.
+- Reused the current PowerShell process executable for elevated and compatibility relaunches instead of reconstructing a host filename from `$PSHOME`.
+- Scoped `PSModulePath` to the active host's inbox modules only while importing `Microsoft.PowerShell.Security`, then restored the caller environment.
+- Made optional Windows GPU telemetry try the discovered hosts in order and fall back when a candidate cannot execute the query.
+- Corrected broker setup guidance and added focused regression tests plus a Windows PowerShell Core CI probe.
 
-### Evidence boundary
-- Branch: `fix/autonomous-engineering-status-refresh-serialization-20261124`, based on main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
-- Browser E2E and exact-head CI have not yet run on the updated branch. The fix is not considered verified until those checks pass.
-- No workflow, task, checkpoint, Runner service, database, or durable user state was changed.
-
-
-### 2026-11-24 — Playwright regression harness correction
-
-- The first Browser E2E run correctly failed the new regression, but the failure was in test setup rather than the product fix: the test replaced `fetch` after page load without proving the initial status poll had completed. The test could therefore await an existing request that bypassed the controlled fetch stub and time out.
-- Corrected the harness to stub status/runs/progress before navigation, wait for the authoritative limited-readiness state, then stop pollers and start the controlled in-flight request. The test now deterministically owns all status responses used by the race scenario.
-- The initial run also confirmed CodeQL and Windows storage regressions passed; Browser E2E failed only this new test. The revised exact-head CI is pending; no test failure was suppressed or skipped.
+### Verification and residual risk
+- No exact-head CI or target-host installation result is claimed in this entry; both remain pending.
+- The broker installer still compiles `AutonomousStateBrokerService.cs` at install time using .NET Framework `csc.exe`. This consumer-machine compiler dependency remains an open portability defect and must be removed before claiming the Windows broker bootstrap fully portable.
+- No user machine service, ACL, Runner, database, task, checkpoint, or durable state was modified.
 
 
-### 2026-11-24 — browser regression syntax failure and correction
+## 2026-11-23 — Broker packaging: remove target-host compiler dependency
 
-- The second Browser E2E attempt failed during Python test collection: one line of the multi-line `page.wait_for_function` predicate was missing its opening quote. No product code executed in that run.
-- Corrected the predicate string. The next exact-head run must pass Python collection and execute the controlled Playwright race test; this failure remains recorded rather than hidden.
+- The portability contract explicitly forbids requiring `csc.exe` or a developer toolchain on the target host. `AutonomousStateBrokerInstall.psm1` now verifies the packaged `scripts/bin/PersonalAIAssistant.StateBroker.exe` against its SHA-256 manifest, stages a verified copy, and retains the existing atomic replacement/rollback flow. It no longer searches for or invokes a compiler.
+- Windows CI builds the service from `AutonomousStateBrokerService.cs` and uploads the binary plus manifest. The first attempt used the inbox .NET Framework `csc.exe` with `/deterministic+`; the actual Windows runner rejected that option (CS2007). The CI-only build was changed to use Roslyn `csc.dll` from the installed .NET SDK against .NET Framework reference assemblies.
+- The generated artifact is not yet committed in this log's current state. The final package must be committed, CI must compare its hash with a fresh source build, and the live LocalService/named-pipe regression must pass before the installer change is considered complete.
+- Target-host installation and preservation acceptance remain pending; no user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
+
+
+### 2026-11-23 — CI build correction: use SDK-style net48 project
+
+- The manual Roslyn invocation could not reliably locate a complete .NET Framework reference directory on the hosted Windows image. The build now uses `scripts/AutonomousStateBrokerService.csproj`, targets `.NET Framework 4.8`, and pins `Microsoft.NETFramework.ReferenceAssemblies.net48` to `1.0.3` as a CI build input.
+- The target host still receives only the verified executable and SHA-256 manifest; no SDK, compiler, or reference-assembly package is required there. Exact-head CI must still prove the project builds and the live LocalService broker starts successfully.
+
+
+## 2026-11-23 — Exact package test and portability gates
+
+- The CI build produced and uploaded `PersonalAIAssistant.StateBroker.exe` plus its SHA-256 manifest. The Windows checkpoint watcher startup/stop/recovery and fault-injection tests passed; PowerShell 5.1 and Core module probes, protected ACL test, and the live LocalService/named-pipe test also passed in that run.
+- The Linux suite reported 2,587 passed and one failure; the Windows account-identity portability test had the same single failure. Both failures were a stale static assertion expecting a literal `.exe.sha256` path even though the installer correctly constructs it as `$packagedExe + ".sha256"`. The assertion has been corrected; the exact-head rerun remains required.
+- The live service test is being changed to consume the exact hash-verified CI package rather than independently compiling the C# source. Both PowerShell Desktop and Core will exercise that package.
+- The final CI build is pinned to .NET SDK `10.0.404` and `Microsoft.NETFramework.ReferenceAssemblies.net48` `1.0.3`. The generated binary must be committed, then CI must compare a fresh deterministic build with the committed package hash.
+- The target machine requires .NET Framework 4.8 or later and a supported PowerShell host for service installation; it does not require a compiler or SDK. A PowerShell-free native installer and signed build provenance remain explicit future portability gaps.
+- No user machine service, ACL, Runner, task, checkpoint, or durable data was modified.
+
+
+### 2026-11-23 — Remove the PowerShell major-version gate
+
+- The runtime probe no longer requires Desktop 5.1 or Core 7.0 by numeric comparison and no longer rejects prerelease labels by themselves. It reports Edition/Version for diagnostics, then verifies the actual required modules/cmdlets, `Start-Process -Verb`, process executable path, registry API, `sc.exe`, and `icacls.exe`.
+- Core remains preferred over Desktop, but any Core/Desktop version that passes the capability probe is eligible. Unit coverage explicitly accepts Core 6.2 when the probe succeeds, and separately falls back when Core fails a required capability. This directly removes the fixed PowerShell major-version dependency.
+
+
+### 2026-11-23 — Capability-only host probe and signed build provenance
+
+- Removed the hard-coded PowerShell Core 7.0 floor and prerelease rejection. The host probe now checks required modules/cmdlets, `Start-Process -Verb`, current executable path, registry API, `sc.exe`, and `icacls.exe`; Edition/Version are diagnostic only. Core 6.2 is explicitly accepted by a unit test when the capability probe succeeds.
+- The Windows live broker test no longer compiles source with `csc.exe`; it verifies the CI package and staged copy by SHA-256, then exercises that exact binary under both PowerShell Core and Windows PowerShell Desktop. The Desktop step also verifies same-host process relaunch.
+- CI now requests GitHub artifact attestations for the broker executable. This establishes signed build provenance; the target installer still verifies the committed SHA-256 manifest and does not independently verify the GitHub attestation.
+- The Windows storage job timeout was increased to accommodate checkpoint fault injection plus both live PowerShell-host broker runs.
+
+
+### 2026-11-23 — Consolidated exact-head validation branch
+
+- Consolidated the capability-only PowerShell probe, net48 prebuilt Broker package, .NET 4.8+ preflight, package-based live service test under Desktop/Core, and CI provenance attestation into the final validation branch.
+- The exact-head workflow is being retriggered from a unique PR head so its Windows package artifact can be committed and compared against a fresh deterministic build. The PR remains Draft; no merge or target-host mutation is authorized by this validation step.
+
+
+### 2026-11-23 — Pin released .NET 11 SDK to match the validated package build
+
+- The earlier successful package build used SDK `11.0.100`, which is the released .NET 11 SDK (not a preview). The CI pin and `scripts/global.json` now use `11.0.100` so the committed executable can be compared byte-for-byte with the same compiler output. .NET 11.0 was released on November 10, 2026 and is supported as an STS release through November 2028. <https://dotnet.microsoft.com/en-us/download/dotnet/latest>
+
+
+## 2026-11-23 — Root-cause follow-up for Broker readiness and Checkpoint UI
+
+### Confirmed causes
+- The user's reported status persists on `main` because the merged commits #851–#853 did not change the Broker installer. The mainline installer still compiled the C# service on the target host via `csc.exe`; this is a developer-toolchain dependency and can prevent service installation. The dashboard then reports storage unavailable and blocks cycle admission because the durable pending-work state cannot be verified.
+- The first portability branch removed target-host compilation but did not commit `scripts/bin/PersonalAIAssistant.StateBroker.exe` and its hash manifest. Without that package, the installer still cannot provision the service. PR #863 adds a CI package bootstrap/commit job and a fresh-build-versus-committed-binary hash gate; this must complete before merge.
+- The setup script previously verified the package only when it reached service installation, after Runner stop and shared-state ACL changes. A missing or corrupt package could therefore fail late. `Get-AutonomousStateBrokerPackage` now performs read-only checks for the package, SHA-256, .NET Framework 4.8+ runtime capability, ProgramData path, and `sc.exe`; setup calls it before Runner discovery/stop and ACL mutation. Installation revalidates immediately before service changes.
+
+### Changes and validation gates
+- Removed the stale requirement for the C# source file in the provisioning package; the target host consumes the prebuilt executable only.
+- Added a regression asserting package preflight precedes Runner service stop and ACL mutation.
+- Updated CI to build into a temporary directory, verify the committed executable against its manifest, and compare the fresh deterministic build byte-for-byte. If the package is not yet committed, the Windows job creates and uploads it; a dependent job commits the verified artifact to this PR branch, after which a new exact-head run must verify it.
+- Fixed the duplicate Windows job timeout key in the workflow and added a browser regression for visible Broker failure reasons.
+- The UI now displays the bounded reason already returned by `pending_work_status` (for example, a safe WinError) in both storage and checkpoint details. It continues to disable dispatch while durable state is unavailable; no fail-open behavior was introduced.
+- PowerShell Edition/Version remain diagnostic only; capability checks select a supported host. This does not yet provide a native no-PowerShell installer. The .NET Framework 4.8+ runtime remains a documented service runtime prerequisite; SDK `11.0.100` is build-only.
+
+### Not yet proven
+- Exact-head Linux/Windows tests, browser E2E, CodeQL, dependency audit, artifact attestation, package commit, and subsequent deterministic hash comparison must pass on the final PR head.
+- Windows target acceptance remains pending: elevated installation, service LocalService identity, named-pipe health, Runner present/absent, non-admin UI, restart/recovery, and preservation of existing durable state.
+- No target machine service, ACL, Runner, task, checkpoint, or durable state was modified by these source changes.
+
+
+## 2026-11-24 — Broker portability, explicit provisioning, and startup safety
+
+### Confirmed code-level blockers
+- The previous `main` installer compiled the Windows Broker on the target host through `csc.exe`; this made a developer/compiler tool an installation dependency.
+- The first prebuilt-installer draft removed that compiler dependency but referenced `scripts/bin/PersonalAIAssistant.StateBroker.exe` and its manifest before either file existed in the repository. The Windows workflow's build block was also syntactically truncated, so it could not reliably produce or commit the package.
+- The old bootstrap searched only for Windows PowerShell's `powershell.exe`, and the UI incorrectly suggested that a missing Runner could prevent Broker setup.
+
+### Corrections in draft PR #863
+- Repaired the Windows workflow: it builds the service with the pinned CI SDK, verifies a fresh SHA-256, stages a package when none is committed, uploads/attests it, and runs the real service/ACL/named-pipe tests. The separate artifact commit job is idempotent. A subsequent exact-head run must prove the fresh build matches the committed binary.
+- Added capability-based discovery for PowerShell Core and Windows PowerShell Desktop. Edition/version are diagnostics; a numeric major-version floor is not used. The same discovered executable is reused for UAC elevation.
+- Changed application startup to a read-only Broker health check. It no longer requests UAC, runs a service installer, stops Runner listeners, or changes ACLs automatically.
+- Added a loopback-protected `POST /api/autonomous-engineering/broker/setup` and a dashboard button. Privileged provisioning begins only after the user clicks the button. UAC cancellation, missing PowerShell, timeout, install failure, and failed post-install health checks have structured error codes.
+- Runner provisioning remains a separate optional capability. No Runner is required to install the LocalService Broker or to open the local dashboard.
+- Added tests for setup locking, capability host selection, no-auto-elevation startup, explicit API action, structured failures, UI action/refresh, and five-minute request timeout.
+
+### Remaining gaps and evidence boundary
+- A native/PowerShell-free Windows service-control and ACL helper is not implemented. Windows Broker provisioning still requires a capability-compatible PowerShell host and the .NET Framework 4.8+ runtime; it does not require the SDK/compiler on the target.
+- The POSIX setup path uses non-interactive `sudo -n`; when credentials require a terminal, the operator must run the platform setup script from a terminal.
+- Exact-head Linux/Windows full suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, deterministic committed-package comparison, and target-host acceptance have not yet been recorded for the final branch head. Earlier green runs do not cover these changes.
+- No user machine service, ACL, Runner, task, checkpoint, database, or durable state was modified.
+
+### Additional startup policy correction — Ollama
+
+- The previous `run.py` startup path could download and execute the Ollama installer, start an existing Ollama runtime, and pull configured models without a fresh user action. This contradicted the local-first/explicit-consent policy.
+- Startup now only discovers the installed Ollama CLI, performs a bounded read-only `ollama list` readiness check, and verifies that the configured models already exist. Missing Ollama, a stopped service, or missing models marks only the Ollama capability unavailable; the local dashboard still starts. The user installs/starts Ollama separately and uses the dashboard's explicit model-download action when needed.
+- Regression tests now assert that startup never downloads an installer, starts a service, or pulls a model.
+
+### Workflow integrity and setup-lock hardening — 2026-11-24
+
+- A second inspection of `.github/workflows/tests.yml` found a duplicate `windows-storage-regressions`/ `runtime-bootstrap` block and orphaned PowerShell lines after the runtime job. The duplicate block was removed; a static regression now asserts each job appears exactly once and no orphaned broker-build fragment follows the final job.
+- Broker setup serialization now combines a thread guard with an OS byte-range/file lock in the per-user temporary directory. The OS lock spans the entire install/repair transaction and is released by the kernel on process exit. A spawned-process regression verifies a second process cannot enter while the first holds the lock. Durable task, repository, and checkpoint locks remain separate and unchanged.
+- This lock serializes app processes for the same OS user; it is not represented as a machine-wide distributed lock or a replacement for the existing durable-state lock.
