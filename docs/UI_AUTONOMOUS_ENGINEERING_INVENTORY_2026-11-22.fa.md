@@ -267,3 +267,11 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - These results close repository CI gates only. Local Windows UI/Runner/Ollama/Codex acceptance remains pending.
 
 ---
+
+
+## الحاقیهٔ 2026-11-24 — race در refresh وضعیت پس از mutation
+
+- **Root cause اثبات‌شده در main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`:** `refreshAfterMutation()` فقط poll موجود را await می‌کرد. اگر دو mutation هنگام اجرای یک poll تمام می‌شدند، هر دو continuation پس از پایان همان poll به‌طور مستقل `refreshStatus()` را اجرا می‌کردند؛ در نتیجه دو snapshot هم‌زمان می‌توانستند UI را با ترتیب پاسخ غیرقابل‌پیش‌بینی به‌روزرسانی کنند.
+- **اصلاح در branch `fix/autonomous-engineering-status-refresh-serialization-20261124`:** refreshهای پس از mutation با `statusMutationRefreshPromise` سریالی شده‌اند. هر refresh منتظر mutation قبلی و poll پیشین می‌ماند و سپس یک درخواست authoritative مستقل اجرا می‌کند.
+- **Regression:** تست Playwright جدید، poll قبلی را معلق نگه می‌دارد، دو refresh پس از mutation را هم‌زمان درخواست می‌کند و حداکثر یک درخواست status فعال و به‌روزرسانی نهایی پس از هر دو mutation را assert می‌کند.
+- **وضعیت:** کد و تست به branch اضافه شده‌اند؛ اجرای Browser E2E و exact-head CI هنوز pending است. Gate D تا عبور تست‌ها بسته نمی‌شود.

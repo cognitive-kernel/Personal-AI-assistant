@@ -2399,3 +2399,31 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Uses the documented Ollama `DELETE /api/delete` method and verifies each deletion by re-reading `/api/tags`; a tag still present after bounded verification fails the preflight.
 - Added an audit-only mode and tests with multiple model families, including Qwen legacy aliases, loaded-model preservation, marker mismatches, and post-delete verification.
 - This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
+
+
+## 2026-11-24 — serialize Autonomous Engineering post-mutation status refreshes
+
+### Root cause
+- `refreshAfterMutation()` waited for the current status poll before starting a fresh read, but did not serialize multiple mutation refreshes that were waiting on the same poll. If two controls completed while one status request was in flight, both continuations could start independent status requests. Their responses could overlap and a slower snapshot could overwrite a newer UI state.
+
+### Correction
+- Added a mutation-refresh queue in `app/static/autonomous-engineering-status.js`. Each post-mutation read now waits for the preceding mutation refresh and any pre-existing poll before issuing its authoritative status request.
+- Added a Playwright regression that holds the pre-mutation poll open, completes two mutation refresh requests concurrently, and asserts that no more than one status request is active and that the final snapshot is refreshed after both mutations.
+
+### Evidence boundary
+- Branch: `fix/autonomous-engineering-status-refresh-serialization-20261124`, based on main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
+- Browser E2E and exact-head CI have not yet run on the updated branch. The fix is not considered verified until those checks pass.
+- No workflow, task, checkpoint, Runner service, database, or durable user state was changed.
+
+
+### 2026-11-24 — Playwright regression harness correction
+
+- The first Browser E2E run correctly failed the new regression, but the failure was in test setup rather than the product fix: the test replaced `fetch` after page load without proving the initial status poll had completed. The test could therefore await an existing request that bypassed the controlled fetch stub and time out.
+- Corrected the harness to stub status/runs/progress before navigation, wait for the authoritative limited-readiness state, then stop pollers and start the controlled in-flight request. The test now deterministically owns all status responses used by the race scenario.
+- The initial run also confirmed CodeQL and Windows storage regressions passed; Browser E2E failed only this new test. The revised exact-head CI is pending; no test failure was suppressed or skipped.
+
+
+### 2026-11-24 — browser regression syntax failure and correction
+
+- The second Browser E2E attempt failed during Python test collection: one line of the multi-line `page.wait_for_function` predicate was missing its opening quote. No product code executed in that run.
+- Corrected the predicate string. The next exact-head run must pass Python collection and execute the controlled Playwright race test; this failure remains recorded rather than hidden.

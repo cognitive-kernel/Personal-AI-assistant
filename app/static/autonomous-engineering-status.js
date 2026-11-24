@@ -59,6 +59,10 @@
     select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
   }
   let statusRefreshPromise = null;
+  // Serialize post-mutation snapshots. When multiple mutations finish while an
+  // older poll is in flight, each continuation must not start a competing
+  // refresh that can overwrite a newer authoritative status snapshot.
+  let statusMutationRefreshPromise = null;
   let dispatchPendingUntil = 0;
   let dispatchUnlockTimer = null;
   let dispatchSubmitting = false;
@@ -109,25 +113,42 @@
     return current;
   }
   async function refreshAfterMutation() {
-    // Wait for any status request that began before the mutation to settle.
-    // Only then reserve a new single-flight request, so stale snapshots can
-    // never satisfy the post-mutation refresh.
-    const previous = statusRefreshPromise;
-    if (previous) {
-      try {
-        await previous;
-      } catch (_) {
-        // A failed pre-mutation poll must not prevent authoritative re-reading.
-      }
-    }
+    // Queue mutation refreshes behind one another. Capturing the old poll
+    // before awaiting it is not sufficient: two mutations can otherwise both
+    // resume after that poll and launch competing status requests.
+    const previousMutation = statusMutationRefreshPromise;
     let current;
-    current = refreshStatus().finally(() => {
-      if (statusRefreshPromise === current) statusRefreshPromise = null;
-    });
-    statusRefreshPromise = current;
-    const result = await current;
-    window.dispatchEvent(new Event("autonomous-engineering:status-mutated"));
-    return result;
+    current = (async () => {
+      if (previousMutation) {
+        try {
+          await previousMutation;
+        } catch (_) {
+          // A failed earlier refresh must not block a later authoritative read.
+        }
+      }
+      const previousPoll = statusRefreshPromise;
+      if (previousPoll) {
+        try {
+          await previousPoll;
+        } catch (_) {
+          // A failed pre-mutation poll must not prevent authoritative re-reading.
+        }
+      }
+      let statusRequest;
+      statusRequest = refreshStatus().finally(() => {
+        if (statusRefreshPromise === statusRequest) statusRefreshPromise = null;
+      });
+      statusRefreshPromise = statusRequest;
+      const result = await statusRequest;
+      window.dispatchEvent(new Event("autonomous-engineering:status-mutated"));
+      return result;
+    })();
+    statusMutationRefreshPromise = current;
+    try {
+      return await current;
+    } finally {
+      if (statusMutationRefreshPromise === current) statusMutationRefreshPromise = null;
+    }
   }
   async function refreshStatus() {
     $("refresh-agent").disabled = true;
