@@ -35,8 +35,8 @@ from .autonomous_engineering_progress import (
 )
 from .ollama_context import maximum_context_tokens, resolve_model_architecture, supports_tool_calling
 from .autonomous_engineering_state import durable_state_lock, execution_state_directory
-from .autonomous_engineering_dispatch_lock import dispatch_admission_lock
-from .autonomous_engineering_state_broker import StateBrokerConflict
+from .autonomous_engineering_dispatch_lock import DispatchAdmissionError, dispatch_admission_lock
+from .autonomous_engineering_state_broker import StateBrokerConflict, StateBrokerError
 from .autonomous_engineering_checkpoint_lock import checkpoint_store_lock
 from .autonomous_engineering_execution_lock import repository_execution_lock
 from .autonomous_engineering_model_pull import get_model_pull, start_model_pull
@@ -801,52 +801,19 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
     try:
         try:
             with dispatch_admission_lock() as admission:
-                result = _dispatch_autonomous_engineering_locked(
-                    payload,
-                    correlation_id=correlation_id,
-                    resume_once=resume_once,
-                )
-                if result.get("accepted") is True:
-                    if resume_once and result.get("dispatch_status") == "existing_run_active":
-                        gh = _authenticated_gh()
-                        updated = _run(
-                            [gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()],
-                            timeout=15,
-                        )
-                        if not updated or updated.returncode != 0:
-                            raise HTTPException(
-                                status_code=502,
-                                detail="اجرای فعال شناسایی شد اما ثبت ادامه در GitHub تأیید نشد؛ وضعیت را بازخوانی کنید.",
-                                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
-                            )
-                        admission["accepted"] = True
-                        _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
-                    else:
-                        # Once GitHub accepted a new workflow, keep the
-                        # reservation even if the following Pause update fails.
-                        admission["accepted"] = True
-                        _LAST_DISPATCH_ACCEPTED_AT = time.monotonic()
-                        if resume_once:
-                            gh = _authenticated_gh()
-                            updated = _run(
-                                [gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false", "--repo", _repository()],
-                                timeout=15,
-                            )
-                            if not updated or updated.returncode != 0:
-                                raise HTTPException(
-                                    status_code=502,
-                                    detail="Workflow ادامه پذیرفته شد اما بازنشانی وضعیت توقف در GitHub تأیید نشد؛ وضعیت را بازخوانی کنید و درخواست را تکرار نکنید.",
-                                    headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
-                                )
-                    result["paused"] = False if resume_once else result.get("paused")
-                return result
-        except RuntimeError as exc:
-            if "dispatch_admission_conflict" in str(exc) or "dispatch_admission_lease_not_owned" in str(exc) or "dispatch_admission_state_busy" in str(exc):
-                raise HTTPException(
-                    status_code=409,
-                    detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
-                    headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
-                ) from exc
+                try:
+                    result = _dispatch_autonomous_engineering_locked(
+                        payload,
+                        correlation_id=correlation_id,
+                        resume_once=resume_once,
+                    )
+                except StateBrokerConflict as exc:
+            raise HTTPException(
+                status_code=409,
+                detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED", "X-Retryable": "false"},
+            ) from exc
+        except (StateBrokerError, DispatchAdmissionError) as exc:
             _STATUS_LOGGER.error("Persistent dispatch admission unavailable; correlation_id=%s", correlation_id)
             raise HTTPException(
                 status_code=503,
