@@ -1,3 +1,17 @@
+## 2026-11-24 — remove duplicated legacy State Broker mutex probe
+
+### CI finding
+- The Windows PowerShell parser still failed after the nested C# here-string was removed. A legacy copy of the earlier mutex probe remained appended after the new integration function call, leaving its old function body at script scope with unmatched braces.
+
+### Correction
+- Removed only the duplicate legacy probe block; retained the production-module process integration probe and the existing live Broker service/ACL validation.
+- Added a regression assertion requiring exactly one integration-test function definition and one invocation.
+
+### Validation boundary
+- The updated exact-head Windows Storage and full Windows suites must pass. No existing Broker service, ACL, Runner registration, task, checkpoint, database, or durable user state was changed by this source edit.
+
+---
+
 ## 2026-11-24 — add real Windows process tests for elevated State Broker setup mutex
 
 ### Root cause
