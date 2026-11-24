@@ -2120,6 +2120,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert 'if (!panel.isConnected || item.dataset.runId !== runId) return;' in runs
     assert 'result.cleaned === true ? "success" : "error"' in runs
     assert 'updatedAtValid' in progress
+    assert 'window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress({queueIfBusy: true}); });' in progress
     assert '[1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours))' in status
     assert 'agent-status-message' in html
     assert '.\\\\scripts\\\\provision_autonomous_runner.ps1' not in html
