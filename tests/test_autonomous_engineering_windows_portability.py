@@ -498,3 +498,22 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert "$setupMutexAbandonedUnacknowledged" in ensure
     python_setup = _read("app/autonomous_engineering_broker_setup.py")
     assert "-AcknowledgeAbandonedSetup" not in python_setup
+
+
+
+def test_state_broker_forces_windows_powershell_51_before_loading_security_modules():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    host_gate = ensure[:ensure.index("$identity = [Security.Principal.WindowsIdentity]::GetCurrent()", ensure.index("$windowsPowerShellPath"))]
+    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
+
+    assert "[switch]$WindowsPowerShellHost" in parameters
+    assert '$PSVersionTable.PSEdition -ne "Desktop" -and -not $WindowsPowerShellHost' in host_gate
+    assert "WindowsPowerShell\\v1.0\\powershell.exe" in host_gate
+    assert "Sysnative\\WindowsPowerShell\\v1.0\\powershell.exe" in host_gate
+    assert 'ArgumentList = $argumentLine' in host_gate
+    assert '$argumentLine += " -ElevatedChild"' in host_gate
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in host_gate
+    assert host_gate.index("Start-Process @startArguments") < mutex
+    assert "Microsoft.PowerShell.Security" not in host_gate
+    assert "service or ACL changes were not started" in host_gate
