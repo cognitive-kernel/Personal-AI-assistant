@@ -378,8 +378,8 @@ jobs:
               # Windows may set the DACL auto-inherited control bit when the
               # original descriptor is restored. Compare owner/group/ACE data
               # exactly while normalizing only that OS-maintained control bit.
-              $expectedComparable = [string]$originalDescriptors[$path] -replace 'D:AI(?=\\()', 'D:'
-              $restoredComparable = [string]$restoredDescriptor -replace 'D:AI(?=\\()', 'D:'
+              $expectedComparable = [string]$originalDescriptors[$path] -replace 'D:AI(?=\()', 'D:'
+              $restoredComparable = [string]$restoredDescriptor -replace 'D:AI(?=\()', 'D:'
               if ($restoredComparable -ne $expectedComparable) {
                 throw "The original ACL owner/group/ACE entries were not restored for $path. Expected=[$($originalDescriptors[$path])] Actual=[$restoredDescriptor]"
               }
