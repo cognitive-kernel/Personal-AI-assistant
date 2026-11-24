@@ -1,18 +1,15 @@
-## 2026-11-24 — force broker ACL reconciliation through Windows PowerShell 5.1
+## 2026-11-24 — isolate Windows Security module loading to the active PowerShell edition
 
 ### User-host reproduction
-- A real Windows startup report showed the elevated broker setup failing while importing `Microsoft.PowerShell.Security`: duplicate `ObjectSecurity` type-data members (`AuditToString`, `AccessToString`, `Sddl`, `Access`, `Group`, `Owner`, `Path`).
-- This signature matches the PowerShell Core/Windows PowerShell cross-edition `PSModulePath` collision documented in PowerShell issue #18681 and the VS Code Windows PowerShell issue #251311. PowerShell Core can start Windows PowerShell with Core module paths inherited; Windows PowerShell then loads the wrong Security module and fails before ACL setup.
+- The Windows startup report showed Microsoft.PowerShell.Security failing during broker setup with duplicate System.Security.AccessControl.ObjectSecurity extended type-data members. The prior implementation filtered a few known PowerShell 7 directories from PSModulePath, which was not exhaustive and could leave custom or inherited paths from another edition.
 
 ### Correction
-- The setup script now re-executes non-Desktop hosts under the inbox Windows PowerShell 5.1 executable before loading the Windows identity/security modules.
-- It selects the native 64-bit host through `Sysnative` when a 32-bit caller runs on 64-bit Windows.
-- Administrator state and the explicit abandoned-mutex acknowledgement are forwarded. Non-admin callers receive one UAC elevation at the Desktop-host boundary; already elevated callers retain their elevated token without another UAC prompt.
-- If the Windows PowerShell host is absent or cannot start, setup stops before service or ACL mutation. The machine-wide mutex remains acquired only by the actual elevated child.
+- AutonomousWindowsIdentity.psm1 now temporarily limits module discovery to the active host's own PSHOME/Modules while importing Microsoft.PowerShell.Security, then restores the caller's PSModulePath.
+- The broker's elevated child retains the selected compatible PowerShell edition and receives the same host-local module path. This avoids forcing Windows PowerShell 5.1 when a tested PowerShell Core host exposes the required capabilities.
+- Added a regression contract for module-path isolation and ordering. Existing Windows CI exercises both Windows PowerShell 5.1 with contaminated inherited paths and PowerShell Core imports.
 
 ### Validation boundary
-- Added a static regression contract proving the host switch happens before the machine-wide mutex and before any Security module import.
-- Exact-head Windows full-suite and target-host verification are required. This fixes the confirmed module-host selection path; it does not yet prove the user's broker is installed.
+- This is the code-level correction for the exact reported TypeData failure. Exact-head CI and a retry on the user's target host are still required before declaring the Broker repaired.
 - No service, ACL, Runner registration, task, checkpoint, database, or durable state was changed by this source update.
 
 ---
