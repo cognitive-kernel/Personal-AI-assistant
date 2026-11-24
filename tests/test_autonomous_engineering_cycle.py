@@ -59,17 +59,17 @@ def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_mark
         cycle.task_marker(report)
     assert empty.value.kind == TaskReportFailureKind.NO_LAST_AGENT_MESSAGE
 
-    report.write_text("Implementation summary without a marker.\\n", encoding="utf-8")
+    report.write_text("Implementation summary without a marker.\n", encoding="utf-8")
     with pytest.raises(TaskReportError) as missing:
         cycle.task_marker(report)
     assert missing.value.kind == TaskReportFailureKind.MISSING_TERMINAL_MARKER
 
-    report.write_text("TASK_COMPLETE\\nMore prose after the marker.\\n", encoding="utf-8")
+    report.write_text("TASK_COMPLETE\nMore prose after the marker.\n", encoding="utf-8")
     with pytest.raises(TaskReportError) as misplaced:
         cycle.task_marker(report)
     assert misplaced.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
 
-    report.write_text("- quoted marker: TASK_COMPLETE\\nTASK_BLOCKED\\n", encoding="utf-8")
+    report.write_text("- quoted marker: TASK_COMPLETE\nTASK_BLOCKED\n", encoding="utf-8")
     assert cycle.task_marker(report) == "TASK_BLOCKED"
 
 
