@@ -98,8 +98,6 @@ def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | 
         "autonomous-durable-state.lock",
         "repository-execution.lock",
         "autonomous-checkpoint-store.lock",
-        "workflow-dispatch-admission.lock",
-        "repository-maintenance.lock",
     )
     lock_paths = sorted(
         [legacy / name for name in lock_names] + [shared / name for name in lock_names],
