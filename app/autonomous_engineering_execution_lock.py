@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from .autonomous_engineering_state import execution_state_directory
+from .autonomous_engineering_maintenance_lock import maintenance_admission_lock
 
 
 def _open_repository_lock_file(lock_path, *, create: bool):
@@ -17,7 +18,7 @@ def _open_repository_lock_file(lock_path, *, create: bool):
 
 
 @contextmanager
-def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
+def _repository_execution_lock_inner(run_id: str, run_attempt: str) -> Iterator[None]:
     """Own the repository worktree exclusively across processes and sessions."""
     state_dir = execution_state_directory()
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -82,6 +83,14 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
                     fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             handle.close()
+
+@contextmanager
+def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
+    """Exclude maintenance while an autonomous worker owns the repository."""
+    with maintenance_admission_lock(timeout_seconds=30):
+        with _repository_execution_lock_inner(run_id, run_attempt):
+            yield
+
 
 def require_parent_repository_execution_lock(run_id: str) -> None:
     """Require this subprocess to be launched by the cycle process holding the shared lock."""
