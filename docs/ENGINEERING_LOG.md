@@ -1,3 +1,23 @@
+## 2026-11-24 — make abandoned State Broker setup recovery durable across interactive sessions
+
+### Newly reproduced safety gap
+- The elevated setup process correctly acquired the machine-wide mutex, but an unacknowledged abandoned mutex was intentionally left owned until process exit.
+- When the installer was invoked with the call operator from an interactive PowerShell session, a terminating script error did not terminate the PowerShell host. A second invocation on the same thread could recursively acquire the mutex and bypass the explicit acknowledgement requirement.
+
+### Correction
+- Added a protected machine-level recovery marker at `HKLM\\SOFTWARE\\PersonalAIAssistant\\StateBroker\\SetupAbandoned`.
+- When the production mutex detects abandonment without explicit acknowledgement, it writes the marker before releasing the mutex and refusing setup.
+- Every later invocation checks the marker before acquiring the mutex; it refuses without `-AcknowledgeAbandonedSetup`, including a second invocation in the same PowerShell session.
+- An acknowledged setup keeps the marker until all setup operations, Runner restarts, and broker health checks succeed. Only then is the marker removed.
+- The Windows integration test now exercises parent termination, live mutex exclusion, abandoned-owner detection, durable marker persistence, same-process re-entry rejection, cross-process rejection, explicit acknowledgement, marker cleanup, and clean lock reuse. A static contract regression verifies that the production installer wires the marker into the lock module.
+
+### Validation boundary
+- The change is on the stacked #869 branch based on #863. The branch has not yet received exact-head CI against current `main`; the stack must be rebased/validated before merge.
+- The Windows integration test requires the privileged Windows storage-regression environment. Target-host UAC, Runner, ACL, and service recovery remain separate acceptance gates.
+- No production service, ACL, Runner registration, task, checkpoint, database, or user state was modified.
+
+---
+
 ## 2026-11-24 — import the production mutex module in the integration-test coordinator
 
 ### CI finding
