@@ -69,6 +69,16 @@ def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_mark
         cycle.task_marker(report)
     assert misplaced.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
 
+    report.write_text("- quoted marker: TASK_COMPLETE\nMore prose after the quote.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as quoted:
+        cycle.task_marker(report)
+    assert quoted.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("TASK_COMPLETE.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as punctuation:
+        cycle.task_marker(report)
+    assert punctuation.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
     report.write_text("- quoted marker: TASK_COMPLETE\nTASK_BLOCKED\n", encoding="utf-8")
     assert cycle.task_marker(report) == "TASK_BLOCKED"
 
