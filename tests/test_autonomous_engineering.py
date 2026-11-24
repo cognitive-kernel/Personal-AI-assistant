@@ -2772,3 +2772,26 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
     assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
     assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[end:end + 300]
+
+
+def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    gate_start = workflow.index("- name: Apply the configured daily execution frequency")
+    gate_end = workflow.index("\n  codex:", gate_start)
+    schedule_gate = workflow[gate_start:gate_end]
+
+    assert "RESUME_ONCE: ${{ inputs.resume_once || false }}" in schedule_gate
+    assert 'if [[ "$PAUSED" == "true" ]]; then' in schedule_gate
+    assert 'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then' in schedule_gate
+    assert "bypasses only the stale workflow-context Pause snapshot" in schedule_gate
+    assert "live gate after concurrency admission remains authoritative" in schedule_gate
+    assert "A manual task was not accepted because autonomous engineering is paused" in schedule_gate
+
+    live_gate = workflow.index("Recheck live Pause and execution mode after concurrency admission")
+    assert gate_start < live_gate
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in workflow[live_gate:]
+    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in workflow[live_gate:]
+    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[live_gate:]
