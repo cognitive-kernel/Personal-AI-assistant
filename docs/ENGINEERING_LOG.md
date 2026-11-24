@@ -1,3 +1,16 @@
+## 2026-11-24 — align live-pause workflow tests with the current policy boundary
+
+### CI findings
+- The new workflow contract test called `_read()`, a helper that does not exist in `tests/test_autonomous_engineering.py`. It now reads the workflow from the repository root using `Path`.
+- The recovery workflow intentionally delegates live Pause and execution-mode reads to the trusted Python recovery policy; its workflow YAML does not inject stale `EXECUTION_MODE` or `PAUSED` snapshots. The test now asserts the API-backed policy functions and their fail-closed settings reads instead of requiring obsolete environment variables.
+
+### Validation boundary
+- These are test-contract corrections; the runtime policy remains API-backed and fail-closed.
+- Exact-head Linux/Windows tests and workflow CI must pass before acceptance.
+- No workflow was dispatched and no repository variable or durable task/checkpoint state was changed.
+
+---
+
 ## 2026-11-24 — suppress continuous chaining when live Pause or mode changes
 
 - A task can finish and receive owner merge after the Pause or execution mode changed while it was running. The cycle controller previously used the workflow-start mode snapshot to decide whether to dispatch the next cycle.
