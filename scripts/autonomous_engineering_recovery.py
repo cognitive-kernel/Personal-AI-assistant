@@ -277,6 +277,7 @@ def main() -> int:
         # Re-check ownership and the live Pause flag after backoff; either may
         # have changed while this recovery job was sleeping.
         client.retryable_failure_streak(failed_run_id, current_jobs)
+        _verify_repository_access(client, repository)
         if _live_execution_mode(client) != "continuous":
             report("Recovery not enabled", "The live execution mode changed to scheduled during backoff; no run was dispatched.")
             return 0
