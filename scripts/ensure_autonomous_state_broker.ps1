@@ -9,23 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
-# PowerShell Core 7.3+ can inherit PSModulePath from a parent process and then
-# fail to load Microsoft.PowerShell.Security in the spawned host with duplicate
-# ObjectSecurity extended type data. Run all machine ACL work under the inbox
-# Windows PowerShell 5.1 host, whose own PSModulePath is isolated by the module.
-if ($PSVersionTable.PSEdition -ne "Desktop" -and -not $WindowsPowerShellHost) {
-    $windowsPowerShellPath = if (
-        [Environment]::Is64BitOperatingSystem -and -not [Environment]::Is64BitProcess
-    ) {
-        Join-Path $env:WINDIR "Sysnative\WindowsPowerShell\v1.0\powershell.exe"
-    } else {
-        Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
-    }
-    if (-not (Test-Path -LiteralPath $windowsPowerShellPath -PathType Leaf)) {
-        throw "Windows PowerShell 5.1 is required for safe machine ACL setup; no service or ACL changes were started."
-    }
-
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = [Security.Principal.WindowsPrincipal]::new($identity)
     $isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
     $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath + '" -WindowsPowerShellHost'
@@ -71,11 +55,8 @@ if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administra
     if ($AcknowledgeAbandonedSetup) {
         $argumentLine += " -AcknowledgeAbandonedSetup"
     }
-    # The elevated child inherits the parent environment. In particular, a
-    # A child host can otherwise load modules from a different PowerShell
-    # edition/installation before this script gets control, corrupting type data.
-    # extended type data. Restrict module discovery to the active host's own
-    # inbox modules for the child only; restore the caller environment always.
+    # Keep the selected PowerShell edition, but isolate the elevated child from
+    # module paths inherited from the caller before it imports Windows modules.
     $previousModulePath = $env:PSModulePath
     try {
         $env:PSModulePath = Join-Path $PSHOME "Modules"
