@@ -87,7 +87,7 @@ def test_dispatch_grace_window_is_shared_by_separate_requests(monkeypatch):
     @contextmanager
     def shared_lock():
         if state["accepted"]:
-            raise RuntimeError("dispatch_admission_conflict")
+            raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
         yield state
 
     monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
