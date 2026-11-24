@@ -5296,8 +5296,8 @@ def test_autonomous_run_history_discards_older_response_after_newer_refresh():
             page.wait_for_timeout(20)
         assert len(state["run_routes"]) >= 1, "Initial run-history request was not observed."
 
-        page.locator("#refresh-agent").click()
-        page.wait_for_function("() => document.querySelector('#refresh-agent')?.disabled === false")
+        page.locator("#refresh-runs").click()
+        page.wait_for_function("() => document.querySelector('#refresh-runs')?.disabled === false")
         page.wait_for_function("() => document.querySelector('#recent-runs')?.textContent.includes('Newer run')", timeout=10000)
         assert len(state["run_routes"]) >= 2, "The newer run-history request was not observed."
 
@@ -5668,7 +5668,7 @@ def test_autonomous_dispatch_error_exposes_code_and_correlation_id_after_status_
         message = page.locator("#agent-message").inner_text()
         assert "WORKFLOW_DISPATCH_LAUNCH_FAILED" in message
         assert "GitHub CLI could not be started." in message
-        assert page.locator("#dispatch-agent").is_disabled(), "Retryable dispatch failure must keep the visibility lock."
+        assert not page.locator("#dispatch-agent").is_disabled(), "A retryable failure must not impose the duplicate-dispatch visibility lock."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
