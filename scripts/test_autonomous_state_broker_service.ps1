@@ -184,12 +184,12 @@ public static class StateBrokerSetupMutexOwnerThreadProbe {
         # remains available after the dedicated owner thread terminates.
         $anchorMutex = [System.Threading.Mutex]::new($false, $mutexName)
 
-        $proxySignal = Join-Path $testRoot "proxy-started"
-        $proxy = Start-SetupMutexTestChild -Mode "proxy" -SignalPath $proxySignal
+        $holderThreadSignal = Join-Path $testRoot "holder-thread-held"
+        $proxy = Start-SetupMutexTestChild -Mode "proxy" -SignalPath $holderThreadSignal
         Wait-SetupMutexTestSignal -Process $proxy -SignalPath $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL
         $holderId = [int][System.IO.File]::ReadAllText($env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL)
         $holder = [System.Diagnostics.Process]::GetProcessById($holderId)
-        Wait-SetupMutexTestSignal -Process $holder -SignalPath (Join-Path $testRoot "holder-thread-held")
+        Wait-SetupMutexTestSignal -Process $holder -SignalPath $holderThreadSignal
 
         # Terminate only the launching parent. The elevated-child stand-in must
         # keep owning the mutex and block a third process from entering.
