@@ -274,6 +274,65 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     assert cycle.load_pending_pr() is None
 
 
+def test_run_cycle_stops_without_blind_retry_when_codex_has_no_final_agent_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
+):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    state_root = shared_state_tmp_path / "autonomous-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_root))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: (
+        "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+        else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+        else ""
+    ))
+    calls = []
+
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
+        calls.append(command)
+        report = Path(command[command.index("--report") + 1])
+        report.with_suffix(report.suffix + ".status.json").write_text(json.dumps({
+            "schema_version": 1,
+            "final_agent_message_present": False,
+            "turn_completed": False,
+            "turn_failed": True,
+            "jsonl_event_count": 19,
+            "process_exit_code": 1,
+        }), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 1, "", "tool call did not complete")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+    with pytest.raises(RuntimeError, match="no final agent message"):
+        cycle.run_cycle(args)
+
+    assert len(calls) == 1
+    assert len(stopped) == 1
+    saved = json.loads((state_root / "run-diagnostics" / "123.json").read_text(encoding="utf-8"))
+    entry = saved["diagnostics"][-1]
+    assert entry["category"] == "no_last_agent_message"
+    assert "turn_failed=True" in entry["summary"]
+    assert "jsonl_event_count=19" in entry["summary"]
+    assert "tool call did not complete" in entry["detail"]
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
+
+
 def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
