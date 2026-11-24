@@ -153,3 +153,21 @@ UI مهندسی مدل انتخابی را از وضعیت تنظیمات GitHub
 | #870 / #872 | 13 | backend، status/progress UI، cycle/recovery و browser tests |
 
 **نتیجهٔ فنی:** ادغام مستقل یا حذف هرکدام از این PRها ممکن است بخشی از اصلاحات وابسته را از بین ببرد. قبل از هر rebase/merge باید diffهای هر جفت در فایل‌های مشترک بررسی شود، به‌ویژه ترتیب #863→#869 و #866→#870→#872. سپس یک شاخهٔ integration از main فعلی ساخته و تغییرات به‌صورت منطقی و قابل آزمون منتقل شوند؛ هیچ PR یا branch قدیمی تا پایان تطبیق حذف نشود.
+
+## 11. وضعیت Gateهای پذیرش مطابق Master UI Prompt
+
+| Gate | وضعیت ممیزی | مدرک/کار باقیمانده |
+|---|---|---|
+| A — Inventory و reproduction | IN PROGRESS | inventory صفحه/API/test ثبت شد؛ اجرای دستی همهٔ کنترل‌ها و reproduction زنده هنوز لازم است |
+| B — state ownership، lease، lock و recovery | IN PROGRESS | baseline و تغییرات PRها وجود دارد؛ تطبیق زنجیرهٔ PR و اثبات Windows target باقی است |
+| C — error/correlation/Codex diagnostics | PARTIALLY VERIFIED | قرارداد خطا در main و اصلاحات بیشتر در #872؛ propagation واقعی UI→workflow→job→task و رفتار میزبان باید اثبات شود |
+| D — UI state machine و fault isolation | PARTIALLY VERIFIED | ماژول‌های مستقل، stale guards و browser regressions موجود؛ ترکیب نهایی تغییرات PR و fault matrix کامل باز است |
+| E — Playwright E2E | CI VERIFIED ON SELECTED HEADS | 21 تست اختصاصی مهندسی در main؛ browser workflow کامل روی head #872 سبز است؛ تست target host جایگزین نشده |
+| F — exact-head CI | PARTIALLY VERIFIED | main 10/11 موفق و یک job مهندسی queued؛ #872 هشت check موفق؛ headهای #863/#866/#869/#870 check ندارند |
+| G — Windows target واقعی | HUMAN TEST REQUIRED | UI واقعی، Runner service، Ollama/Codex واقعی، Broker و GitHub CLI در سیستم مالک هنوز اجرا نشده‌اند |
+| H — crash/restart/recovery | HUMAN TEST REQUIRED | تست‌های شبیه‌سازی/CI موجود؛ crash/restart و حفظ checkpoint روی میزبان واقعی لازم است |
+| I — مستندات، ADR و rollback | IN PROGRESS | این ممیزی زنده و PR #874 ثبت شده؛ runbook و rollback پس از integration نهایی باید دوباره بررسی شوند |
+| J — پذیرش مالک از UI | NOT RUN | مالک باید گردش‌کار واقعی را از مرورگر تأیید کند |
+| K — Local-first و portability | IN PROGRESS | #863/#869 portability و Broker را هدف گرفته‌اند؛ ماتریس Runtime/PowerShell و محیط بدون integration باید روی head نهایی اجرا شود |
+
+هیچ Gate به‌دلیل وجود کد یا صرف سبز بودن pytest به‌عنوان ACCEPTED علامت نخورده است.
