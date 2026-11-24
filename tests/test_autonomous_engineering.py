@@ -3039,3 +3039,137 @@ def test_cancel_fails_closed_when_too_many_workflow_runs_are_in_progress(monkeyp
         agent.cancel_autonomous_engineering()
 
     assert error.value.status_code == 409
+
+def test_cancel_fails_closed_when_multiple_codex_jobs_are_in_progress(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps([
+                    {"databaseId": 101, "status": "in_progress"},
+                    {"databaseId": 102, "status": "in_progress"},
+                ]),
+                "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps({"jobs": [{"name": "Codex", "status": "in_progress"}]}),
+                "",
+            )
+        raise AssertionError("ambiguous Codex jobs must block run cancellation")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert "چند اجرای Codex هم‌زمان فعال" in error.value.detail
+    assert not any(call[1:3] == ["run", "cancel"] for call in calls)
+
+
+def test_cancel_fails_closed_when_multiple_queued_codex_candidates_are_ambiguous(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps([
+                    {"databaseId": 201, "status": "in_progress"},
+                    {"databaseId": 202, "status": "in_progress"},
+                ]),
+                "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps({"jobs": [{"name": "Codex", "status": "queued"}]}),
+                "",
+            )
+        raise AssertionError("multiple queued Codex candidates must block cancellation")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert "چند اجرای Codex در صف" in error.value.detail
+
+
+def test_cancel_fails_closed_when_multiple_workflows_have_no_unique_codex_candidate(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0,
+                json.dumps([
+                    {"databaseId": 301, "status": "in_progress"},
+                    {"databaseId": 302, "status": "queued"},
+                ]),
+                "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"jobs": []}), "")
+        raise AssertionError("ambiguous workflow set must not be cancelled")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert "job فعال Codex یکتا نیست" in error.value.detail
+
+
+def test_cancel_allows_the_only_active_workflow_when_no_codex_job_exists(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["run", "list"]:
+            return subprocess.CompletedProcess(
+                command, 0, json.dumps([{"databaseId": 401, "status": "in_progress"}]), "",
+            )
+        if command[1:3] == ["run", "view"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps({"jobs": []}), "")
+        if command[1:3] == ["run", "cancel"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        raise AssertionError(f"unexpected command: {command}")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    result = agent.cancel_autonomous_engineering()
+
+    assert result["accepted"] is True
+    assert result["run_id"] == 401
+    assert result["selection_reason"] == "single_active_workflow"
+    assert calls[-1][1:3] == ["run", "cancel"]
+
+
+def test_cancel_lock_busy_fails_before_inspecting_github(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
+    assert agent._DISPATCH_REQUEST_LOCK.acquire(blocking=False)
+    try:
+        with pytest.raises(HTTPException) as error:
+            agent.cancel_autonomous_engineering()
+    finally:
+        agent._DISPATCH_REQUEST_LOCK.release()
+
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_CANCEL_IN_PROGRESS"
+    assert calls == []
