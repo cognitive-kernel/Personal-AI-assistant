@@ -29,6 +29,7 @@ jobs:
       - name: Classify failure and recover only eligible task executions
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
           GH_REPO: ${{ github.repository }}
           FAILED_RUN_ID: ${{ github.event.workflow_run.id }}
         shell: bash
