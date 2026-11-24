@@ -1,3 +1,20 @@
+## 2026-11-24 — correct live settings admission regression expectations and diagnostics
+
+### Exact-head CI findings
+- The full Linux and Windows suites on the prior PR #866 head each failed the same three tests. Two cycle-dispatch tests asserted the pre-existing request count and omitted the newly required repository-identity GET before the live Mode/Pause reads.
+- The recovery repository-access test exposed a real diagnostic gap: the repository verification helper propagated the raw GitHub 404 instead of returning the explicit fail-closed repository-verification error.
+
+### Corrections
+- Updated the cycle tests to assert the complete ordered API call sequence (repository identity, then live Mode; and repository identity plus Mode followed by repository identity plus Pause).
+- Wrapped repository metadata API errors in the explicit “could not verify the configured repository” failure, preserving the original exception as the cause.
+- Kept the actual access verification and fail-closed behavior intact; no test was removed, skipped, or weakened.
+
+### Validation boundary
+- The previous head had 3 failures in both full suites (2,596 Linux passes; 2,592 Windows passes). These fixes are on a new head and require fresh exact-head Linux/Windows full suites plus all other workflows.
+- No task, checkpoint, workflow, repository variable, Runner registration, ACL, or durable state was modified.
+
+---
+
 ## 2026-11-24 — verify cross-process workflow dispatch admission
 
 ### Audit result
