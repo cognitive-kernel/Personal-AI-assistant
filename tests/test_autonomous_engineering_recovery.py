@@ -69,6 +69,12 @@ def test_github_actions_client_separates_workflow_and_settings_credentials(monke
 
     client.request("GET", "/actions/runs")
     client.request_settings("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    try:
+        client.request_settings("POST", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        assert "only GET requests" in str(exc)
+    else:
+        raise AssertionError("The read-only settings credential accepted a write request.")
 
     assert authorizations == ["Bearer workflow-token", "Bearer settings-token"]
 
