@@ -5902,6 +5902,194 @@ def test_autonomous_engineering_polling_uses_visibility_backoff_jitter_and_clean
         browser.close()
 
 
+
+@pytest.mark.browser_e2e
+def test_autonomous_engineering_status_mutation_refreshes_are_serialized():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+
+    status_payload = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {
+            "ollama_online": False,
+            "model_installed": False,
+            "model_selectable": False,
+            "model_context_metadata_available": False,
+            "model_context_supported": False,
+            "model_supports_tools": False,
+            "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False,
+            "codex_installed": False,
+            "runner_running": False,
+            "github_cli_authenticated": False,
+            "github_runs_available": False,
+            "progress_storage_accessible": False,
+        },
+        "model": "",
+        "models": [],
+        "selectable_models": [],
+        "model_context_length": None,
+        "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24,
+        "execution_mode": "continuous",
+        "paused": False,
+        "pending_work": {
+            "available": True,
+            "blocked": False,
+            "markers": {},
+            "checkpoint": {"available": False, "verified": True},
+            "reason": None,
+        },
+        "github": {"recent_runs": [], "settings": {}},
+        "codex": {"installed": False, "version": None},
+    }
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route(
+            "**/api/autonomous-engineering/status",
+            lambda route: route.fulfill(status=200, json=status_payload),
+        )
+        page.route(
+            "**/api/autonomous-engineering/runs**",
+            lambda route: route.fulfill(status=200, json={"runs": []}),
+        )
+        page.route(
+            "**/api/autonomous-engineering/progress**",
+            lambda route: route.fulfill(
+                status=200,
+                json={
+                    "current": None,
+                    "history": [],
+                    "latest_snapshot": None,
+                    "events": [],
+                    "storage_configured": True,
+                },
+            ),
+        )
+        response = page.goto(
+            base_url.rstrip("/") + "/autonomous-engineering",
+            wait_until="domcontentloaded",
+        )
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => window.autonomousEngineeringApp?.stop && "
+            "window.autonomousEngineeringStatus?.refresh && "
+            "document.querySelector('#agent-readiness')?.textContent.trim() === 'راه‌اندازی ناقص'",
+            timeout=10000,
+        )
+        result = page.evaluate("""async () => {
+          window.autonomousEngineeringApp.stop();
+          const originalFetch = window.fetch;
+          const pending = [];
+          let calls = 0;
+          let active = 0;
+          let maxActive = 0;
+          const payload = {
+            ready: false,
+            can_dispatch: false,
+            paused: false,
+            execution_mode: "continuous",
+            interval_hours: 24,
+            model: "",
+            models: [],
+            selectable_models: [],
+            model_context_length: null,
+            model_recommended_context_length: null,
+            model_tools_verification_method: "probe_required",
+            checks: {
+              ollama_online: false,
+              model_installed: false,
+              model_selectable: false,
+              model_context_metadata_available: false,
+              model_context_supported: false,
+              model_supports_tools: false,
+              model_tools_metadata_available: false,
+              model_is_codex_context_variant: false,
+              codex_installed: false,
+              runner_running: false,
+              github_cli_authenticated: false,
+              github_runs_available: false,
+              progress_storage_accessible: false
+            },
+            pending_work: {
+              available: true,
+              blocked: false,
+              markers: {},
+              checkpoint: {available: false, verified: true},
+              reason: null
+            },
+            github: {recent_runs: [], settings: {}},
+            codex: {installed: false, version: null}
+          };
+          window.fetch = (url, options) => {
+            const target = String(url);
+            if (target.includes("/api/autonomous-engineering/status")) {
+              calls += 1;
+              active += 1;
+              maxActive = Math.max(maxActive, active);
+              return new Promise(resolve => pending.push(() => {
+                active -= 1;
+                resolve(new Response(JSON.stringify(payload), {
+                  status: 200,
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Correlation-ID": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+                  }
+                }));
+              }));
+            }
+            if (target.includes("/api/autonomous-engineering/runs")) {
+              return Promise.resolve(new Response(JSON.stringify({runs: []}), {
+                status: 200,
+                headers: {"Content-Type": "application/json"}
+              }));
+            }
+            return originalFetch(url, options);
+          };
+
+          const wait = ms => new Promise(resolve => window.setTimeout(resolve, ms));
+          const waitForPending = async () => {
+            for (let attempt = 0; attempt < 100; attempt += 1) {
+              if (pending.length) return;
+              await wait(5);
+            }
+            throw new Error("Timed out waiting for a controlled status response.");
+          };
+
+          const initial = window.autonomousEngineeringStatus.refresh();
+          await waitForPending();
+          const mutationOne = window.autonomousEngineeringStatus.refresh(true);
+          const mutationTwo = window.autonomousEngineeringStatus.refresh(true);
+          await wait(0);
+          const callsBeforeFirstRelease = calls;
+          const callsAfterEachRelease = [];
+          for (let index = 0; index < 3; index += 1) {
+            await waitForPending();
+            pending.shift()();
+            if (index < 2) {
+              // Wait until the next serialized request is actually issued;
+              // a zero-delay timer does not guarantee async continuations ran.
+              await waitForPending();
+            }
+            callsAfterEachRelease.push(calls);
+          }
+          await Promise.all([initial, mutationOne, mutationTwo]);
+          window.fetch = originalFetch;
+          return {callsBeforeFirstRelease, callsAfterEachRelease, maxActive, calls};
+        }""")
+
+        assert result["callsBeforeFirstRelease"] == 1
+        assert result["callsAfterEachRelease"] == [2, 3, 3]
+        assert result["maxActive"] == 1
+        assert result["calls"] == 3
+        browser.close()
+
+
 def test_autonomous_engineering_two_tabs_do_not_dispatch_same_work_twice():
     base_url = os.environ.get("E2E_BASE_URL")
     if not base_url:
