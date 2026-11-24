@@ -310,10 +310,15 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         if ($null -ne $anchorMutex) { $anchorMutex.Dispose() }
         if (-not [string]::IsNullOrWhiteSpace($env:STATE_BROKER_LOCK_MARKER_KEY)) {
             Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
-            $markerParent = [Microsoft.Win32.Registry]::LocalMachine.OpenSubKey("SOFTWARE\PersonalAIAssistant\Tests", $true)
-            if ($null -ne $markerParent) {
-                try { $markerParent.DeleteSubKey((Split-Path -Leaf $env:STATE_BROKER_LOCK_MARKER_KEY), $false) } finally { $markerParent.Dispose() }
-            }
+            $markerView = [Microsoft.Win32.RegistryView]::Default
+            if ([Environment]::Is64BitOperatingSystem) { $markerView = [Microsoft.Win32.RegistryView]::Registry64 }
+            $markerBase = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $markerView)
+            try {
+                $markerParent = $markerBase.OpenSubKey("SOFTWARE\PersonalAIAssistant\Tests", $true)
+                if ($null -ne $markerParent) {
+                    try { $markerParent.DeleteSubKey((Split-Path -Leaf $env:STATE_BROKER_LOCK_MARKER_KEY), $false) } finally { $markerParent.Dispose() }
+                }
+            } finally { $markerBase.Dispose() }
         }
         foreach ($name in $environmentNames) {
             [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], "Process")
