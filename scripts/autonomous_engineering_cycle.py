@@ -856,7 +856,7 @@ def run_cycle(args: argparse.Namespace) -> int:
         )
         snapshot(args.run_id, args.run_attempt)
         request_file.unlink(missing_ok=True)
-        if _dispatch_next_cycle_if_enabled(token, repo, args):
+        if _dispatch_next_cycle_if_enabled(token, repo, args, settings_token=settings_token):
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
         else:
             print(
