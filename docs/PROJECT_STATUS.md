@@ -1,3 +1,12 @@
+## 2026-11-24 — PR #872 diagnostic polling cache follow-up
+
+- Added a 60-second bounded cache for failed-run diagnostics to prevent repeated Broker reads during dashboard polling; regression coverage verifies reuse across consecutive polls.
+- The cache is an optimization; Broker-backed diagnostics remain authoritative.
+- PR #872 exact-head tests, Browser E2E and dependency audit must pass on the final updated SHA. Windows target-host acceptance remains pending and is not replaced by CI.
+- The stacked PR base chain (#866 → #870 → #872) remains unresolved; do not merge until the branch history is safely reconciled and every required acceptance gate passes.
+
+---
+
 ## 2026-11-24 — PR #872: تکمیل اصلاحات ماژول Autonomous Engineering و بازاعتبارسنجی
 
 - PR: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، شاخهٔ `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ همچنان stacked روی #870 و #866 است و نباید مستقل از baseهایش merge شود.
