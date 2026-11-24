@@ -380,8 +380,9 @@ def test_resume_uses_locked_dispatch_and_clears_pause_only_after_acceptance(monk
     assert "در حالت زمان‌بندی‌شده این اجرا یک‌باره است" in result["message"]
     assert len(result["correlation_id"]) == 32
     workflow_call = next(call for call in calls if call[0][1:3] == ["workflow", "run"])
-    assert "--raw-field" in workflow_call[0]
+    assert workflow_call[0].count("--raw-field") == 3
     assert "correlation_id=" + result["correlation_id"] in workflow_call[0]
+    assert "manual_task=" in workflow_call[0]
     assert "resume_once=true" in workflow_call[0]
     assert workflow_call[1] is True
     pause_update = next(call for call in calls if call[0][1:3] == ["variable", "set"])
@@ -474,7 +475,7 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
         agent.resume_autonomous_engineering()
 
     assert error.value.status_code == 502
-    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_OUTCOME_UNKNOWN"
     assert error.value.headers["X-Retryable"] == "false"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
@@ -498,7 +499,7 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
         agent.resume_autonomous_engineering()
 
     assert error.value.status_code == 503
-    assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_LAUNCH_FAILED"
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
 
@@ -1606,6 +1607,21 @@ def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch
     assert result["run_id"] == 999
     assert calls[-1][1:3] == ["run", "cancel"]
     assert calls[-1][3] == "999"
+
+
+def test_cancel_uses_same_local_mutation_lock_as_dispatch_and_resume(monkeypatch):
+    class BusyLock:
+        def acquire(self, blocking=False):
+            return False
+        def release(self):
+            pytest.fail("A lock not acquired must not be released")
+
+    monkeypatch.setattr(agent, "_DISPATCH_REQUEST_LOCK", BusyLock())
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: pytest.fail("GitHub must not be queried while mutation lock is busy"))
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1004))
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_CANCEL_IN_PROGRESS"
 
 
 def test_cancel_refuses_selected_run_without_active_codex_job(monkeypatch):
