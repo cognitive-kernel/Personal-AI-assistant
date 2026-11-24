@@ -1,3 +1,17 @@
+## 2026-11-24 — stabilize Windows broker mutex and ACL rollback regressions
+
+### CI findings
+- The first named-mutex integration test terminated the entire PowerShell process and expected `AbandonedMutexException`; the Windows runner did not observe the expected condition in that harness. The regression now uses a dedicated .NET thread that owns the mutex and exits without releasing it, while its process remains alive. This directly exercises Windows thread-owned mutex abandonment.
+- The static release assertion selected the nested `finally` that resets a Boolean rather than the outer mutex finalizer. It now verifies release and disposal ordering in the complete script.
+- The service rollback test expected wording that no longer matched the actual warning; it now asserts the real warning emitted when `sc.exe config` restoration fails.
+- Windows ACL rollback added the OS-maintained DACL auto-inherited control flag (`D:AI`) while preserving owner/group and ACE entries. The integration assertion now normalizes only that flag and compares the remaining SDDL exactly.
+
+### Validation boundary
+- Exact-head Windows full-suite and storage-regression reruns are required.
+- No service, ACL, Runner registration, task, checkpoint, or durable state was modified.
+
+---
+
 ## 2026-11-24 — serialize elevated State Broker setup across parent timeout
 
 ### Root cause
