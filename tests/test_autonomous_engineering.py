@@ -2716,6 +2716,26 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
 
 
 
+
+def test_schedule_gate_suppresses_cross_process_duplicate_workflow_dispatches():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    schedule_gate = workflow[
+        workflow.index("  schedule-gate:") : workflow.index("\\n  codex:")
+    ]
+
+    assert "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=30" in schedule_gate
+    assert "int(run.get(\"id\", 0)) != current_id" in schedule_gate
+    assert 'run.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}' in schedule_gate
+    assert 'if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]' in schedule_gate
+    assert "no durable state was changed" in schedule_gate
+    assert "Another autonomous run is already active or queued" in schedule_gate
+    codex_job = workflow[workflow.index("  codex:") :]
+    assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
+    assert "cancel-in-progress: false" in codex_job
+
 def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admission():
     workflow = (
         Path(__file__).resolve().parents[1]
