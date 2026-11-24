@@ -62,17 +62,22 @@ jobs:
           GH_REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          RESUME_ONCE: ${{ inputs.resume_once || false }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$PAUSED" == "true" ]]; then
-            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
-              echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
-              exit 1
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then
+              echo "Explicit one-shot Resume bypasses only the stale workflow-context Pause snapshot; the live gate after concurrency admission remains authoritative."
+            else
+              if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+                echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
+                exit 1
+              fi
+              echo "run_now=false" >> "$GITHUB_OUTPUT"
+              echo "Autonomous engineering is safely paused; no new task will start."
+              exit 0
             fi
-            echo "run_now=false" >> "$GITHUB_OUTPUT"
-            echo "Autonomous engineering is safely paused; no new task will start."
-            exit 0
           fi
           active_state=$(python - <<'PY'
           import json, os, urllib.request
