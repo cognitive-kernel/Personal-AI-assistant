@@ -134,6 +134,15 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                 message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
                 headers = dict(exc.headers or {})
                 headers.setdefault("X-Correlation-ID", correlation_id)
+                safe_diagnostics = getattr(exc, "safe_details", None)
+                if isinstance(safe_diagnostics, dict) and safe_diagnostics:
+                    _STATUS_LOGGER.error(
+                        "Autonomous Engineering operation diagnostic; status_code=%s code=%s correlation_id=%s safe_details=%s",
+                        exc.status_code,
+                        headers.get("X-Error-Code") or _HTTP_ERROR_CODES.get(exc.status_code, "unknown"),
+                        correlation_id,
+                        json.dumps(safe_diagnostics, ensure_ascii=False, sort_keys=True)[:700],
+                    )
                 return _structured_error_response(
                     status_code=exc.status_code,
                     message=message,
@@ -1440,13 +1449,28 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
             removed_bytes = int(result.get("bytes_removed", 0))
             failed_files.extend(str(item) for item in result.get("failed_files", []))
         except RuntimeError as exc:
-            from .autonomous_engineering_state_broker import StateBrokerConflict
+            from .autonomous_engineering_state_broker import StateBrokerConflict, StateBrokerError
             if isinstance(exc, StateBrokerConflict):
                 blockers = ", ".join(exc.blockers)
                 raise HTTPException(
                     status_code=409,
                     detail="وضعیت پایدار عامل هنوز تعیین‌تکلیف نشده است؛ پاک‌سازی انجام نشد: " + blockers,
                 ) from exc
+            if isinstance(exc, StateBrokerError):
+                broker_detail = " ".join(str(exc).split())[:240] or type(exc).__name__
+                error = HTTPException(
+                    status_code=503,
+                    detail=f"پاک‌سازی امن فضای مشترک ممکن نشد؛ وضعیت پایدار حفظ شد ({broker_detail}).",
+                    headers={
+                        "X-Error-Code": "AUTONOMOUS_ENGINEERING_BROKER_UNAVAILABLE",
+                        "X-Retryable": "true",
+                    },
+                )
+                error.safe_details = {
+                    "operation": "cleanup",
+                    "broker_error": broker_detail,
+                }
+                raise error from exc
             raise HTTPException(
                 status_code=503,
                 detail=f"پاک‌سازی امن فضای مشترک ممکن نشد؛ وضعیت پایدار حفظ شد ({type(exc).__name__}).",
