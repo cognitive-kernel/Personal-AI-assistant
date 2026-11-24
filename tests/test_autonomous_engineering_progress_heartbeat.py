@@ -81,7 +81,7 @@ def test_final_agent_message_report_preserves_markerless_text_for_typed_validati
         turn_completed=True,
         turn_failed=False,
     )
-    assert report.read_text(encoding="utf-8") == "The implementation is complete but the marker was omitted.\\n"
+    assert report.read_text(encoding="utf-8") == "The implementation is complete but the marker was omitted.\n"
     assert progress._has_terminal_completion_marker(report.read_text(encoding="utf-8")) is False
 
 
@@ -89,7 +89,7 @@ def test_final_agent_message_recovery_accepts_only_a_plain_terminal_marker(tmp_p
     report = tmp_path / "report.md"
     assert progress.recover_final_agent_message_report(
         report,
-        "Evidence\\n- quoted marker: TASK_COMPLETE\\nTASK_COMPLETE",
+        "Evidence\n- quoted marker: TASK_COMPLETE\nTASK_COMPLETE",
         turn_completed=True,
         turn_failed=False,
     )
