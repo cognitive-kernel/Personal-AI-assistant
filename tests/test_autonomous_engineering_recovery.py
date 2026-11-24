@@ -239,6 +239,9 @@ def test_main_honors_live_scheduled_mode_and_durable_pause(monkeypatch):
     monkeypatch.setattr(recovery, "GitHubActionsClient", ScheduledClient)
     assert recovery.main() == 0
 
+    # main() intentionally consumes the read-only credential from the environment.
+    _configure_environment(monkeypatch)
+
     class PausedClient:
         def __init__(self, repository, token):
             pass
