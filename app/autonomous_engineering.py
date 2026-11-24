@@ -907,10 +907,19 @@ def _dispatch_autonomous_engineering_locked(
     if resume_once and has_active_run:
         gh = _authenticated_gh()
         if not _set_autonomous_engineering_pause(gh, False):
+            restored = _set_autonomous_engineering_pause(gh, True)
             raise HTTPException(
                 status_code=502,
-                detail="اجرای فعال شناسایی شد اما برداشتن توقف در GitHub تأیید نشد؛ وضعیت را بازخوانی کنید.",
-                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
+                detail=(
+                    "برداشتن توقف برای اجرای فعال تأیید نشد؛ وضعیت توقف دوباره ثبت شد."
+                    if restored
+                    else "برداشتن توقف و بازگردانی آن در GitHub هر دو نامشخص‌اند؛ وضعیت را فوراً بازخوانی کنید."
+                ),
+                headers={
+                    "X-Correlation-ID": correlation_id,
+                    "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED" if restored else "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED",
+                    "X-Retryable": "false",
+                },
             )
         return {
             "accepted": True,
@@ -937,10 +946,19 @@ def _dispatch_autonomous_engineering_locked(
     if resume_once:
         command.extend(["--raw-field", "resume_once=true"])
         if not _set_autonomous_engineering_pause(gh, False):
+            restored = _set_autonomous_engineering_pause(gh, True)
             raise HTTPException(
                 status_code=502,
-                detail="برداشتن توقف در GitHub تأیید نشد؛ Workflow ارسال نشد.",
-                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED", "X-Retryable": "false"},
+                detail=(
+                    "برداشتن توقف تأیید نشد؛ Workflow ارسال نشد و توقف دوباره ثبت شد."
+                    if restored
+                    else "برداشتن توقف تأیید نشد و بازگردانی آن نیز نامشخص است؛ Workflow ارسال نشد، وضعیت را فوراً بازخوانی کنید."
+                ),
+                headers={
+                    "X-Correlation-ID": correlation_id,
+                    "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED" if restored else "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED",
+                    "X-Retryable": "false",
+                },
             )
     try:
         result = _run(command, timeout=20, raise_os_error=True)
