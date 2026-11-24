@@ -92,6 +92,8 @@ class GitHubActionsClient:
         return self._request_with_headers(method, path, payload, self.headers)
 
     def request_settings(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        if method.upper() != "GET":
+            raise RuntimeError("The repository Variables credential is read-only; only GET requests are allowed.")
         if self.settings_headers is None:
             raise RuntimeError("The read-only repository Variables credential is not configured.")
         return self._request_with_headers(method, path, payload, self.settings_headers)
