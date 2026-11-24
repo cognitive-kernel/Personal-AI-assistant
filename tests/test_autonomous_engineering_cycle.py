@@ -286,7 +286,8 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
     assert "last non-empty line is exactly one plain marker" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
-    assert "Continue the SAME task" in retry_text
+    assert "SAME task" in retry_text
+    assert "Do not select or start another task" in retry_text
     assert len(stopped) == 2
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
     assert cycle.load_pending_pr() is None
@@ -1919,7 +1920,8 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert "TASK_BLOCKED is not accepted without a substantive explanation" in retry_text
-    assert "Continue the SAME task" in retry_text
+    assert "SAME task" in retry_text
+    assert "Do not select or start another task" in retry_text
     assert "concrete evidence" in retry_text
     diagnostic_path = state_root / "run-diagnostics" / "123.json"
     saved = json.loads(diagnostic_path.read_text(encoding="utf-8"))
