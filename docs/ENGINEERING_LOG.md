@@ -1,3 +1,22 @@
+## 2026-11-24 — regenerate a stale but manifest-valid Windows broker package on trusted PRs
+
+### CI finding
+- Windows Storage reached the broker build stage, compiled the net48 service with the pinned SDK, then stopped because the fresh deterministic executable hash differed from the executable committed alongside the current C# source.
+- The committed executable's SHA-256 manifest matched the committed file, so this was a stale build artifact, not an unverified or corrupted binary. The workflow nevertheless treated every source/package mismatch as fatal before its downstream `commit-broker-package` job could update the PR branch.
+
+### Correction
+- The build stage still verifies the existing executable against its own manifest and fails closed on malformed or mismatched manifests.
+- When the old binary is manifest-valid but differs from the pinned deterministic build, the workflow now replaces it only for a trusted same-repository pull request. A downstream job validates and commits the new executable plus manifest to that PR branch.
+- Missing packages follow the same trusted-PR-only staging rule. Push-to-main and fork PR workflows fail closed instead of passing with an uncommitted replacement.
+- The final package hash must still equal both the fresh build hash and the newly written manifest before upload, attestation, or service testing.
+
+### Validation boundary
+- Added a workflow contract regression for trusted-PR gating, stale-package replacement, manifest validation, and final hash verification.
+- Exact-head Windows Storage must now pass the live LocalService broker test using the freshly rebuilt binary; the follow-up package-commit job must create a new PR head and CI must pass again on that committed SHA.
+- No executable was modified on a user machine; no service, ACL, Runner registration, task, checkpoint, database, or durable user state was changed by this workflow source update.
+
+---
+
 ## 2026-11-24 — remove duplicated legacy State Broker mutex probe
 
 ### CI finding
