@@ -49,42 +49,30 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         while ($true) { Start-Sleep -Milliseconds 250 }
     }
     "holder" {
-        $ownerThreadSource = @"
-using System;
-using System.IO;
-using System.Threading;
-
-public static class StateBrokerSetupMutexOwnerThreadProbe {
-    public static Thread Start(string name, string signalPath, string releasePath) {
-        Thread thread = new Thread(() => {
-            Mutex mutex = new Mutex(false, name);
-            try {
-                bool acquired = false;
-                try {
-                    acquired = mutex.WaitOne(0);
-                } catch (AbandonedMutexException) {
-                    acquired = true;
-                }
-                if (!acquired) {
-                    File.WriteAllText(signalPath, "busy");
-                    return;
-                }
-                File.WriteAllText(signalPath, "held");
-                while (!File.Exists(releasePath)) {
-                    Thread.Sleep(50);
-                }
-                // Deliberately do not call ReleaseMutex. The dedicated owner
-                // thread exits while this PowerShell child process stays alive.
-            } finally {
-                mutex.Dispose();
-            }
-        });
-        thread.IsBackground = true;
-        thread.Start();
-        return thread;
-    }
-}
-"@
+        $ownerThreadSource = @(
+            'using System;',
+            'using System.IO;',
+            'using System.Threading;',
+            'public static class StateBrokerSetupMutexOwnerThreadProbe {',
+            '    public static Thread Start(string name, string signalPath, string releasePath) {',
+            '        Thread thread = new Thread(() => {',
+            '            Mutex mutex = new Mutex(false, name);',
+            '            try {',
+            '                bool acquired = false;',
+            '                try { acquired = mutex.WaitOne(0); }',
+            '                catch (AbandonedMutexException) { acquired = true; }',
+            '                if (!acquired) { File.WriteAllText(signalPath, "busy"); return; }',
+            '                File.WriteAllText(signalPath, "held");',
+            '                while (!File.Exists(releasePath)) { Thread.Sleep(50); }',
+            '                // Deliberately do not call ReleaseMutex; thread exit abandons ownership.',
+            '            } finally { mutex.Dispose(); }',
+            '        });',
+            '        thread.IsBackground = true;',
+            '        thread.Start();',
+            '        return thread;',
+            '    }',
+            '}'
+        ) -join [Environment]::NewLine
         Add-Type -TypeDefinition $ownerThreadSource -ErrorAction Stop
         $thread = [StateBrokerSetupMutexOwnerThreadProbe]::Start(
             $env:STATE_BROKER_LOCK_NAME,
