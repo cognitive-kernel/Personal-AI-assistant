@@ -205,6 +205,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
     }
 
     try {
+        Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
         $env:STATE_BROKER_LOCK_MODULE = $modulePath
         $env:STATE_BROKER_LOCK_SCRIPT = $childScript
         $env:STATE_BROKER_LOCK_NAME = $mutexName
