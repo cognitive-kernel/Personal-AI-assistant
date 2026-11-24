@@ -121,7 +121,7 @@ function Enter-AutonomousStateBrokerSetupMutex {
                 # If HKLM marker persistence is denied, keep the mutex owned and
                 # block same-process re-entry with a process-scoped fail-closed flag.
                 $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
-                throw "Could not persist the protected abandoned-setup marker. This PowerShell process remains fail-closed; close it before retrying with -AcknowledgeAbandonedSetup. $($_.Exception.GetType().Name)"
+                throw "Could not persist the protected abandoned-setup marker. This PowerShell process remains fail-closed; rerun with -AcknowledgeAbandonedSetup from the same owning thread, or close the original host and acknowledge from a fresh process. $($_.Exception.GetType().Name)"
             }
             try { $mutex.ReleaseMutex() } finally {
                 $mutex.Dispose()
