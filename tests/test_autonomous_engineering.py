@@ -746,6 +746,33 @@ def test_github_snapshot_fails_closed_when_run_list_is_unavailable(monkeypatch):
 
 
 
+
+def test_resume_unexpected_preflight_error_fails_closed_and_marks_outcome_unknown(monkeypatch):
+    monkeypatch.setattr(
+        agent,
+        "collect_status",
+        lambda: (_ for _ in ()).throw(RuntimeError("unexpected status failure")),
+    )
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_OUTCOME_UNKNOWN"
+    assert error.value.headers["X-Retryable"] == "false"
+    variable_writes = [call for call in calls if call[1:3] == ["variable", "set"]]
+    assert [call[5] for call in variable_writes] == ["false", "true"]
+    assert agent._LAST_RESUME_ACCEPTED_AT > 0
+
+
 def test_manual_dispatch_is_suppressed_after_resume_acceptance(monkeypatch):
     monkeypatch.setattr(agent, "_LAST_RESUME_ACCEPTED_AT", agent.time.monotonic())
 
