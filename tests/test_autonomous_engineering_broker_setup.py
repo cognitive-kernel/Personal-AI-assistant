@@ -160,7 +160,7 @@ def test_named_mutex_excludes_other_process_and_reports_abandoned_owner(tmp_path
     if not powershell:
         pytest.skip("A supported PowerShell host is unavailable")
 
-    mutex_name = "Global\\\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
+    mutex_name = "Global\\PersonalAIAssistant.StateBrokerSetup.Test." + uuid.uuid4().hex
     marker = str(tmp_path / "mutex-held.txt").replace("'", "''")
     release = str(tmp_path / "mutex-release.txt").replace("'", "''")
     exited = str(tmp_path / "mutex-owner-exited.txt").replace("'", "''")
