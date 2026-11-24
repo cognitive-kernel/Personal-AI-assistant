@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 from contextlib import contextmanager
 from pathlib import Path
@@ -59,7 +60,7 @@ def dispatch_admission_lock() -> Iterator[dict[str, float]]:
             if not isinstance(payload, dict) or payload.get("schema_version") != 1:
                 raise RuntimeError("Persistent workflow dispatch admission state is invalid; refusing dispatch.")
             last = payload.get("last_accepted_at", 0.0)
-            if isinstance(last, bool) or not isinstance(last, (int, float)) or last < 0:
+            if isinstance(last, bool) or not isinstance(last, (int, float)) or not math.isfinite(last) or last < 0:
                 raise RuntimeError("Persistent workflow dispatch timestamp is invalid; refusing dispatch.")
         else:
             last = 0.0
@@ -69,6 +70,7 @@ def dispatch_admission_lock() -> Iterator[dict[str, float]]:
         if (
             isinstance(last_accepted_at, bool)
             or not isinstance(last_accepted_at, (int, float))
+            or not math.isfinite(last_accepted_at)
             or last_accepted_at < 0
         ):
             raise RuntimeError("Refusing to persist an invalid workflow dispatch timestamp.")
