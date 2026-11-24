@@ -370,7 +370,11 @@ def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_c
     assert 'csc.exe' not in build_step
     assert '--output $buildRoot' in build_step
     assert '$freshHash' in build_step and '$committedHash' in build_step
-    assert 'fresh deterministic broker build differs' in build_step
+    assert 'CAN_COMMIT_PACKAGE' in build_step
+    assert '$env:CAN_COMMIT_PACKAGE -ne "true"' in build_step
+    assert 'committed broker package is stale relative to the current source' in build_step
+    assert 'Copy-Item -LiteralPath $freshExe -Destination $packagedExe -Force' in build_step
+    assert 'The committed broker executable does not match its SHA-256 manifest.' in build_step
     assert 'No committed broker package exists yet' in build_step
     assert 'final deterministic SHA-256 verification' in build_step
     assert 'commit-broker-package:' in workflow
