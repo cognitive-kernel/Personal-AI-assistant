@@ -1,5 +1,9 @@
 from pathlib import Path
 
+import pytest
+
+from scripts import autonomous_engineering_recovery as recovery
+
 
 def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     workflow = (
@@ -55,3 +59,34 @@ def test_recovery_policy_uses_bounded_backoff_and_a_finite_breaker():
     assert "time.sleep(delay_seconds)" in policy
     assert "CIRCUIT BREAKER OPEN" in policy
     assert "durable task/checkpoint is preserved" in policy
+
+
+
+def test_recovery_verifies_repository_access_before_defaulting_missing_variables():
+    class Client:
+        def __init__(self, metadata):
+            self.metadata = metadata
+            self.calls = []
+
+        def request(self, method, path):
+            self.calls.append((method, path))
+            if path == "/":
+                if isinstance(self.metadata, Exception):
+                    raise self.metadata
+                return self.metadata
+            if path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                raise RuntimeError("GitHub Actions API failed: HTTP 404: Not Found")
+            raise AssertionError((method, path))
+
+    accessible = Client({"full_name": "Owner/Repo"})
+    recovery._verify_repository_access(accessible, "owner/repo")
+    assert recovery._live_execution_mode(accessible) == "continuous"
+    assert accessible.calls == [
+        ("GET", "/"),
+        ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"),
+    ]
+
+    inaccessible = Client(RuntimeError("GitHub Actions API failed: HTTP 404: Not Found"))
+    with pytest.raises(RuntimeError, match="verify the configured repository"):
+        recovery._verify_repository_access(inaccessible, "owner/repo")
+    assert inaccessible.calls == [("GET", "/")]
