@@ -17,8 +17,17 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "persist-credentials: false" in workflow
     assert "python scripts/autonomous_engineering_recovery.py" in workflow
     assert "FAILED_RUN_ID:" in workflow
-    assert "EXECUTION_MODE:" in workflow
-    assert "PAUSED:" in workflow
+    policy = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "autonomous_engineering_recovery.py"
+    ).read_text(encoding="utf-8")
+    assert "def _live_execution_mode(client: GitHubActionsClient)" in policy
+    assert "def _live_pause_enabled(client: GitHubActionsClient)" in policy
+    assert '"/actions/variables/AUTONOMOUS_ENGINEERING_MODE"' in policy
+    assert '"/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"' in policy
+    assert "Recovery fails closed" in policy
+    assert "AUTONOMOUS_ENGINEERING_MODE:" not in workflow
+    assert "AUTONOMOUS_ENGINEERING_PAUSED:" not in workflow
 
 
 def test_recovery_workflow_does_not_hide_policy_or_dispatch_logic_inline():
