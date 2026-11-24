@@ -509,6 +509,54 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     assert [command[5] for command in pause_updates] == ["false", "true"]
 
 
+def test_resume_pause_clear_ambiguity_rolls_back_before_any_dispatch(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "set"] and command[5] == "false":
+            return None
+        if command[1:3] == ["variable", "set"] and command[5] == "true":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        pytest.fail("Workflow dispatch must not run until Pause=false is confirmed")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_STATE_UPDATE_FAILED"
+    updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in updates] == ["false", "true"]
+
+
+def test_resume_pause_clear_and_rollback_ambiguity_is_reported_explicitly(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "set"]:
+            return None
+        pytest.fail("Workflow dispatch must not run when Pause state is ambiguous")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED"
+    assert "فوراً بازخوانی کنید" in error.value.detail
+    assert len([command for command in calls if command[1:3] == ["variable", "set"]]) == 2
+
+
 def test_resume_definite_workflow_rejection_restores_pause(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
     monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
