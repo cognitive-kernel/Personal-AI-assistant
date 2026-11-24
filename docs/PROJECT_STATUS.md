@@ -1,12 +1,12 @@
-## 2026-11-24 — PR #871: تکمیل اصلاحات ماژول Autonomous Engineering و بازاعتبارسنجی
+## 2026-11-24 — PR #872: تکمیل اصلاحات ماژول Autonomous Engineering و بازاعتبارسنجی
 
-- PR: [#871](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/871)، شاخهٔ `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ همچنان stacked روی #870 و #866 است و نباید مستقل از baseهایش merge شود.
+- PR: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، شاخهٔ `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ همچنان stacked روی #870 و #866 است و نباید مستقل از baseهایش merge شود.
 - بازبینی دو پرامپت اجرایی، UI acceptance، UI audit و وضعیت main انجام شد. baseline fencing/lease epoch از PR #799 حفظ شده؛ این تغییرات آن را بازنویسی یا حذف نمی‌کنند.
 - ۱۴ مورد گزارش‌شده در backend، retry/Codex و UI در کد شاخه پیاده‌سازی شده‌اند؛ در بازبینی CI، چند regression harness قدیمی و دو شکاف واقعی تکمیلی شناسایی شد.
 - اصلاحات تکمیلی پس از CI ناموفق: تست Resume اکنون اجرای موفق پاک‌کردن Pause را قبل از dispatch شبیه‌سازی می‌کند؛ خطای قطعی launch صریحاً retryable است؛ retry گزارش حفظ worktree/checkpoint را صریح می‌گوید؛ marker فقط از آخرین خط غیرخالی ارزیابی می‌شود؛ تست‌ها با API جدید sticky status و credential consumption هماهنگ شده‌اند؛ POSIX broker اکنون blockerهای reservation/grace را مانند Windows تفکیک می‌کند؛ fixture قدیمی وابسته به متغیر حافظه‌ای حذف شده است.
 - شکاف رفتاری افزوده‌شده: Resume روی صف idle و از قبل unpaused دیگر workflow تازه dispatch نمی‌کند؛ اگر run فعال باشد، فقط همان اجرا ادامه می‌یابد.
 - CI قبلی روی SHA `82c44e04d44f6366c307440175352fe847621781` در tests شکست خورد؛ Browser E2E، dependency audit و Windows storage regressions موفق بودند. علت‌های تستی/قراردادی و اصلاحات آن‌ها در Engineering Log ثبت می‌شوند.
-- SHA فعلی این snapshot: `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`. exact-head tests، Browser E2E و dependency audit در صف اجرا هستند؛ هیچ pass برای این SHA ادعا نمی‌شود.
+- SHA این snapshot پیش از اصلاح مستندات: `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`. exact-head tests، Browser E2E و dependency audit در صف اجرا هستند؛ هیچ pass برای این SHA ادعا نمی‌شود.
 - Windows target-host، Runner/Ollama/Codex واقعی، dispatch/pause/resume/cancel عملیاتی، crash/restart، restore/rollback و پذیرش UI توسط مالک هنوز pending هستند. تا تکمیل base PRها، exact-head CI و Gateهای میزبان، PR Draft می‌ماند و merge ممنوع است.
 - هیچ workflow فعالی لغو یا تغییر داده نشد؛ هیچ Pause/Mode secret یا variable، task، checkpoint، Runner، ACL، database یا دادهٔ کاربر تغییر نکرد.
 
