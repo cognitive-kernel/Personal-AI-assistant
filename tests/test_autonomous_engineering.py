@@ -41,30 +41,44 @@ def _stub_durable_pending_work_status(monkeypatch):
 
 
 
-def test_dispatch_admission_lock_persists_timestamp_and_excludes_overlap(monkeypatch, tmp_path):
+def test_dispatch_admission_context_uses_broker_reservation_and_commits_acceptance(monkeypatch):
     from app import autonomous_engineering_dispatch_lock as dispatch_lock
 
-    monkeypatch.setattr(dispatch_lock, "execution_state_directory", lambda: tmp_path)
+    calls = []
+    def fake_request(method, path, *, timeout_ms=3500, body=None):
+        calls.append((method, path, timeout_ms, body))
+        if path.endswith("/acquire"):
+            return {"acquired": True, "last_accepted_at": 0.0, "lease_seconds": 120}
+        return {"completed": True, "last_accepted_at": 1_800_000_000.0}
+
+    monkeypatch.setattr(dispatch_lock.state_broker, "request", fake_request)
     with dispatch_lock.dispatch_admission_lock() as state:
-        assert state["last_accepted_at"] == 0
-        state["last_accepted_at"] = 1_800_000_000.0
-        with pytest.raises(RuntimeError, match="Another process"):
-            with dispatch_lock.dispatch_admission_lock():
-                pytest.fail("A second admission owner must not enter")
-    with dispatch_lock.dispatch_admission_lock() as restored:
-        assert restored["last_accepted_at"] == 1_800_000_000.0
+        assert state["accepted"] is False
+        state["accepted"] = True
+
+    assert [call[1] for call in calls] == [
+        "/v1/dispatch-admission/acquire",
+        "/v1/dispatch-admission/complete",
+    ]
+    assert calls[0][0] == calls[1][0] == "POST"
+    assert calls[0][3]["request_id"] == calls[1][3]["request_id"]
+    assert calls[1][3]["accepted"] is True
+    assert all(call[2] == 3500 for call in calls)
 
 
-def test_maintenance_lock_excludes_new_repository_execution(monkeypatch, tmp_path):
-    from app import autonomous_engineering_maintenance_lock as maintenance_lock
-    from app import autonomous_engineering_execution_lock as execution_lock
+def test_dispatch_admission_context_releases_unaccepted_reservation(monkeypatch):
+    from app import autonomous_engineering_dispatch_lock as dispatch_lock
 
-    monkeypatch.setattr(maintenance_lock, "execution_state_directory", lambda: tmp_path)
-    monkeypatch.setattr(execution_lock, "execution_state_directory", lambda: tmp_path)
-    with maintenance_lock.maintenance_admission_lock():
-        with pytest.raises(RuntimeError, match="Another autonomous execution owns"):
-            with maintenance_lock.maintenance_admission_lock(timeout_seconds=0):
-                pytest.fail("Concurrent maintenance must be excluded")
+    calls = []
+    def fake_request(method, path, *, timeout_ms=3500, body=None):
+        calls.append((path, body))
+        return {"acquired": True} if path.endswith("/acquire") else {"completed": True}
+
+    monkeypatch.setattr(dispatch_lock.state_broker, "request", fake_request)
+    with pytest.raises(RuntimeError, match="intentional"):
+        with dispatch_lock.dispatch_admission_lock():
+            raise RuntimeError("intentional")
+    assert calls[-1][1]["accepted"] is False
 
 
 def test_dispatch_grace_window_is_shared_by_separate_requests(monkeypatch):
