@@ -49,7 +49,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         while ($true) { Start-Sleep -Milliseconds 250 }
     }
     "holder" {
-        $ownerThreadSource = @'
+        $ownerThreadSource = @"
 using System;
 using System.IO;
 using System.Threading;
@@ -84,7 +84,7 @@ public static class StateBrokerSetupMutexOwnerThreadProbe {
         return thread;
     }
 }
-'@
+"@
         Add-Type -TypeDefinition $ownerThreadSource -ErrorAction Stop
         $thread = [StateBrokerSetupMutexOwnerThreadProbe]::Start(
             $env:STATE_BROKER_LOCK_NAME,
