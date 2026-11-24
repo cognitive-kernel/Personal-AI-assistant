@@ -280,7 +280,7 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     assert codex_invocations[1][2] <= 630
     assert "valid terminal completion marker" in retry_text
     assert "do not reset or discard the existing worktree/checkpoint" in retry_text
-    assert "do not repeat implementation or rerun broad tests" in retry_text
+    assert "do not repeat completed implementation or rerun broad tests" in retry_text
     assert "Fix the root cause, add or update regression tests" not in retry_text
     assert cycle.CODEX_RETRY_POLICY.max_elapsed_seconds == 45 * 60
     assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
