@@ -2065,6 +2065,16 @@ def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
     assert cycle.main() == 29
 
 
+
+def test_run_cycle_fails_closed_without_read_only_variables_credential(monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "workflow-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", raising=False)
+
+    with pytest.raises(RuntimeError, match="read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN"):
+        cycle.run_cycle(None)
+    assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN" not in os.environ
+
 def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     calls = []
