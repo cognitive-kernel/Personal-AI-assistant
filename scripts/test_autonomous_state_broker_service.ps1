@@ -21,6 +21,7 @@ function Invoke-SetupMutexProcessIntegrationTest {
     if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
         throw "The production State Broker setup-lock module is missing."
     }
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
 
     $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("StateBrokerSetupMutex-CI-" + [guid]::NewGuid().ToString("N"))
     New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
