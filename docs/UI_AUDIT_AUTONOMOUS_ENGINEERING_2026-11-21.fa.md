@@ -175,3 +175,10 @@
 - مسیر native/PowerShell-free برای service-control و ACL هنوز پیاده‌سازی نشده است.
 - Browser E2E با API stubbed جایگزین اجرای واقعی UAC، سرویس LocalService، دو حساب غیرادمین، Runner حاضر/غایب، restart و checkpoint preservation روی Windows target نیست. Gateهای G/H/J همچنان pending هستند.
 - هیچ task، checkpoint، database، ACL، Runner registration یا دادهٔ کاربر تغییر داده نشده است؛ PR Draft می‌ماند و merge مجاز نیست تا تمام gateها تأیید شوند.
+
+## الحاقیهٔ ممیزی — 2026-11-24
+
+- دو نقص UI/backend که پس از ممیزی اولیه آشکار شدند، در main اصلاح شده‌اند: refresh پس از mutation اکنون سریالی است و Cancel بر اساس وضعیت job واقعی Codex تصمیم می‌گیرد، نه صرفاً جدیدترین workflow run. exact-head CI هر دو PR #864 و #867 موفق است.
+- در بازبینی مجدد، رویداد cleanup-completed در progress module می‌توانست هنگام busy بودن درخواست جاری refresh را drop کند. follow-up #870 آن را به صف coalesced منتقل می‌کند؛ این اصلاح هنوز exact-head CI نهایی ندارد.
+- گیت‌های میزبان واقعی، از جمله Windows non-admin/UAC، Runner، Broker/ACL، Ollama/Codex و dispatch واقعی، همچنان NOT RUN هستند. بنابراین وضعیت repository CI نباید به‌عنوان پذیرش عملیاتی UI گزارش شود.
+
