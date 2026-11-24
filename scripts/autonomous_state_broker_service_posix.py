@@ -350,14 +350,14 @@ class RestrictedStateBroker:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError, UnicodeError) as exc:
             raise BrokerFailure(503, "dispatch_admission_state_invalid") from exc
-        if not isinstance(payload, dict) or payload.get("schema_version") != 1:
+        if not isinstance(payload, dict) or set(payload) != {"schema_version", "last_accepted_at", "pending"} or payload.get("schema_version") != 1:
             raise BrokerFailure(503, "dispatch_admission_state_invalid")
         last = payload.get("last_accepted_at")
         if isinstance(last, bool) or not isinstance(last, (int, float)) or not math.isfinite(last) or last < 0:
             raise BrokerFailure(503, "dispatch_admission_state_invalid")
         pending = payload.get("pending")
         if pending is not None:
-            if not isinstance(pending, dict):
+            if not isinstance(pending, dict) or set(pending) != {"request_id", "created_at", "lease_expires_at"}:
                 raise BrokerFailure(503, "dispatch_admission_state_invalid")
             request_id = pending.get("request_id")
             created_at = pending.get("created_at")
