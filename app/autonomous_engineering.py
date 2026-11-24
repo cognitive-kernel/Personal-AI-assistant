@@ -841,7 +841,7 @@ def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_i
                     result["paused"] = False if resume_once else result.get("paused")
                 return result
         except RuntimeError as exc:
-            if "dispatch_admission_conflict" in str(exc) or "dispatch_admission_lease_not_owned" in str(exc):
+            if "dispatch_admission_conflict" in str(exc) or "dispatch_admission_lease_not_owned" in str(exc) or "dispatch_admission_state_busy" in str(exc):
                 raise HTTPException(
                     status_code=409,
                     detail="درخواست اجرای دیگری در حال ثبت است یا پنجرهٔ جلوگیری از اجرای تکراری هنوز فعال است؛ وضعیت را بازخوانی کنید.",
@@ -1100,7 +1100,7 @@ def _workflow_runs(gh: str) -> list[dict[str, Any]]:
             continue
         diagnostic = (
             _read_run_diagnostics(item["id"])
-            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required"}
+            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
             else None
         )
         latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
