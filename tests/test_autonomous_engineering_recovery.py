@@ -50,6 +50,8 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -87,6 +89,8 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -117,6 +121,8 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -147,6 +153,8 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
             return 1
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
                 return {"value": "continuous"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
@@ -178,6 +186,8 @@ def test_main_honors_live_scheduled_mode_and_durable_pause(monkeypatch):
 
         def request(self, method, path, payload=None):
             assert method == "GET"
+            if path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             assert path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"
             return {"value": "scheduled"}
 
@@ -190,6 +200,8 @@ def test_main_honors_live_scheduled_mode_and_durable_pause(monkeypatch):
 
         def request(self, method, path, payload=None):
             assert method == "GET"
+            if path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
                 return {"value": "continuous"}
             if path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
@@ -264,6 +276,8 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -312,6 +326,8 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run exists.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -344,6 +360,8 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run appeared during backoff.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
                 return {"value": "continuous"}
             if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
@@ -403,6 +421,8 @@ def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
             self.pause_reads = 0
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
                 return {"value": "continuous"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
@@ -456,6 +476,8 @@ def test_main_rechecks_live_execution_mode_after_backoff_before_dispatch(monkeyp
             self.mode_reads = 0
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
             if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
                 self.mode_reads += 1
                 return {"value": "continuous" if self.mode_reads == 1 else "scheduled"}
