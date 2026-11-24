@@ -360,7 +360,15 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - Repository-level UI tests برای #864 و #867: موفق روی exact head.
 - Exact-head CI برای شاخه‌های فعلی #863/#869 و #866/#870: pending تا اجرای کامل روی آخرین SHA.
 - Windows target-host، Runner واقعی، Ollama/Codex واقعی و owner acceptance: NOT RUN؛ هیچ‌کدام با CI شبیه‌سازی‌شده جایگزین نمی‌شوند.
-- Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
-- Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
+- Resume و manual dispatch از reservation دو مرحله‌ای مشترک در State Broker استفاده می‌کنند؛ timestamp و lease در state محافظت‌شده ذخیره می‌شود، بین workerها و پس از restart باقی می‌ماند، و lease رهاشده به‌صورت محافظه‌کارانه grace تازه ایجاد می‌کند. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ در صورت dispatch جدید، Pause فقط پس از پذیرش GitHub برداشته می‌شود.
+- Cancel با dispatch/resume lock سریال می‌شود و run_id را از snapshot موفق UI می‌گیرد؛ سرور همان run را مستقیماً از GitHub می‌خواند، workflow و وضعیت فعال آن را اعتبارسنجی می‌کند، job Codex همان run را می‌سنجد و فقط همان شناسه را لغو می‌کند.
+- ورودی‌های workflow_dispatch با gh workflow run --raw-field ارسال می‌شوند؛ متن manual_task و correlation_id دیگر مشمول @path expansion یا تبدیل نوع --field نیستند.
+- cleanup در Windows تصمیم active-progress و lock را به State Broker محافظت‌شده واگذار می‌کند؛ مسیرهای مطلق فایل از پاسخ API حذف می‌شوند.
 
-- Cancel با dispatch/resume lock سریال می‌شود. فقط یک Codex job فعال یا یک queued candidate یکتا انتخاب می‌شود؛ چند candidate یا چند workflow بدون هدف یکتا با 409 رد می‌شوند. fallback بدون Codex فقط برای یک workflow فعال مجاز است.
+
+### پوشش ۱۴ یافتهٔ بازبینی (2026-11-24)
+
+- Backend: raw-field، مسیر قفل‌دار مشترک dispatch/resume، reservation پایدار Broker، cancel بر اساس run_id، diagnostics محدود به failure/current page، cleanup بدون افشای مسیر مطلق و redaction گسترده.
+- Codex: failure feedback پالایش‌شده در retry، طبقه‌بندی enum برای نبود پیام نهایی/نشانگر ناقص/نشانگر غیرپایانی، timeout محدود ۶۰۰ ثانیه برای report-only repair، و پذیرش نشانگر فقط در آخرین خط غیرخالی.
+- UI: پیام چسبنده، refresh callback بدون Event argument، حفظ keyed run/log panels، حفظ Cancel/Pause/Resume در poll failure، معنای درست retryable، وضعیت خطای cleanup ناقص، تاریخ معتبر، fallback بازه، عدم بلعیدن timeout بدنهٔ response و اصلاح مسیر راه‌اندازی.
+- وضعیت: پیاده‌سازی و regression test اضافه شده‌اند؛ exact-head CI، build/integration سرویس Windows Broker، browser E2E و پذیرش روی Windows واقعی هنوز اجرا/تأیید نشده‌اند.
