@@ -148,7 +148,7 @@ def test_cleanup_preserves_model_when_unload_cannot_be_verified():
     model = make_model_name()
     api = make_api(model, keep_loaded_after_unload=True)
 
-    with pytest.raises(OllamaTemporaryContextError, match="still loaded"):
+    with pytest.raises(OllamaTemporaryContextError, match="still reports the temporary model as loaded"):
         cleanup_temporary_context_model(
             model,
             run_id="123456",
