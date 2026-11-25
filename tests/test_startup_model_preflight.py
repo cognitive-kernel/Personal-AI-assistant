@@ -151,7 +151,7 @@ def test_internal_chat_variant_stays_unavailable_when_its_base_is_not_installed(
     assert any("مدل پایهٔ qwen2.5:7b نیز نصب نیست" in warning for warning in warnings)
 
 
-def test_explicit_chat_model_environment_override_prevents_implicit_base_recovery(monkeypatch):
+def test_environment_default_does_not_preserve_ephemeral_saved_chat_tag(monkeypatch):
     models = {
         "chat_ollama_model": "qwen2.5:7b-codex-ctx2048",
         "research_plan_ollama_model": "research-local",
@@ -172,4 +172,4 @@ def test_explicit_chat_model_environment_override_prevents_implicit_base_recover
 
     warnings = startup._ensure_ollama()
 
-    assert any("variant داخلی Codex" in warning for warning in warnings)
+    assert warnings == []
