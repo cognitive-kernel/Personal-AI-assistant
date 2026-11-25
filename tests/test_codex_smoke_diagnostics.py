@@ -185,7 +185,7 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert 'ollama_temporary_context.py' in diagnostic
     assert 'ollama_temporary_context.py' in autonomous
     assert "Unload and remove this diagnostic run's temporary Ollama context model" in diagnostic
-    assert 'Unload and remove this run's temporary Ollama context model' in autonomous
+    assert "Unload and remove this run's temporary Ollama context model" in autonomous
     assert 'steps.context_preflight.outcome != \'skipped\'' in diagnostic
     assert 'steps.context_preflight.outcome != \'skipped\'' in autonomous
     assert "feat/autonomous-engineering-complete-20261112" in diagnostic
