@@ -609,10 +609,10 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
     escaped_module_path = module_path.replace("'", "''")
     env = os.environ.copy()
     windows_powershell_modules = str(
-        Path(env.get("WINDIR", r"C:\\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
+        Path(env.get("WINDIR", r"C:\Windows)) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
     )
     powershell7_modules = str(
-        Path(env.get("ProgramFiles", r"C:\\Program Files")) / "PowerShell" / "7" / "Modules"
+        Path(env.get("ProgramFiles", r"C:\Program Files)) / "PowerShell" / "7" / "Modules"
     )
     env["PSModulePath"] = ";".join([powershell7_modules, windows_powershell_modules])
     script = (
