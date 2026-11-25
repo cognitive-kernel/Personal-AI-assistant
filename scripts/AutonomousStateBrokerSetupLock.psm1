@@ -33,9 +33,15 @@ function Test-AutonomousStateBrokerSetupRecoveryMarker {
 
 function Set-AutonomousStateBrokerSetupRecoveryMarker {
     [CmdletBinding()]
-    param([string]$RegistrySubKey = $script:DefaultSetupMarkerRegistrySubKey)
+    param(
+        [string]$RegistrySubKey = $script:DefaultSetupMarkerRegistrySubKey,
+        [string]$Reason = "abandoned_setup"
+    )
     if ([string]::IsNullOrWhiteSpace($RegistrySubKey)) {
         throw "A non-empty State Broker setup recovery-marker registry path is required."
+    }
+    if ([string]::IsNullOrWhiteSpace($Reason) -or $Reason.Length -gt 100 -or $Reason -match "[\\r\\n]") {
+        throw "A short, single-line State Broker recovery reason is required."
     }
     $baseKey = Open-AutonomousStateBrokerSetupMarkerBaseKey
     try {
@@ -43,6 +49,7 @@ function Set-AutonomousStateBrokerSetupRecoveryMarker {
         if ($null -eq $key) { throw "Could not create the protected State Broker setup recovery marker." }
         try {
             $key.SetValue("SetupAbandoned", [DateTimeOffset]::UtcNow.ToString("o"), [Microsoft.Win32.RegistryValueKind]::String)
+            $key.SetValue("SetupReason", $Reason, [Microsoft.Win32.RegistryValueKind]::String)
         } finally { $key.Dispose() }
     } finally { $baseKey.Dispose() }
 }
