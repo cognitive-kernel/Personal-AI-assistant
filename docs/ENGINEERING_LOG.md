@@ -2769,3 +2769,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
 - گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
 - نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
+
+
+## 2026-11-25 — رفع تکرار بارگذاری PowerShell Security
+
+- Root cause: دو مسیر مستقل (scripts/AutonomousWindowsIdentity.psm1 و probe در app/windows_powershell.py) ماژول Microsoft.PowerShell.Security را بدون بررسی وضعیت بارگذاری قبلی Import می‌کردند. در PowerShell 5.1، بارگذاری مجدد type data می‌تواند با خطای duplicate member در System.Security.AccessControl.ObjectSecurity متوقف شود.
+- اصلاح: هر دو مسیر ابتدا Get-Module را بررسی می‌کنند؛ فقط در صورت نبود ماژول آن را از $PSHOME\Modules import می‌کنند. مسیر ماژول بارگذاری‌شده باید متعلق به همان PowerShell host باشد؛ مسیر PSModulePath پس از import در finally بازیابی می‌شود. دستورات Get-Acl و Set-Acl نیز صریحاً بررسی می‌شوند.
+- Regression: تست Windows PowerShell 5.1 با PSModulePath آلوده به مسیر PowerShell 7، ماژول identity را دو بار با -Force import می‌کند و مسیر ماژول Security و بازیابی PSModulePath را بررسی می‌کند. تست discovery نیز وجود guard جلوگیری از import تکراری و کنترل مسیر host را assert می‌کند.
+- Code head تحت اعتبارسنجی: abb2e7b8007e173b8c4116919e5051c36bf5c25b. در زمان ثبت، Tests و Browser E2E و Dependency audit در صف بودند و CodeQL لغو شده بود؛ بنابراین هیچ نتیجهٔ موفقی برای این head ادعا نمی‌شود.
+- پذیرش Windows واقعی هنوز باز است: CI نمی‌تواند وضعیت module/type data و runspace موجود روی میزبان مالک را کامل بازتولید کند. تا اجرای تست روی همان میزبان و مشاهدهٔ Broker health، این مشکل operationally closed محسوب نمی‌شود.
