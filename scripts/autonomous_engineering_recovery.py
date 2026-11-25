@@ -228,11 +228,11 @@ def _verify_variables_read_access(client: GitHubActionsClient) -> None:
 
 
 def _live_pause_enabled(client: GitHubActionsClient) -> bool:
-    _verify_variables_read_access(client)
     try:
         setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
         if "HTTP 404" in str(exc):
+            _verify_variables_read_access(client)
             return False
         raise RuntimeError(
             "Could not verify the live durable Pause setting; recovery fails closed."
@@ -246,11 +246,11 @@ def _live_pause_enabled(client: GitHubActionsClient) -> bool:
 
 
 def _live_execution_mode(client: GitHubActionsClient) -> str:
-    _verify_variables_read_access(client)
     try:
         setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
         if "HTTP 404" in str(exc):
+            _verify_variables_read_access(client)
             return "continuous"
         raise RuntimeError(
             "Could not verify the live execution mode; automatic recovery fails closed."
