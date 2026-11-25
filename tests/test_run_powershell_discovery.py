@@ -44,6 +44,10 @@ def test_powershell_discovery_prefers_a_verified_core_runtime(monkeypatch):
     assert "Get-CimInstance" in probe
     assert "sc.exe" in probe and "icacls.exe" in probe and "takeown.exe" in probe
     assert "RegistryKey" in probe
+    assert "Get-Module -Name $moduleName" in probe
+    assert "if (-not $loadedModule)" in probe
+    assert "Security module is loaded from outside the active host module directory" in probe
+    assert "$env:PSModulePath = Join-Path $PSHOME 'Modules'" in probe
     assert "[version]'7.0'" not in probe
     assert "PSVersionTable.Prerelease" not in probe
 
