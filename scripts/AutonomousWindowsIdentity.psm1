@@ -1,15 +1,27 @@
 Set-StrictMode -Version Latest
 
-# Import security cmdlets from the active host's own inbox modules only.
-# A process can inherit PSModulePath entries belonging to another PowerShell
-# edition or installation. Isolate discovery for this import, then restore the
-# caller's process environment so unrelated modules remain discoverable.
-$previousModulePath = $env:PSModulePath
-try {
-    $env:PSModulePath = Join-Path $PSHOME "Modules"
-    Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
-} finally {
-    $env:PSModulePath = $previousModulePath
+# Reuse an already-loaded Security module. Importing it again can reapply
+# extended type data and fail with duplicate ObjectSecurity members in hosts
+# that initialized the module before this script was imported.
+$securityModule = Get-Module -Name Microsoft.PowerShell.Security | Select-Object -First 1
+if (-not $securityModule) {
+    $previousModulePath = $env:PSModulePath
+    try {
+        $env:PSModulePath = Join-Path $PSHOME "Modules"
+        Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+    } finally {
+        $env:PSModulePath = $previousModulePath
+    }
+    $securityModule = Get-Module -Name Microsoft.PowerShell.Security | Select-Object -First 1
+}
+if (-not $securityModule) {
+    throw "Microsoft.PowerShell.Security is unavailable in the active PowerShell host."
+}
+$requiredSecurityCommands = @("Get-Acl", "Set-Acl")
+foreach ($commandName in $requiredSecurityCommands) {
+    if (-not (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
+        throw "Microsoft.PowerShell.Security did not provide required command '$commandName'."
+    }
 }
 
 
