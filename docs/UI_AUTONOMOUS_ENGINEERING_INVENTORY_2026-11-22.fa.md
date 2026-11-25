@@ -416,6 +416,7 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 5. در پایان یا failure، `always()` فقط همان tag را unload می‌کند، خروج آن از `/api/ps` را بررسی می‌کند، وجود tag پایه را دوباره تأیید می‌کند، فقط همان tag موقت را حذف می‌کند و نبودنش را در `/api/tags` بررسی می‌کند.
 6. اگر مالکیت، context، base tag، unload یا deletion قابل اثبات نباشد، مدل حفظ می‌شود و cleanup خطا می‌دهد؛ مدل پایه و سایر tagها هدف قرار نمی‌گیرند.
 7. legacy aliasهای بدون شناسهٔ run فقط audit می‌شوند؛ حذف destructive تنها با `--delete-confirmed-legacy` ممکن است و در startup اجرا نمی‌شود.
+8. مهاجرت legacy settings اگر chat profile هنوز ساخته نشده باشد، Codex context variant را به base tag تبدیل می‌کند؛ مقدار legacy حفظ می‌شود و chat profile موجود دست‌نخورده می‌ماند.
 8. همین lifecycle در workflow اصلی و workflow diagnostic ویندوز اعمال شده است.
 
 ### PR graph پس از reconciliation
@@ -427,7 +428,7 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 
 ### وضعیت پذیرش
 - Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
-- آخرین code head ثبت‌شده `246b8c2f3351af7c5c5bfb9477872a3e7e7a9cb7` است. Tests run `45621524449` و dependency audit run `45621524608` در صف و CodeQL run `45621524463` در وضعیت pending ثبت شده‌اند؛ Browser E2E روی این SHA اجرا نشده است. هیچ pass برای این head ادعا نمی‌شود.
+- آخرین code head ثبت‌شده `79559a247fb14d1d48922268d8a038befdcea27f` است. Tests run `45622196110` و Browser E2E run `45622195798` queued؛ dependency audit run `45622195998` و CodeQL run `45622195700` در حال اجرا هستند. هیچ pass برای این head ادعا نمی‌شود.
 - اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
 - Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
 
