@@ -497,7 +497,7 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert "[switch]$AcknowledgeAbandonedSetup" in parameters
     assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in ensure
     assert "if ($abandoned -and -not $AcknowledgeAbandoned)" in lock_module
-    assert "AcknowledgeAbandonedSetup" in lock_module
+    assert "AcknowledgeAbandoned" in lock_module
     assert "ReleaseMutex" not in abandoned
     assert "AcknowledgeAbandonedSetup" in lock_module
     assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
