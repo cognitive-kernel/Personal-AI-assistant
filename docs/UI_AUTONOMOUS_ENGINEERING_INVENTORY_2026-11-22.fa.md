@@ -423,7 +423,7 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - `main`: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
 - PR #872: شاخهٔ integration مبتنی بر main، باز و Draft.
 - PR #875: startup-readiness slice در شاخهٔ PR #872 ادغام شده؛ merge آن به معنی ادغام در main نیست.
-- PRهای #866، #870 و #871 بسته و superseded هستند؛ branchهایشان برای audit حفظ شده‌اند.
+- PR #863 و PR #869 به‌همراه #866، #870 و #871 به‌عنوان superseded بسته شده‌اند؛ branchهایشان برای audit حفظ شده‌اند. PR #868 پیش‌تر در شاخهٔ #863 ادغام شده بود و محتوایش در #872 وجود دارد.
 - PR #876 پس از انتقال و به‌روزرسانی محتوای inventory در همین شاخه، به‌عنوان سند تکراری بسته شد؛ branch آن برای audit حفظ شده است.
 
 ### وضعیت پذیرش
