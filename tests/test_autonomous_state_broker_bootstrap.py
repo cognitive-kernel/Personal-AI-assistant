@@ -100,10 +100,10 @@ def test_posix_state_migration_does_not_rewrite_existing_tree_permissions():
     assert "os.chmod(directory, 0o700)" not in migration
     assert "both copies were preserved" in migration
 
-def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
+def test_windows_acl_module_exposes_security_cmdlets_to_host_scope():
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
 
-    security_import = "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop"
+    security_import = "Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop"
     assert security_import in module
     assert module.index(security_import) < module.index("function Set-AutonomousDirectoryAcl")
     assert "Get-Acl -LiteralPath" in module
@@ -116,7 +116,7 @@ def test_windows_acl_module_import_isolated_to_active_host_and_restores_module_p
 
     assert '$previousModulePath = $env:PSModulePath' in import_block
     assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in import_block
-    assert "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop" in import_block
+    assert "Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop" in import_block
     assert import_block.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < import_block.index(
         "Import-Module Microsoft.PowerShell.Security"
     )
