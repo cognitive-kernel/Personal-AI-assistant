@@ -714,3 +714,10 @@ The subsequent documentation-only evidence update does not change runtime code a
 - بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
 - گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
 - نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
+
+
+## 2026-11-25 — PowerShell module load regression
+
+- دو محل Import ماژول Security اصلاح شدند تا در صورت بارگذاری قبلی دوباره Import نکنند؛ module path خارج از $PSHOME\Modules رد می‌شود و PSModulePath حتماً restore می‌شود.
+- تست Windows جدید، import دوبارهٔ AutonomousWindowsIdentity.psm1 را در PowerShell 5.1 با مسیرهای PS7/PS5 آلوده آزمایش می‌کند؛ تست probe نیز guard و path validation را بررسی می‌کند.
+- Code head: abb2e7b8007e173b8c4116919e5051c36bf5c25b. CI در انتظار/در حال اجرا است و تا موفقیت exact-head و تست میزبان مالک، وضعیت مشکل باز می‌ماند.
