@@ -466,36 +466,41 @@ def test_broker_installer_preflights_net48_and_service_control_before_mutation()
 
 def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
 
-    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
-    assert mutex > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
-    assert mutex < ensure.index('$brokerLogDirectory =')
-    assert mutex < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
-    assert mutex < ensure.index("Get-CimInstance Win32_Service")
-    assert mutex < ensure.index("Stop-Service -Name $service.Name")
-    assert mutex < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
-    assert "$setupMutex.WaitOne(0)" in ensure
-    assert "Another elevated state-broker setup is already running" in ensure
-    assert "catch [System.Threading.AbandonedMutexException]" in ensure
-    assert "fail closed" in ensure
-    assert "$setupMutex.ReleaseMutex()" in ensure
-    assert "$setupMutex.Dispose()" in ensure
-    assert ensure.rfind("$setupMutex.ReleaseMutex()") < ensure.rfind("$setupMutex.Dispose()")
+    acquire = ensure.index("Enter-AutonomousStateBrokerSetupMutex")
+    assert acquire > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
+    assert acquire < ensure.index("$brokerLogDirectory =")
+    assert acquire < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert acquire < ensure.index("Get-CimInstance Win32_Service")
+    assert acquire < ensure.index("Stop-Service -Name $service.Name")
+    assert acquire < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert '$Name = "Global\\PersonalAIAssistant.StateBrokerSetup"' in lock_module
+    assert "$mutex.WaitOne(0)" in lock_module
+    assert "Another elevated state-broker setup is already running" in lock_module
+    assert "catch [System.Threading.AbandonedMutexException]" in lock_module
+    assert "fail-closed" in lock_module
+    assert "$mutex.ReleaseMutex()" in lock_module
+    assert "$mutex.Dispose()" in lock_module
+    assert lock_module.rfind("$mutex.ReleaseMutex()") < lock_module.rfind("$mutex.Dispose()")
 
 
 def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
     parameters = ensure[:ensure.index("$ErrorActionPreference")]
-    parent = ensure[:ensure.index("$setupMutexName")]
-    abandoned = ensure[ensure.index("catch [System.Threading.AbandonedMutexException]"):ensure.index("if (-not $setupMutexAcquired)")]
+    abandoned = lock_module[
+        lock_module.index("catch [System.Threading.AbandonedMutexException]"):
+        lock_module.index("if (-not $acquired)")
+    ]
 
     assert "[switch]$AcknowledgeAbandonedSetup" in parameters
-    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in parent
-    assert "if (-not $AcknowledgeAbandonedSetup)" in abandoned
-    assert "$setupMutexAbandonedUnacknowledged = $true" in abandoned
-    assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
-    assert "$setupMutex.ReleaseMutex()" not in abandoned
-    assert "$setupMutexAbandonedUnacknowledged" in ensure
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in ensure
+    assert "if ($abandoned -and -not $AcknowledgeAbandoned)" in lock_module
+    assert "AcknowledgeAbandonedSetup" in lock_module
+    assert "ReleaseMutex" in abandoned
+    assert "AcknowledgeAbandonedSetup" in abandoned
+    assert "AcknowledgeAbandonedSetup" in ensure
     python_setup = _read("app/autonomous_engineering_broker_setup.py")
     assert "-AcknowledgeAbandonedSetup" not in python_setup
 
@@ -503,7 +508,8 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
 def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_mutation():
     ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
     parameters = ensure[:ensure.index("$ErrorActionPreference")]
-    elevation = ensure[:ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')]
+    elevation = ensure[:ensure.index("$scriptRoot =")]
+    acquire = ensure.index("Enter-AutonomousStateBrokerSetupMutex")
 
     assert "[switch]$ElevatedChild" in parameters
     assert "[switch]$AcknowledgeAbandonedSetup" in parameters
@@ -513,10 +519,7 @@ def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_m
     assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in elevation
     assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in elevation
     assert elevation.index('Join-Path $PSHOME "Modules"') < elevation.index("Start-Process -FilePath $hostExecutable")
-    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index(
-        'Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")'
-    )
-    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index("$setupMutexName")
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < acquire
     assert "$env:PSModulePath = $previousModulePath" in elevation
     assert "$windowsPowerShellPath" not in elevation
 
