@@ -926,7 +926,7 @@ def _ensure_ollama_server(
     )
 
 
-_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(r"-codex-(?:ctx(?:[0-9]+)?|64k)$", re.IGNORECASE)
+_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(r"-codex-(?:ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?|64k)$", re.IGNORECASE)
 
 
 def _internal_codex_context_base_model(model: str) -> str | None:
