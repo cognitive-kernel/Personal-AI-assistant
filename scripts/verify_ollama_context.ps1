@@ -748,3 +748,531 @@ if (-not $VerifyOnly) {
     Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
 }
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+ {`
+        throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
+    }
+
+    $baseModel = $Model
+    $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -le 0) {
+        throw "Selected model maximum context is not a positive verified value."
+    }
+
+    $requestedContext = $null
+    $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
+    if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
+        }
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
+    } else {
+        $selectionMode = "automatic"
+    }
+
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+    }
+
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
+
+    $runId = [string]$env:GITHUB_RUN_ID
+    $runAttempt = [string]$env:GITHUB_RUN_ATTEMPT
+    if ($runId -notmatch '^[0-9]{1,24}$' -or $runAttempt -notmatch '^[0-9]{1,6}$') {
+        throw "A valid GitHub run ID and attempt are required to create a run-owned temporary Ollama context model."
+    }
+    $nonce = [guid]::NewGuid().ToString("N").Substring(0, 12)
+    $codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"
+    if ($codexModel.Length -gt 200) {
+        throw "The generated temporary Ollama model tag exceeds the supported name bound."
+    }
+
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect Ollama tags before creating the temporary Codex model. $($_.Exception.Message)"
+    }
+    $existingNames = @($catalog.models | ForEach-Object { [string]$_.name })
+    if ($existingNames -contains $codexModel) {
+        throw "The generated temporary model tag already exists; refusing to overwrite an existing Ollama model."
+    }
+
+    # Persist the exact cleanup identity before creation so the always() cleanup
+    # step can recover even if this preflight fails after /api/create begins.
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    }
+    $env:AUTONOMOUS_ENGINEERING_TEMP_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+
+    $createBody = @{
+        model = $codexModel
+        from = $baseModel
+        parameters = @{ num_ctx = $selectedContext }
+        stream = $false
+    } | ConvertTo-Json -Depth 5 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+    } catch {
+        throw "Ollama could not create temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+    }
+
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Temporary model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+} catch {
+    throw "Ollama could not load temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama model passed to Codex: $codexModel"
+Write-Host "Temporary Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
+}
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+) {
+        throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
+    }
+
+    $baseModel = $Model
+    $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -le 0) {
+        throw "Selected model maximum context is not a positive verified value."
+    }
+
+    $requestedContext = $null
+    $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
+    if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
+        }
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
+    } else {
+        $selectionMode = "automatic"
+    }
+
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+    }
+
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
+
+    $runId = [string]$env:GITHUB_RUN_ID
+    $runAttempt = [string]$env:GITHUB_RUN_ATTEMPT
+    if ($runId -notmatch '^[0-9]{1,24}$' -or $runAttempt -notmatch '^[0-9]{1,6}$') {
+        throw "A valid GitHub run ID and attempt are required to create a run-owned temporary Ollama context model."
+    }
+    $nonce = [guid]::NewGuid().ToString("N").Substring(0, 12)
+    $codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"
+    if ($codexModel.Length -gt 200) {
+        throw "The generated temporary Ollama model tag exceeds the supported name bound."
+    }
+
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect Ollama tags before creating the temporary Codex model. $($_.Exception.Message)"
+    }
+    $existingNames = @($catalog.models | ForEach-Object { [string]$_.name })
+    if ($existingNames -contains $codexModel) {
+        throw "The generated temporary model tag already exists; refusing to overwrite an existing Ollama model."
+    }
+
+    # Persist the exact cleanup identity before creation so the always() cleanup
+    # step can recover even if this preflight fails after /api/create begins.
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    }
+    $env:AUTONOMOUS_ENGINEERING_TEMP_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+
+    $createBody = @{
+        model = $codexModel
+        from = $baseModel
+        parameters = @{ num_ctx = $selectedContext }
+        stream = $false
+    } | ConvertTo-Json -Depth 5 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+    } catch {
+        throw "Ollama could not create temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+    }
+
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Temporary model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+} catch {
+    throw "Ollama could not load temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama model passed to Codex: $codexModel"
+Write-Host "Temporary Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
+}
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+) {
+        throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
+    }
+
+    $baseModel = $Model
+    $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -le 0) {
+        throw "Selected model maximum context is not a positive verified value."
+    }
+
+    $requestedContext = $null
+    $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
+    if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
+        }
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
+    } else {
+        $selectionMode = "automatic"
+    }
+
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+    }
+
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
+
+    $runId = [string]$env:GITHUB_RUN_ID
+    $runAttempt = [string]$env:GITHUB_RUN_ATTEMPT
+    if ($runId -notmatch '^[0-9]{1,24}$' -or $runAttempt -notmatch '^[0-9]{1,6}$') {
+        throw "A valid GitHub run ID and attempt are required to create a run-owned temporary Ollama context model."
+    }
+    $nonce = [guid]::NewGuid().ToString("N").Substring(0, 12)
+    $codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"
+    if ($codexModel.Length -gt 200) {
+        throw "The generated temporary Ollama model tag exceeds the supported name bound."
+    }
+
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect Ollama tags before creating the temporary Codex model. $($_.Exception.Message)"
+    }
+    $existingNames = @($catalog.models | ForEach-Object { [string]$_.name })
+    if ($existingNames -contains $codexModel) {
+        throw "The generated temporary model tag already exists; refusing to overwrite an existing Ollama model."
+    }
+
+    # Persist the exact cleanup identity before creation so the always() cleanup
+    # step can recover even if this preflight fails after /api/create begins.
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    }
+    $env:AUTONOMOUS_ENGINEERING_TEMP_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+
+    $createBody = @{
+        model = $codexModel
+        from = $baseModel
+        parameters = @{ num_ctx = $selectedContext }
+        stream = $false
+    } | ConvertTo-Json -Depth 5 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+    } catch {
+        throw "Ollama could not create temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+    }
+
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Temporary model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+} catch {
+    throw "Ollama could not load temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama model passed to Codex: $codexModel"
+Write-Host "Temporary Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
+}
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
+) {
+        throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
+    }
+
+    $baseModel = $Model
+    $modelInfo = Get-ModelInfo -ModelName $baseModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $baseModel
+    $maximum = Get-MaximumContext -Info $modelInfo
+    if ($maximum -le 0) {
+        throw "Selected model maximum context is not a positive verified value."
+    }
+
+    $requestedContext = $null
+    $manualContext = [string]$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH
+    if (-not [string]::IsNullOrWhiteSpace($manualContext)) {
+        $parsedContext = 0L
+        if (-not [int64]::TryParse($manualContext, [ref]$parsedContext) -or $parsedContext -le 0) {
+            throw "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH must be a positive integer."
+        }
+        $requestedContext = [Nullable[long]]$parsedContext
+        $selectionMode = "requested-and-safely-clamped"
+    } else {
+        $selectionMode = "automatic"
+    }
+
+    $contextSelection = Get-AutomaticContext -Info $modelInfo -ModelName $baseModel -RequestedContext $requestedContext
+    $selectedContext = [int64]$contextSelection.selected_context_tokens
+    if ($selectedContext -le 0 -or $selectedContext -gt $maximum) {
+        throw "Selected context $selectedContext is outside the supported Codex range for model maximum $maximum."
+    }
+
+    Write-Host "Model maximum context: $($contextSelection.maximum_context_tokens) tokens"
+    Write-Host "Hardware-safe context ceiling: $($contextSelection.hardware_maximum_context_tokens) tokens"
+    Write-Host "Available physical RAM: $($contextSelection.available_memory_bytes) bytes"
+    Write-Host "Installed model weight size: $($contextSelection.model_weight_bytes) bytes"
+    Write-Host "Estimated KV cache: $($contextSelection.kv_cache_bytes_per_token) bytes/token"
+    Write-Host "Reserved system RAM: $($contextSelection.reserve_bytes) bytes"
+    Write-Host "Model/runtime overhead budget: $($contextSelection.overhead_bytes) bytes"
+    if ($null -ne $requestedContext) {
+        Write-Host "Requested context: $requestedContext tokens"
+    }
+    Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
+
+    $runId = [string]$env:GITHUB_RUN_ID
+    $runAttempt = [string]$env:GITHUB_RUN_ATTEMPT
+    if ($runId -notmatch '^[0-9]{1,24}$' -or $runAttempt -notmatch '^[0-9]{1,6}$') {
+        throw "A valid GitHub run ID and attempt are required to create a run-owned temporary Ollama context model."
+    }
+    $nonce = [guid]::NewGuid().ToString("N").Substring(0, 12)
+    $codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"
+    if ($codexModel.Length -gt 200) {
+        throw "The generated temporary Ollama model tag exceeds the supported name bound."
+    }
+
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect Ollama tags before creating the temporary Codex model. $($_.Exception.Message)"
+    }
+    $existingNames = @($catalog.models | ForEach-Object { [string]$_.name })
+    if ($existingNames -contains $codexModel) {
+        throw "The generated temporary model tag already exists; refusing to overwrite an existing Ollama model."
+    }
+
+    # Persist the exact cleanup identity before creation so the always() cleanup
+    # step can recover even if this preflight fails after /api/create begins.
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    }
+    $env:AUTONOMOUS_ENGINEERING_TEMP_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+
+    $createBody = @{
+        model = $codexModel
+        from = $baseModel
+        parameters = @{ num_ctx = $selectedContext }
+        stream = $false
+    } | ConvertTo-Json -Depth 5 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+    } catch {
+        throw "Ollama could not create temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+    }
+
+    $modelInfo = Get-ModelInfo -ModelName $codexModel
+    Assert-ToolCallingCapability -Info $modelInfo -ModelName $codexModel
+    $savedContext = [regex]::Match(
+        [string]$modelInfo.modelfile,
+        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
+    )
+    if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
+        throw "Temporary model '$codexModel' does not declare the selected num_ctx $selectedContext."
+    }
+
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    } else {
+        $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+        $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+    }
+    Write-Host "Context selection mode: $selectionMode"
+}
+
+$warmupBody = @{
+    model = $codexModel
+    prompt = "Reply with OK."
+    stream = $false
+    keep_alive = "10m"
+} | ConvertTo-Json -Depth 4 -Compress
+try {
+    $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+} catch {
+    throw "Ollama could not load temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+}
+
+$allocated = Get-AllocatedContext -ModelName $codexModel
+Write-Host "Ollama model passed to Codex: $codexModel"
+Write-Host "Temporary Codex model: $codexModel"
+Write-Host "Model maximum context: $maximum tokens"
+Write-Host "Selected Codex context: $selectedContext tokens"
+Write-Host "Ollama allocated runtime context: $allocated tokens"
+if ($allocated -ne $selectedContext) {
+    throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
+}
+if (-not $VerifyOnly) {
+    Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
+}
+Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"
