@@ -171,21 +171,23 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert context_script.count('OLLAMA_RUNTIME_CONTEXT_OK') == 1
     assert 'if ($allocated -ne $selectedContext)' in context_script
     assert 'if ($allocated -lt $selectedContext)' not in context_script
-    assert "function Invoke-LegacyCodexContextCleanup" in context_script
+    assert "function Invoke-LegacyCodexContextAudit" in context_script
     assert 'Join-Path $PSScriptRoot "ollama_legacy_cleanup.py"' in context_script
-    assert "& python $cleanupScript --current-model $CurrentModel 2>&1" in context_script
-    assert "Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel" in context_script
+    assert "& python $cleanupScript --current-model $CurrentModel --audit-only 2>&1" in context_script
+    assert "Invoke-LegacyCodexContextAudit -CurrentModel $codexModel" in context_script
     assert "if (-not $VerifyOnly)" in context_script
-    assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel')
-    assert context_script.index('Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
+    assert context_script.index('if ($allocated -ne $selectedContext)') < context_script.index('Invoke-LegacyCodexContextAudit -CurrentModel $codexModel')
+    assert context_script.index('Invoke-LegacyCodexContextAudit -CurrentModel $codexModel') < context_script.index('OLLAMA_RUNTIME_CONTEXT_OK')
     assert '-le 0' in context_script
     assert 'AUTONOMOUS_ENGINEERING_MODEL=$codexModel' in context_script
-    assert '-VerifyOnly' in diagnostic
-    assert '-VerifyOnly' in autonomous
-    assert 'Verify persistent Ollama context after Codex smoke' in diagnostic
-    assert 'Verify persistent Ollama context after autonomous Codex task' in autonomous
-    assert 'steps.context_preflight.outcome == \'success\'' in diagnostic
-    assert 'steps.context_preflight.outcome == \'success\'' in autonomous
+    assert 'AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel' in context_script
+    assert '--audit-only' in context_script
+    assert 'ollama_temporary_context.py' in diagnostic
+    assert 'ollama_temporary_context.py' in autonomous
+    assert 'Unload and remove this diagnostic run's temporary Ollama context model' in diagnostic
+    assert 'Unload and remove this run's temporary Ollama context model' in autonomous
+    assert 'steps.context_preflight.outcome != \'skipped\'' in diagnostic
+    assert 'steps.context_preflight.outcome != \'skipped\'' in autonomous
     assert "feat/autonomous-engineering-complete-20261112" in diagnostic
     assert "fix/autonomous-task-preservation" not in diagnostic
     assert "fix/automation-codex-context-smoke-20261107" not in diagnostic
@@ -219,20 +221,23 @@ def test_codex_context_is_persisted_and_verified_in_both_windows_workflows():
     assert "--require-command-fragment \"echo\" --require-command-fragment \"type\" --require-command-fragment \"del\"" in diagnostic
     assert "python -c \"from pathlib import Path" not in diagnostic
 
-def test_context_preflight_uses_deterministic_variant_from_selected_base_model():
+def test_context_preflight_uses_run_scoped_temporary_variant_from_selected_base_model():
     from pathlib import Path
 
     script = (
         Path(__file__).resolve().parents[1] / "scripts" / "verify_ollama_context.ps1"
     ).read_text(encoding="utf-8")
 
-    assert '$codexModel = "$baseModel-codex-ctx"' in script
+    assert '$codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"' in script
+    assert "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" in script
+    assert "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" in script
     assert "verify_ollama_tools.py" in script
     assert 'model_is_loaded = $modelIsLoaded' in script
     assert 'from = $baseModel' in script
-    assert '$existingContext.Success' in script
+    assert '$existingContext.Success' not in script
     assert "if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?" in script
     assert "Select the original Ollama model to prevent nested variants" in script
+
     root = Path(__file__).resolve().parents[1]
     provision = (root / "scripts" / "provision_autonomous_runner.ps1").read_text(encoding="utf-8")
     app_check = (root / "scripts" / "check_autonomous_agent.ps1").read_text(encoding="utf-8")
@@ -245,8 +250,6 @@ def test_context_preflight_uses_deterministic_variant_from_selected_base_model()
     assert "general.architecture" in runner_check
     assert "Base model selection" in app_check
     assert "Base model selection" in runner_check
-
-
 
 
 def test_codex_model_catalog_rejects_non_positive_context(monkeypatch):
