@@ -29,6 +29,9 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     ).read_text(encoding="utf-8")
     assert "def _verify_repository_access(client: GitHubActionsClient, expected_repository: str)" in policy
     assert "_verify_repository_access(client, repository)" in policy
+    assert "def _verify_variables_read_access(client: GitHubActionsClient)" in policy
+    assert '"\/actions\/variables?per_page=1"' in policy
+    assert "repository Variables read permission" in policy
     assert policy.index("_verify_repository_access(client, repository)") < policy.index("if _live_execution_mode(client)")
     assert policy.rindex("_verify_repository_access(client, repository)") > policy.index("time.sleep(delay_seconds)")
     assert "def _live_execution_mode(client: GitHubActionsClient)" in policy
@@ -85,6 +88,8 @@ def test_recovery_verifies_repository_access_before_defaulting_missing_variables
                 if isinstance(self.metadata, Exception):
                     raise self.metadata
                 return self.metadata
+            if path == "/actions/variables?per_page=1":
+                return {"total_count": 0, "variables": []}
             if path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
                 raise RuntimeError("GitHub Actions API failed: HTTP 404: Not Found")
             raise AssertionError((method, path))
@@ -95,6 +100,7 @@ def test_recovery_verifies_repository_access_before_defaulting_missing_variables
     assert accessible.calls == [
         ("GET", "/"),
         ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"),
+        ("GET", "/actions/variables?per_page=1"),
     ]
 
     inaccessible = Client(RuntimeError("GitHub Actions API failed: HTTP 404: Not Found"))
