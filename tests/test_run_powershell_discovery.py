@@ -321,8 +321,8 @@ def test_run_ollama_preflight_rejects_missing_codex_context_variant_without_pull
         or subprocess.CompletedProcess(command, 1, "", "unexpected pull"),
     )
 
-    with pytest.raises(RuntimeError, match="variant داخلی Codex"):
-        run._ensure_ollama()
+    warnings = run._ensure_ollama()
+    assert any("variant داخلی Codex" in warning for warning in warnings)
 
     assert saved["chat_ollama_model"] == "qwen2.5:7b-codex-ctx2048"
     assert pull_calls == []
