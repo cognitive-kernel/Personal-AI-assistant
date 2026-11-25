@@ -31,7 +31,7 @@
     const defaultTimeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
     const requestedTimeoutMs = options && options.timeoutMs;
     if (requestedTimeoutMs !== undefined &&
-        (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1 || requestedTimeoutMs > 120000)) {
+        (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1 || requestedTimeoutMs > 300000)) {
       throw new RangeError("Invalid autonomous-engineering request timeout.");
     }
     const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs;

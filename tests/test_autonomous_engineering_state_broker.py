@@ -446,3 +446,151 @@ def test_python_broker_health_preserves_posix_and_extends_windows_contract(monke
     assert broker.health(timeout_ms=30000) is False
 
 
+def test_broker_pipe_open_reports_missing_service_instead_of_hiding_it_as_timeout(monkeypatch):
+    class MissingServiceKernel:
+        def __init__(self):
+            self.calls = 0
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE
+
+    fake = MissingServiceKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: broker._ERROR_FILE_NOT_FOUND, raising=False)
+    monkeypatch.setattr(broker.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(broker.StateBrokerError, match=r"pipe is unavailable \(WinError 2\)"):
+        broker._open_pipe(fake, broker.time.monotonic() + 5)
+
+    assert fake.calls == broker._ERROR_FILE_NOT_FOUND_RETRIES
+
+
+def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
+    class FakeKernel:
+        def __init__(self):
+            self.calls = 0
+            self.waited = False
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE if self.calls == 1 else 88
+
+        def WaitNamedPipeW(self, _name, timeout):
+            assert timeout > 0
+            self.waited = True
+            return 1
+
+    fake = FakeKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: 231, raising=False)
+    assert broker._open_pipe(fake, broker.time.monotonic() + 1) == 88
+    assert fake.waited
+    assert fake.calls == 2
+
+
+def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+
+    local_service = service.index('new SecurityIdentifier("S-1-5-19")')
+    server_rights = service.index(
+        "PipeAccessRights.CreateNewInstance | PipeAccessRights.ReadWrite",
+        local_service,
+    )
+    authenticated_users = service.index('new SecurityIdentifier("S-1-5-11")')
+    network_deny = service.index('new SecurityIdentifier("S-1-5-2")')
+
+    assert network_deny < local_service < server_rights < authenticated_users
+    assert "AccessControlType.Deny" in service[network_deny:local_service]
+    assert "AccessControlType.Allow" in service[local_service:authenticated_users]
+
+
+def test_broker_live_windows_integration_rejects_worker_loop_diagnostics():
+    service_test = (ROOT / "scripts" / "test_autonomous_state_broker_service.ps1").read_text(encoding="utf-8")
+
+    assert '$workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"' in service_test
+    assert "recorded unexpected exceptions" in service_test
+
+def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+    cleanup_start = service.index("private object CleanupProgress()")
+    repository_lock = service.index("WithRepositoryExecutionLock", cleanup_start)
+    state_lock = service.index("WithStateLock", repository_lock)
+    checkpoint_lock = service.index("WithCheckpointStoreLock", state_lock)
+    repository_lock_method = service.index("private object WithRepositoryExecutionLock")
+
+    assert cleanup_start < repository_lock < state_lock < checkpoint_lock < repository_lock_method
+    assert 'Path.Combine(_stateDirectory, "repository-execution.lock")' in service
+    assert "stream.Lock(0, 1)" in service
+    assert "stream.Unlock(0, 1)" in service
+    assert '"repository_execution_active"' in service
+    assert "An autonomous Runner owns the repository execution lock" in service
+    assert 'Path.Combine(_stateDirectory, "current.json")' in service
+    assert '"active_progress_run"' in service
+    assert "progress state as a blocker" in service
+    assert "FileShare.Read | FileShare.Delete" in service
+    assert '"progress_writer_active"' in service
+    assert "A progress writer is active" in service
+
+
+def test_python_broker_health_preserves_posix_and_extends_windows_contract(monkeypatch):
+    captured = {}
+
+    def healthy_request(method, path, **kwargs):
+        captured.update(method=method, path=path, kwargs=kwargs)
+        return {"ready": True}
+
+    monkeypatch.setattr(broker, "request", healthy_request)
+    monkeypatch.setattr(broker, "_WINDOWS", False)
+    assert broker.health(timeout_ms=30000, verify=True) is True
+    assert captured == {
+        "method": "GET",
+        "path": "/v1/health",
+        "kwargs": {"timeout_ms": 30000},
+    }
+
+    monkeypatch.setattr(broker, "_WINDOWS", True)
+    captured.clear()
+    monkeypatch.setattr(
+        broker, "request",
+        lambda method, path, **kwargs: captured.update(
+            method=method, path=path, kwargs=kwargs
+        ) or {"ready": True, "storage_ready": True, "acl_ready": True},
+    )
+    assert broker.health(timeout_ms=30000, verify=True) is True
+    assert captured == {
+        "method": "GET",
+        "path": "/v1/health/verify",
+        "kwargs": {"timeout_ms": 30000},
+    }
+
+    monkeypatch.setattr(
+        broker, "request",
+        lambda *_args, **_kwargs: {
+            "ready": True, "storage_ready": True, "acl_ready": False,
+        },
+    )
+    assert broker.health(timeout_ms=30000) is False
+
+    monkeypatch.setattr(
+        broker, "request",
+        lambda *_args, **_kwargs: {
+            "ready": True, "storage_ready": False, "acl_ready": True,
+        },
+    )
+    assert broker.health(timeout_ms=30000) is False
+
+
+
+
+def test_broker_cleanup_failures_are_returned_as_protocol_errors_instead_of_closing_the_pipe():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+    route = service[service.index('if (method == "POST" && path == "/v1/cleanup")'):]
+
+    assert "catch (Exception exception)" in route
+    assert "string code = CleanupFailureCode(exception)" in route
+    assert "WriteResponse(pipe, 503, Error(code))" in route
+    assert "cleanup_access_denied" in service
+    assert "state_directory_missing" in service
+    assert "durable_state_unverified" in service
+    assert "cleanup_lock_timeout" in service
+    assert "cleanup_io_failed" in service
+    assert "cleanup_failed" in service

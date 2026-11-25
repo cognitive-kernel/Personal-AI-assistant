@@ -4,27 +4,20 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_machine_state_broker_is_checked_before_app_startup():
+def test_machine_state_broker_startup_preflight_is_read_only():
     source = (ROOT / "run.py").read_text(encoding="utf-8")
     bootstrap = source[source.index("def _ensure_state_broker"):source.index("\ndef main()")]
     main = source[source.index("def main()"):]
 
     assert "def _ensure_state_broker() -> bool:" in bootstrap
     assert "from app.autonomous_engineering_state_broker import health" in bootstrap
-    assert 'if system == "Windows":' in bootstrap
-    assert 'elif system in {"Linux", "Darwin"}:' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"' in bootstrap
-    assert '"-ExecutionPolicy"' in bootstrap
-    assert '"-File"' in bootstrap
-    assert "shell=False" in bootstrap
-    assert "capture_output = False" in bootstrap
-    assert "if health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "if not health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "state-broker-setup.log" in bootstrap
-    assert 'request("GET", "/v1/health/verify", timeout_ms=30000)' in bootstrap
+    assert "health(timeout_ms=30000, verify=True)" in bootstrap
+    assert "Start-Process" not in bootstrap
+    assert "ensure_autonomous_state_broker.ps1" not in bootstrap
+    assert "ensure_autonomous_state_broker_posix.py" not in bootstrap
+    assert "subprocess.run" not in bootstrap
     assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
-    assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_state_broker()")
+    assert main.index('load_dotenv(ROOT / ".env", override=False)') < main.index("_ensure_state_broker()")
     assert main.index("_ensure_state_broker()") < main.index("_ensure_ollama()")
     assert main.index("_ensure_state_broker()") < main.index("uvicorn")
 
@@ -117,17 +110,51 @@ def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
     assert "Set-Acl -LiteralPath" in module
 
 
-def test_windows_acl_module_filters_inherited_powershell7_paths_before_security_import():
+def test_windows_acl_module_import_isolated_to_active_host_and_restores_module_path():
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
-    pre_import = module[:module.index("Import-Module Microsoft.PowerShell.Security")]
+    import_block = module[:module.index("function ConvertTo-AutonomousWindowsAccountName")]
 
-    assert '$PSVersionTable.PSEdition -eq "Desktop"' in pre_import
-    assert r"'*\Documents\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\*\Modules'" in pre_import
-    assert r"'*\Program Files (x86)\PowerShell\Modules'" in pre_import
-    assert "$env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator" in pre_import
-    assert pre_import.index("$env:PSModulePath =") < module.index(
+    assert '$previousModulePath = $env:PSModulePath' in import_block
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in import_block
+    assert "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop" in import_block
+    assert import_block.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < import_block.index(
         "Import-Module Microsoft.PowerShell.Security"
     )
-    assert "SetEnvironmentVariable" not in pre_import
+    assert import_block.index("Import-Module Microsoft.PowerShell.Security") < import_block.index(
+        "$env:PSModulePath = $previousModulePath"
+    )
+    assert "finally {" in import_block
+    assert "SetEnvironmentVariable" not in import_block
+    assert "Program Files\\\\PowerShell" not in import_block
+
+def test_windows_broker_relaunches_the_current_host_without_pinning_powershell_exe():
+    ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    compatibility = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+
+    assert '$hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in ensure
+    assert 'Start-Process -FilePath $hostExecutable -Verb RunAs' in ensure
+    assert 'Join-Path $PSHOME "powershell.exe"' not in ensure
+    assert '$powershell = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in compatibility
+    assert '& $powershell -NoLogo -NoProfile -NonInteractive' in compatibility
+    assert 'Get-Command powershell.exe' not in compatibility
+
+def test_windows_broker_setup_uses_machine_wide_mutex_and_persistent_recovery_marker():
+    ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    lock_module = (ROOT / "scripts" / "AutonomousStateBrokerSetupLock.psm1").read_text(encoding="utf-8")
+
+    assert 'Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -Force' in ensure
+    assert 'Enter-AutonomousStateBrokerSetupMutex -Name "Global\\PersonalAIAssistant.StateBrokerSetup"' in ensure
+    assert ensure.index("Enter-AutonomousStateBrokerSetupMutex") < ensure.index("Get-CimInstance Win32_Service")
+    assert "Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState" in ensure
+    assert ensure.index("Clear-AutonomousStateBrokerSetupRecoveryMarker") > ensure.index("if ($setupFailure) { throw $setupFailure }")
+    assert "AcknowledgeAbandonedSetup" in ensure
+    assert "RegistryView]::Registry64" in lock_module
+    assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED" in lock_module
+    assert 'SetValue("SetupReason", $Reason' in lock_module
+    assert 'DeleteValue("SetupReason", $false)' in lock_module
+    assert '-or $Reason -match "[\\r\\n]"' in lock_module
+    assert "$preserveSetupMutex = $false" in ensure
+    assert "$requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0" in ensure
+    assert "recovery marker persistence failed; setup mutex retained until process exit." in ensure
+    assert "if ($null -ne $setupMutexState -and -not $preserveSetupMutex)" in ensure

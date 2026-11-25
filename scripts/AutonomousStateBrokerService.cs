@@ -282,11 +282,28 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }
         if (method == "POST" && path == "/v1/cleanup")
         {
-            Dictionary<string, object> cleanup = CleanupProgress() as Dictionary<string, object>;
-            object conflict;
-            int status = cleanup != null && cleanup.TryGetValue("conflict", out conflict) &&
-                conflict is Boolean && (Boolean)conflict ? 409 : 200;
-            WriteResponse(pipe, status, cleanup ?? Error("cleanup_failed"));
+            try
+            {
+                Dictionary<string, object> cleanup = CleanupProgress() as Dictionary<string, object>;
+                object conflict;
+                int status = cleanup != null && cleanup.TryGetValue("conflict", out conflict) &&
+                    conflict is Boolean && (Boolean)conflict ? 409 : 200;
+                WriteResponse(pipe, status, cleanup ?? Error("cleanup_failed"));
+            }
+            catch (Exception exception)
+            {
+                string code = CleanupFailureCode(exception);
+                LogWorkerException(exception);
+                try
+                {
+                    EventLog.WriteEntry(
+                        "PersonalAIAssistantStateBroker cleanup failed: " + code,
+                        EventLogEntryType.Warning
+                    );
+                }
+                catch { }
+                WriteResponse(pipe, 503, Error(code));
+            }
             return;
         }
 
@@ -1576,6 +1593,22 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             status = 503;
             result = Error("dispatch_admission_state_unavailable");
         }
+    }
+
+    private static string CleanupFailureCode(Exception exception)
+    {
+        if (exception is UnauthorizedAccessException ||
+            exception is System.Security.SecurityException)
+            return "cleanup_access_denied";
+        if (exception is DirectoryNotFoundException)
+            return "state_directory_missing";
+        if (exception is InvalidDataException)
+            return "durable_state_unverified";
+        if (exception is System.TimeoutException)
+            return "cleanup_lock_timeout";
+        if (exception is IOException)
+            return "cleanup_io_failed";
+        return "cleanup_failed";
     }
 
     private object CleanupProgress()

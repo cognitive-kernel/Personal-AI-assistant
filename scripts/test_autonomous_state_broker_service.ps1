@@ -1,43 +1,412 @@
 $ErrorActionPreference = "Stop"
 
 $serviceName = "PersonalAIAssistantStateBroker"
-$testTempRoot = if (-not [String]::IsNullOrWhiteSpace($env:RUNNER_TEMP)) {
-    $env:RUNNER_TEMP
-} elseif (-not [String]::IsNullOrWhiteSpace($env:TEMP)) {
-    Join-Path $env:TEMP "PersonalAIAssistant-StateBrokerTest"
-} else {
-    Join-Path ([IO.Path]::GetTempPath()) "PersonalAIAssistant-StateBrokerTest"
+$servicePackage = Join-Path $PSScriptRoot "bin\PersonalAIAssistant.StateBroker.exe"
+$serviceHashFile = $servicePackage + ".sha256"
+if (-not (Test-Path -LiteralPath $servicePackage -PathType Leaf) -or
+    -not (Test-Path -LiteralPath $serviceHashFile -PathType Leaf)) {
+    throw "The CI-built Windows broker package or SHA-256 manifest is missing."
 }
-New-Item -ItemType Directory -Path $testTempRoot -Force | Out-Null
-$serviceSource = Join-Path $testTempRoot "AutonomousStateBrokerService.exe"
-# Always compile the broker from the checked-out source. Reusing an existing
-# executable in TEMP/RUNNER_TEMP can silently test stale service code.
-$frameworkCandidates = @(
-    (Join-Path $env:WINDIR "Microsoft.NET\\Framework64\\v4.0.30319"),
-    (Join-Path $env:WINDIR "Microsoft.NET\\Framework\\v4.0.30319")
-)
-$frameworkRoot = $frameworkCandidates | Where-Object {
-    Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-} | Select-Object -First 1
-if (-not $frameworkRoot) {
-    throw "The .NET Framework C# compiler was not found."
+$expectedHash = (Get-Content -LiteralPath $serviceHashFile -Raw -ErrorAction Stop).Trim()
+if ($expectedHash -notmatch '^[0-9a-fA-F]{64}$') {
+    throw "The CI-built Windows broker SHA-256 manifest is malformed."
 }
-$source = Join-Path $PSScriptRoot "AutonomousStateBrokerService.cs"
-if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
-    throw "Windows state broker source was not found: $source"
+$packageHash = (Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256 -ErrorAction Stop).Hash
+if (-not [string]::Equals($packageHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "The CI-built Windows broker package failed SHA-256 verification."
 }
-$references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
-$pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
-$arguments = @("/nologo", "/target:exe", "/out:$serviceSource")
-foreach ($reference in $references) {
-    $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+
+function Invoke-SetupMutexProcessIntegrationTest {
+    $modulePath = Join-Path $PSScriptRoot "AutonomousStateBrokerSetupLock.psm1"
+    if (-not (Test-Path -LiteralPath $modulePath -PathType Leaf)) {
+        throw "The production State Broker setup-lock module is missing."
+    }
+    Import-Module -Name $modulePath -Force -ErrorAction Stop
+
+    $testRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("StateBrokerSetupMutex-CI-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
+    $childScript = Join-Path $testRoot "mutex-child.ps1"
+    $mutexName = "Global\PersonalAIAssistant.StateBrokerSetup.CI." + [guid]::NewGuid().ToString("N")
+    $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+    $anchorMutex = $null
+    $proxy = $null
+    $holder = $null
+    $children = New-Object System.Collections.ArrayList
+
+    $childSource = @'
+$ErrorActionPreference = "Stop"
+$modulePath = $env:STATE_BROKER_LOCK_MODULE
+Import-Module -Name $modulePath -Force -ErrorAction Stop
+
+switch ($env:STATE_BROKER_LOCK_MODE) {
+    "proxy" {
+        # This process models the non-elevated parent. It launches the
+        # elevated child and then remains independently terminable.
+        $env:STATE_BROKER_LOCK_MODE = "holder"
+        $hostPath = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+        $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $env:STATE_BROKER_LOCK_SCRIPT + '"'
+        $child = Start-Process -FilePath $hostPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL, [string]$child.Id)
+        while ($true) { Start-Sleep -Milliseconds 250 }
+    }
+    "holder" {
+        $ownerThreadSource = @(
+            'using System;',
+            'using System.IO;',
+            'using System.Threading;',
+            'public static class StateBrokerSetupMutexOwnerThreadProbe {',
+            '    public static Thread Start(string name, string signalPath, string releasePath) {',
+            '        Thread thread = new Thread(() => {',
+            '            Mutex mutex = new Mutex(false, name);',
+            '            try {',
+            '                bool acquired = false;',
+            '                try { acquired = mutex.WaitOne(0); }',
+            '                catch (AbandonedMutexException) { acquired = true; }',
+            '                if (!acquired) { File.WriteAllText(signalPath, "busy"); return; }',
+            '                File.WriteAllText(signalPath, "held");',
+            '                while (!File.Exists(releasePath)) { Thread.Sleep(50); }',
+            '                // Deliberately do not call ReleaseMutex; thread exit abandons ownership.',
+            '            } finally { mutex.Dispose(); }',
+            '        });',
+            '        thread.IsBackground = true;',
+            '        thread.Start();',
+            '        return thread;',
+            '    }',
+            '}'
+        ) -join [Environment]::NewLine
+        Add-Type -TypeDefinition $ownerThreadSource -ErrorAction Stop
+        $thread = [StateBrokerSetupMutexOwnerThreadProbe]::Start(
+            $env:STATE_BROKER_LOCK_NAME,
+            $env:STATE_BROKER_LOCK_SIGNAL,
+            $env:STATE_BROKER_LOCK_RELEASE
+        )
+        while ($thread.IsAlive) { Start-Sleep -Milliseconds 50 }
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_THREAD_EXITED, "exited")
+        while (-not (Test-Path -LiteralPath $env:STATE_BROKER_LOCK_STOP)) {
+            Start-Sleep -Milliseconds 100
+        }
+    }
+    "busy" {
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "A second process acquired the State Broker setup mutex while the owner was alive."
+        } catch {
+            if ($_.Exception.Message -notmatch "already running") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "busy")
+        }
+    }
+    "abandoned" {
+        $rejected = $false
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+        } catch {
+            if ($_.Exception.Message -notmatch "A protected recovery marker was recorded") { throw }
+            $rejected = $true
+        }
+        if (-not $rejected -or -not (Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY)) {
+            throw "The abandoned mutex was not converted into a durable fail-closed recovery marker."
+        }
+        $sameSessionReentryRejected = $false
+        try {
+            $reentrant = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $reentrant
+            throw "The same PowerShell process bypassed the abandoned-setup recovery marker."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            $sameSessionReentryRejected = $true
+        }
+        if (-not $sameSessionReentryRejected) {
+            throw "The same-session recovery marker did not block recursive mutex re-entry."
+        }
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "abandoned")
+    }
+    "blocked" {
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "A second invocation bypassed the persisted recovery marker."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "blocked")
+        }
+    }
+    "process-blocked" {
+        $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "The process-scoped recovery fallback did not block setup."
+        } catch {
+            if ($_.Exception.Message -notmatch "unacknowledged recovery marker") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "process-blocked")
+        }
+    }
+    "process-recover-wrong-thread" {
+        $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+        try {
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            throw "An inherited process recovery flag was incorrectly treated as mutex ownership."
+        } catch {
+            if ($_.Exception.Message -notmatch "this thread does not own the retained setup mutex") { throw }
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "wrong-thread-rejected")
+        }
+    }
+    "process-recover" {
+        $staleMutex = [System.Threading.Mutex]::new($false, $env:STATE_BROKER_LOCK_NAME)
+        try {
+            if (-not $staleMutex.WaitOne(0)) { throw "Could not create the retained same-thread mutex ownership probe." }
+            $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+            $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
+            if (-not $lock.Acquired -or $lock.Abandoned -or $lock.RecoveryMarkerPresent) {
+                throw "Explicit recovery did not release and reacquire the retained same-session mutex cleanly."
+            }
+            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            $probe = [System.Threading.Mutex]::new($false, $env:STATE_BROKER_LOCK_NAME)
+            try {
+                if (-not $probe.WaitOne(0)) { throw "A stale recursive mutex ownership count remained after explicit recovery." }
+                $probe.ReleaseMutex()
+            } finally { $probe.Dispose() }
+            Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "process-recovered")
+        } finally { $staleMutex.Dispose() }
+    }
+    "acknowledge" {
+        $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY -AcknowledgeAbandoned
+        if (-not $lock.Acquired -or $lock.Abandoned -or -not $lock.RecoveryMarkerPresent) {
+            throw "Explicit acknowledgement did not acquire the clean mutex with the persisted recovery marker."
+        }
+        Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+        Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+        if (Test-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY) {
+            throw "Explicit acknowledgement did not clear the recovery marker after successful validation."
+        }
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "acknowledged")
+    }
+    default {
+        throw "Unknown State Broker mutex integration-test mode."
+    }
 }
-$arguments += $source
-& (Join-Path $frameworkRoot "csc.exe") @arguments
-if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $serviceSource -PathType Leaf)) {
-    throw "Windows state broker did not compile from the current checkout."
+'@
+    [System.IO.File]::WriteAllText($childScript, $childSource, [System.Text.UTF8Encoding]::new($false))
+
+    $environmentNames = @(
+        "STATE_BROKER_LOCK_MODULE",
+        "STATE_BROKER_LOCK_SCRIPT",
+        "STATE_BROKER_LOCK_NAME",
+        "STATE_BROKER_LOCK_MODE",
+        "STATE_BROKER_LOCK_SIGNAL",
+        "STATE_BROKER_LOCK_RELEASE",
+        "STATE_BROKER_LOCK_STOP",
+        "STATE_BROKER_LOCK_THREAD_EXITED",
+        "STATE_BROKER_LOCK_CHILD_PID_SIGNAL",
+        "STATE_BROKER_LOCK_MARKER_KEY",
+        "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED"
+    )
+    $previousEnvironment = @{}
+    foreach ($name in $environmentNames) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    }
+
+    function Start-SetupMutexTestChild {
+        param([string]$Mode, [string]$SignalPath)
+        $env:STATE_BROKER_LOCK_MODE = $Mode
+        $env:STATE_BROKER_LOCK_SIGNAL = $SignalPath
+        $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $childScript + '"'
+        $process = Start-Process -FilePath $activeHost -ArgumentList $arguments -PassThru -WindowStyle Hidden
+        [void]$children.Add($process)
+        return $process
+    }
+
+    function Wait-SetupMutexTestSignal {
+        param([System.Diagnostics.Process]$Process, [string]$SignalPath, [int]$TimeoutSeconds = 15)
+        $timer = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($timer.Elapsed.TotalSeconds -lt $TimeoutSeconds) {
+            $Process.Refresh()
+            if (Test-Path -LiteralPath $SignalPath -PathType Leaf) { return }
+            if ($Process.HasExited) {
+                throw "State Broker mutex test child exited before signaling (exit code $($Process.ExitCode))."
+            }
+            Start-Sleep -Milliseconds 100
+        }
+        throw "Timed out waiting for State Broker mutex test child signal."
+    }
+
+    try {
+        Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
+        $env:STATE_BROKER_LOCK_MODULE = $modulePath
+        $env:STATE_BROKER_LOCK_SCRIPT = $childScript
+        $env:STATE_BROKER_LOCK_NAME = $mutexName
+        $env:STATE_BROKER_LOCK_RELEASE = Join-Path $testRoot "release-owner-thread"
+        $env:STATE_BROKER_LOCK_STOP = Join-Path $testRoot "stop-holder-process"
+        $env:STATE_BROKER_LOCK_THREAD_EXITED = Join-Path $testRoot "owner-thread-exited"
+        $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL = Join-Path $testRoot "holder-process-id"
+        $env:STATE_BROKER_LOCK_MARKER_KEY = "SOFTWARE\PersonalAIAssistant\Tests\StateBrokerSetupMutex-" + [guid]::NewGuid().ToString("N")
+
+        # Keep a handle open in the coordinator so the named mutex object
+        # remains available after the dedicated owner thread terminates.
+        $anchorMutex = [System.Threading.Mutex]::new($false, $mutexName)
+
+        $holderThreadSignal = Join-Path $testRoot "holder-thread-held"
+        $proxy = Start-SetupMutexTestChild -Mode "proxy" -SignalPath $holderThreadSignal
+        Wait-SetupMutexTestSignal -Process $proxy -SignalPath $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL
+        $holderId = [int][System.IO.File]::ReadAllText($env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL)
+        $holder = [System.Diagnostics.Process]::GetProcessById($holderId)
+        Wait-SetupMutexTestSignal -Process $holder -SignalPath $holderThreadSignal
+
+        # Terminate only the launching parent. The elevated-child stand-in must
+        # keep owning the mutex and block a third process from entering.
+        Stop-Process -Id $proxy.Id -Force -ErrorAction Stop
+        $proxy.WaitForExit()
+        $busySignal = Join-Path $testRoot "busy.signal"
+        $busy = Start-SetupMutexTestChild -Mode "busy" -SignalPath $busySignal
+        if (-not $busy.WaitForExit(15000)) {
+            Stop-Process -Id $busy.Id -Force -ErrorAction SilentlyContinue
+            throw "The concurrent mutex rejection probe did not exit within its deadline."
+        }
+        if ($busy.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $busySignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($busySignal) -ne "busy") {
+            throw "A competing process entered the broker setup mutex after its launcher was terminated."
+        }
+
+        # Let only the dedicated .NET owner thread exit. The holder process
+        # remains alive, reproducing an abandoned mutex without terminating it.
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_RELEASE, "exit")
+        $threadExitedSignal = $env:STATE_BROKER_LOCK_THREAD_EXITED
+        $holderSignalWait = [System.Diagnostics.Stopwatch]::StartNew()
+        while ($holderSignalWait.Elapsed.TotalSeconds -lt 15) {
+            $holder.Refresh()
+            if (Test-Path -LiteralPath $threadExitedSignal -PathType Leaf) { break }
+            if ($holder.HasExited) { throw "The holder process exited before its mutex owner thread." }
+            Start-Sleep -Milliseconds 100
+        }
+        if (-not (Test-Path -LiteralPath $threadExitedSignal -PathType Leaf)) {
+            throw "The dedicated mutex owner thread did not exit within its deadline."
+        }
+        if ($holder.HasExited) {
+            throw "The holder PowerShell process must remain alive after its mutex owner thread exits."
+        }
+
+        $abandonedSignal = Join-Path $testRoot "abandoned.signal"
+        $abandoned = Start-SetupMutexTestChild -Mode "abandoned" -SignalPath $abandonedSignal
+        if (-not $abandoned.WaitForExit(15000)) {
+            Stop-Process -Id $abandoned.Id -Force -ErrorAction SilentlyContinue
+            throw "The abandoned-owner probe did not exit within its deadline."
+        }
+        if ($abandoned.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $abandonedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($abandonedSignal) -ne "abandoned") {
+            throw "The production setup-lock module did not persist a recovery marker after an abandoned mutex."
+        }
+
+        $blockedSignal = Join-Path $testRoot "blocked.signal"
+        $blocked = Start-SetupMutexTestChild -Mode "blocked" -SignalPath $blockedSignal
+        if (-not $blocked.WaitForExit(15000)) {
+            Stop-Process -Id $blocked.Id -Force -ErrorAction SilentlyContinue
+            throw "The unacknowledged recovery-marker probe did not exit within its deadline."
+        }
+        if ($blocked.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $blockedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($blockedSignal) -ne "blocked") {
+            throw "A subsequent invocation bypassed the persisted abandoned-setup marker."
+        }
+
+        $acknowledgedSignal = Join-Path $testRoot "acknowledged.signal"
+        $acknowledged = Start-SetupMutexTestChild -Mode "acknowledge" -SignalPath $acknowledgedSignal
+        if (-not $acknowledged.WaitForExit(15000)) {
+            Stop-Process -Id $acknowledged.Id -Force -ErrorAction SilentlyContinue
+            throw "The explicit abandoned-mutex acknowledgement probe did not exit within its deadline."
+        }
+        if ($acknowledged.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $acknowledgedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($acknowledgedSignal) -ne "acknowledged") {
+            throw "Explicit acknowledgement did not release the abandoned setup mutex."
+        }
+
+        $processBlockedSignal = Join-Path $testRoot "process-blocked.signal"
+        $processBlocked = Start-SetupMutexTestChild -Mode "process-blocked" -SignalPath $processBlockedSignal
+        if (-not $processBlocked.WaitForExit(15000)) {
+            Stop-Process -Id $processBlocked.Id -Force -ErrorAction SilentlyContinue
+            throw "The process-scoped recovery fallback probe did not exit within its deadline."
+        }
+        if ($processBlocked.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $processBlockedSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($processBlockedSignal) -ne "process-blocked") {
+            throw "The process-scoped recovery fallback did not fail closed."
+        }
+
+        $processRecoveredSignal = Join-Path $testRoot "process-recovered.signal"
+        $processRecovered = Start-SetupMutexTestChild -Mode "process-recover" -SignalPath $processRecoveredSignal
+        if (-not $processRecovered.WaitForExit(15000)) {
+            Stop-Process -Id $processRecovered.Id -Force -ErrorAction SilentlyContinue
+            throw "The same-session recovery ownership probe did not exit within its deadline."
+        }
+        if ($processRecovered.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $processRecoveredSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($processRecoveredSignal) -ne "process-recovered") {
+            throw "Explicit recovery left stale recursive mutex ownership in the interactive process."
+        }
+
+        $wrongThreadSignal = Join-Path $testRoot "wrong-thread-rejected.signal"
+        $wrongThread = Start-SetupMutexTestChild -Mode "process-recover-wrong-thread" -SignalPath $wrongThreadSignal
+        if (-not $wrongThread.WaitForExit(15000)) {
+            Stop-Process -Id $wrongThread.Id -Force -ErrorAction SilentlyContinue
+            throw "The inherited recovery-flag ownership probe did not exit within its deadline."
+        }
+        if ($wrongThread.ExitCode -ne 0 -or
+            -not (Test-Path -LiteralPath $wrongThreadSignal -PathType Leaf) -or
+            [System.IO.File]::ReadAllText($wrongThreadSignal) -ne "wrong-thread-rejected") {
+            throw "An inherited recovery flag incorrectly authorized a different process/thread."
+        }
+
+        $reacquired = Enter-AutonomousStateBrokerSetupMutex -Name $mutexName -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+        try {
+            if (-not $reacquired.Acquired -or $reacquired.Abandoned -or $reacquired.RecoveryMarkerPresent) {
+                throw "The setup mutex and recovery marker were not cleanly reusable after explicit acknowledgement."
+            }
+        } finally {
+            Exit-AutonomousStateBrokerSetupMutex -Lock $reacquired
+        }
+
+        Write-Host "Windows cross-process setup mutex, parent termination, child ownership, durable abandoned-owner marker, same-process re-entry rejection, explicit acknowledgement, and lock reuse passed."
+    } finally {
+        if ($null -ne $holder -and -not $holder.HasExited) {
+            [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_STOP, "stop")
+            if (-not $holder.WaitForExit(5000)) {
+                Stop-Process -Id $holder.Id -Force -ErrorAction SilentlyContinue
+            }
+        }
+        foreach ($child in $children) {
+            $child.Refresh()
+            if (-not $child.HasExited) {
+                Stop-Process -Id $child.Id -Force -ErrorAction SilentlyContinue
+                try { $child.WaitForExit() } catch {}
+            }
+        }
+        if ($null -ne $anchorMutex) { $anchorMutex.Dispose() }
+        if (-not [string]::IsNullOrWhiteSpace($env:STATE_BROKER_LOCK_MARKER_KEY)) {
+            Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
+            $markerView = [Microsoft.Win32.RegistryView]::Default
+            if ([Environment]::Is64BitOperatingSystem) { $markerView = [Microsoft.Win32.RegistryView]::Registry64 }
+            $markerBase = [Microsoft.Win32.RegistryKey]::OpenBaseKey([Microsoft.Win32.RegistryHive]::LocalMachine, $markerView)
+            try {
+                $markerParent = $markerBase.OpenSubKey("SOFTWARE\PersonalAIAssistant\Tests", $true)
+                if ($null -ne $markerParent) {
+                    try { $markerParent.DeleteSubKey((Split-Path -Leaf $env:STATE_BROKER_LOCK_MARKER_KEY), $false) } finally { $markerParent.Dispose() }
+                }
+            } finally { $markerBase.Dispose() }
+        }
+        foreach ($name in $environmentNames) {
+            [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], "Process")
+        }
+        Remove-Item -LiteralPath $testRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
+
+Invoke-SetupMutexProcessIntegrationTest
 
 $serviceRoot = Join-Path $env:ProgramData "PersonalAIAssistant\StateBroker-CI"
 $serviceExe = Join-Path $serviceRoot "PersonalAIAssistant.StateBroker.exe"
@@ -62,7 +431,11 @@ try {
     }
 
     New-Item -ItemType Directory -Path $serviceRoot, $stateRoot, (Join-Path $stateRoot "run-diagnostics") -Force | Out-Null
-    Copy-Item -LiteralPath $serviceSource -Destination $serviceExe -Force
+    Copy-Item -LiteralPath $servicePackage -Destination $serviceExe -Force
+    $stagedHash = (Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256 -ErrorAction Stop).Hash
+    if (-not [string]::Equals($stagedHash, $expectedHash, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "The staged CI broker binary failed SHA-256 verification."
+    }
     & icacls.exe $serviceRoot /grant:r "*$($brokerSid):(OI)(CI)RX" /T /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "Could not grant LocalService read/execute access to the test service binary." }
     [Environment]::SetEnvironmentVariable("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", $stateRoot, "Machine")

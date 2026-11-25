@@ -152,3 +152,13 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [ ] exact-head CI روی آخرین SHA و هر دو سیستم‌عامل.
 - [ ] build و integration واقعی Windows State Broker، سپس پذیرش Windows target-host و browser E2E.
 - [ ] اجرای واقعی workflow/Codex و تأیید نهایی مالک.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.

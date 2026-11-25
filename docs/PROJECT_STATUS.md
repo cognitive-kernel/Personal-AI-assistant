@@ -666,3 +666,13 @@ The subsequent documentation-only evidence update does not change runtime code a
 - The broker protocol includes strict two-phase dispatch reservation operations for both POSIX and Windows. These changes require the Windows service to be rebuilt/reinstalled before target-host validation.
 - Tests and documentation have been updated, but exact-head CI has not yet been run on this branch. Do not merge or claim the module is fully fixed until Linux and Windows suites, broker service compilation/integration, browser E2E, and real Windows target-host acceptance checks pass.
 - Existing active workflow runs were left untouched. No active run was cancelled or modified.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.

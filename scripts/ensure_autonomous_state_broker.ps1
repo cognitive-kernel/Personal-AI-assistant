@@ -1,42 +1,69 @@
 [CmdletBinding()]
 param(
     [switch]$ElevatedChild,
-    [string]$RunnerRoot = ""
+    [string]$RunnerRoot = "",
+    [switch]$AcknowledgeAbandonedSetup
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
 
+# Elevate by relaunching the exact PowerShell executable that is running this
+# script. Restrict only the child process' module search path so it cannot load
+# Security type data from another PowerShell edition or custom module directory.
 $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
 $principal = [Security.Principal.WindowsPrincipal]::new($identity)
-if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+$isAdministrator = $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+if (-not $isAdministrator) {
     if ($ElevatedChild) {
         throw "The elevated state-broker setup process is not running as an administrator."
     }
-    $scriptPath = $PSCommandPath
-    $argumentLine = '-NoProfile -ExecutionPolicy Bypass -File "' + $scriptPath + '" -ElevatedChild'
+
+    $argumentLine = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' +
+        $PSCommandPath.Replace('"', '""') + '" -ElevatedChild'
     if (-not [string]::IsNullOrWhiteSpace($RunnerRoot)) {
         $argumentLine += ' -RunnerRoot "' + $RunnerRoot.Replace('"', '""') + '"'
     }
-    # The elevated child inherits the parent environment. In particular, a
-    # Windows PowerShell 5.1 child can otherwise load PowerShell 7 modules from
-    # WindowsApps before this script gets control, corrupting ObjectSecurity
-    # extended type data. Restrict module discovery to the active host's own
-    # inbox modules for the child only; restore the caller environment always.
+    if ($AcknowledgeAbandonedSetup) {
+        $argumentLine += " -AcknowledgeAbandonedSetup"
+    }
+
     $previousModulePath = $env:PSModulePath
+    $childExitCode = 1
+    $launchFailure = $null
     try {
         $env:PSModulePath = Join-Path $PSHOME "Modules"
-        $hostExecutable = Join-Path $PSHOME "powershell.exe"
+        $hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+        if ([string]::IsNullOrWhiteSpace($hostExecutable) -or
+            -not (Test-Path -LiteralPath $hostExecutable -PathType Leaf)) {
+            throw "Could not resolve the executable path of the active PowerShell host."
+        }
         $child = Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait -PassThru -ErrorAction Stop
-        exit $child.ExitCode
+        $childExitCode = [int]$child.ExitCode
     } catch {
-        Write-Error "Administrator approval is required to install the machine state broker. $($_.Exception.Message)"
-        exit 1
+        $launchFailure = $_.Exception
     } finally {
         $env:PSModulePath = $previousModulePath
     }
+    if ($null -ne $launchFailure) {
+        Write-Error "Administrator approval or the elevated PowerShell host failed. $($launchFailure.GetType().Name): $($launchFailure.Message)"
+        exit 1
+    }
+    exit $childExitCode
 }
 
+$scriptRoot = Split-Path -Parent $PSCommandPath
+Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -Force
+
+$setupMutexState = $null
+$preserveSetupMutex = $false
+try {
+    $setupMarkerRegistrySubKey = "SOFTWARE\PersonalAIAssistant\StateBroker"
+    $setupMutexState = Enter-AutonomousStateBrokerSetupMutex -Name "Global\PersonalAIAssistant.StateBrokerSetup" -MarkerRegistrySubKey $setupMarkerRegistrySubKey -AcknowledgeAbandoned:$AcknowledgeAbandonedSetup
+
+    # The lock belongs to this elevated child, not the Python/PowerShell parent.
+    # If the parent times out or is terminated, this child continues to own the
+    # mutex until the setup exits, preventing a second mutation from overlapping.
 $brokerLogDirectory = Join-Path $env:ProgramData "PersonalAIAssistant\Logs"
 $brokerLogPath = Join-Path $brokerLogDirectory "state-broker-setup.log"
 try {
@@ -47,11 +74,15 @@ try {
     Write-Warning "Could not start the State Broker setup transcript ($($_.Exception.GetType().Name))."
 }
 
-$scriptRoot = Split-Path -Parent $PSCommandPath
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousWindowsPaths.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBroker.psm1") -Force
 Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerInstall.psm1") -Force
+
+# Complete every broker/package/runtime/service-manager preflight before
+# stopping Runner services or changing the shared-state ACL.
+$brokerPackage = Get-AutonomousStateBrokerPackage
+Write-Host ("Verified state broker package SHA-256: " + $brokerPackage.Sha256)
 
 $serviceName = "PersonalAIAssistantStateBroker"
 $brokerServiceSid = "S-1-5-19"
@@ -118,6 +149,12 @@ foreach ($runner in $resolvedRunnerServices) {
 
 $stoppedRunnerServices = @()
 $setupFailure = $null
+$aclTransaction = $null
+$setupCommitted = $false
+$previousStateModifySids = [Environment]::GetEnvironmentVariable(
+    "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+    "Machine"
+)
 try {
     # Stop listeners before changing the shared ACL, then re-check workers to
     # close the race where a job starts between process discovery and service stop.
@@ -142,7 +179,7 @@ try {
     }
 
     New-Item -ItemType Directory -Path $stateRoot -Force | Out-Null
-    Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids $modifySids -OwnerSid $brokerServiceSid -InstallerSid $installerSid
+    $aclTransaction = Set-AutonomousDirectoryTreeAcl -Path $stateRoot -ModifySids $modifySids -OwnerSid $brokerServiceSid -InstallerSid $installerSid -PassThru
     $expectedModifySids = @($modifySids | Select-Object -Unique | Sort-Object)
     if ($expectedModifySids -notcontains $brokerServiceSid) {
         throw "The state ACL manifest must include the LocalService broker identity."
@@ -162,6 +199,9 @@ try {
     }
 
     Install-AutonomousStateBrokerService
+    # The installer has completed its own service, LocalService, storage and ACL
+    # health checks. This is the commit point for the state ACL transaction.
+    $setupCommitted = $true
 
     $verified = Get-Service -Name $serviceName -ErrorAction Stop
     if ($verified.Status -ne "Running") {
@@ -178,6 +218,53 @@ try {
     }
 } catch {
     $setupFailure = $_
+    if (-not $setupCommitted) {
+        $rollbackFailures = @()
+        if ($null -ne $aclTransaction) {
+            try {
+                Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction
+            } catch {
+                $rollbackFailures += "ACL restore ($($_.Exception.GetType().Name))"
+            }
+        }
+        try {
+            [Environment]::SetEnvironmentVariable(
+                "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+                $previousStateModifySids,
+                "Machine"
+            )
+            $restoredManifest = [Environment]::GetEnvironmentVariable(
+                "AUTONOMOUS_ENGINEERING_STATE_MODIFY_SIDS",
+                "Machine"
+            )
+            if ($restoredManifest -ne $previousStateModifySids) {
+                throw "The previous machine ACL identity manifest could not be restored."
+            }
+        } catch {
+            $rollbackFailures += "machine ACL manifest restore ($($_.Exception.GetType().Name))"
+        }
+        if ($rollbackFailures.Count -gt 0) {
+            $setupFailure = [System.Exception]::new(
+                $setupFailure.Exception.Message + "; rollback failures: " + ($rollbackFailures -join ", ")
+            )
+        }
+    }
+
+    $requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0
+    if ($requiresRecoveryAcknowledgement) {
+        $recoveryReason = if ($setupCommitted) { "post_commit_verification_failed" } else { "acl_rollback_failed" }
+        try {
+            Set-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $setupMarkerRegistrySubKey -Reason $recoveryReason
+        } catch {
+            # If HKLM cannot persist recovery state, retain the mutex until this
+            # elevated process exits and the OS marks it abandoned.
+            $preserveSetupMutex = $true
+            $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+            $setupFailure = [System.Exception]::new(
+                $setupFailure.Exception.Message + "; recovery marker persistence failed; setup mutex retained until process exit."
+            )
+        }
+    }
 } finally {
     $restartFailures = @()
     foreach ($serviceNameToRestart in $stoppedRunnerServices) {
@@ -213,6 +300,10 @@ try {
 
 if ($setupFailure) { throw $setupFailure }
 
+# A recovery marker is cleared only after the complete setup and live health
+# verification succeed. Failed acknowledgement attempts leave it in place.
+Clear-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $setupMarkerRegistrySubKey
+Remove-Item Env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED -ErrorAction SilentlyContinue
 Write-Host "Machine state broker is installed and healthy."
 if ($resolvedRunnerServices.Count -gt 0) {
     Write-Host "Runner service identities configured: $($resolvedRunnerServices.Count)"
@@ -220,3 +311,9 @@ if ($resolvedRunnerServices.Count -gt 0) {
     Write-Host "No GitHub Runner is installed; the core application broker is ready. Autonomous dispatch remains unavailable until Runner provisioning is completed."
 }
 Write-Host "Shared state root: $stateRoot"
+
+} finally {
+    if ($null -ne $setupMutexState -and -not $preserveSetupMutex) {
+        Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState
+    }
+}

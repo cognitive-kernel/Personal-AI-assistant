@@ -5,6 +5,8 @@ import os
 import re
 import subprocess
 from typing import Any
+
+from app.windows_powershell import windows_powershell_candidates
 try:
     import psutil
 except ImportError:
@@ -137,6 +139,15 @@ def _detect_rocm_gpus() -> list[dict[str, Any]]:
     return devices
 
 
+
+def _windows_powershell_candidates() -> list[str]:
+    """Find available PowerShell hosts for optional Windows GPU telemetry."""
+    if os.name != "nt":
+        return []
+    return windows_powershell_candidates(system="Windows")
+
+
+
 def _detect_windows_gpus() -> list[dict[str, Any]]:
     """Use Windows WMI plus generic GPU performance counters (works across vendors)."""
     if os.name != "nt":
@@ -162,7 +173,14 @@ try {
 } catch {}
 [pscustomobject]@{Adapters=$adapters; Counters=$counters} | ConvertTo-Json -Depth 5 -Compress
 """
-    output = _run_gpu_command(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script], timeout=4.0)
+    output = None
+    for powershell in _windows_powershell_candidates():
+        output = _run_gpu_command(
+            [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+            timeout=4.0,
+        )
+        if output:
+            break
     if not output:
         return []
     try:

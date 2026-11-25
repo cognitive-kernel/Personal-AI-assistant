@@ -381,3 +381,13 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - Updated the pinned `actions/setup-node` reference to the current `v7.1.0` commit.
 - Added the current live UI-to-API audit as `UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md`; it is a static audit, not target-host acceptance.
 - Exact-head validation is required again after integration with the startup-readiness changes. No runtime workflow was dispatched by this merge preparation.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.

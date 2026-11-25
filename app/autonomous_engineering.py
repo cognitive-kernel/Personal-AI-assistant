@@ -133,6 +133,15 @@ class AutonomousEngineeringAPIRoute(APIRoute):
                 message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
                 headers = dict(exc.headers or {})
                 headers.setdefault("X-Correlation-ID", correlation_id)
+                safe_diagnostics = getattr(exc, "safe_details", None)
+                if isinstance(safe_diagnostics, dict) and safe_diagnostics:
+                    _STATUS_LOGGER.error(
+                        "Autonomous Engineering operation diagnostic; status_code=%s code=%s correlation_id=%s safe_details=%s",
+                        exc.status_code,
+                        headers.get("X-Error-Code") or _HTTP_ERROR_CODES.get(exc.status_code, "unknown"),
+                        correlation_id,
+                        json.dumps(safe_diagnostics, ensure_ascii=False, sort_keys=True)[:700],
+                    )
                 return _structured_error_response(
                     status_code=exc.status_code,
                     message=message,
@@ -586,6 +595,26 @@ def collect_status() -> dict[str, Any]:
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
     return collect_status()
+
+
+@router.post("/broker/setup")
+def autonomous_engineering_setup_broker() -> dict[str, Any]:
+    """Provision the durable-state broker only after an explicit UI/operator action."""
+    from .autonomous_engineering_broker_setup import BrokerSetupError, setup_state_broker
+
+    try:
+        return setup_state_broker()
+    except BrokerSetupError as exc:
+        error = HTTPException(
+            status_code=exc.status_code,
+            detail=str(exc),
+            headers={
+                "X-Error-Code": exc.code,
+                "X-Retryable": "true" if exc.retryable else "false",
+            },
+        )
+        error.safe_details = exc.safe_details
+        raise error from exc
 
 
 @router.post("/models/pull", status_code=202)

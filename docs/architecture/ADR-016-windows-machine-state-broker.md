@@ -48,3 +48,11 @@ The previous Windows bootstrap required exactly one registered Runner service an
 The revised installer discovers zero or more Runner services through their Windows service executable path and resolves each service identity from `Win32_Service.StartName`. It never opens `.runner`. With no Runner service, the broker is installed under LocalService and the shared-state ACL grants Modify only to LocalService. With Runner services present, their selected service SIDs are added. All discovered Runner listeners are stopped before ACL mutation, active workers are rechecked, and every stopped service is restarted in a finally path. An unresolved Runner executable path fails closed before ACL changes.
 
 This addendum records the intended repository contract; operational acceptance still requires exact-head CI and target-host verification, including a machine with no Runner and a machine with the existing protected Runner registration metadata.
+
+## 2026-11-25 addendum — explicit provisioning and setup ownership
+
+- Application startup performs a read-only Broker health probe. Machine-level service installation and ACL reconciliation are initiated only by the explicit loopback-protected dashboard action.
+- The elevated PowerShell child, not the non-elevated launcher, owns the machine-wide setup mutex. A protected HKLM recovery marker records abandoned ownership; the marker remains until setup, Runner restoration, and live Broker health verification all succeed. An explicit acknowledgement is required after inspecting service and ACL state.
+- The service binary is built reproducibly in CI, hash-verified, provenance-attested and staged atomically. The target host does not compile C#; .NET Framework 4.8+ runtime and Windows service APIs are preflight capabilities.
+- ACL reconciliation returns a rollback journal and restores original owner/group/ACE state on failure. No task/checkpoint or durable state is removed as part of Broker provisioning.
+- CI and target-host validation are separate: Windows storage integration must prove mutex ownership, abandoned-owner recovery, ACL rollback, LocalService pipe health and package integrity; owner acceptance must separately exercise non-admin UI and explicit UAC setup.
