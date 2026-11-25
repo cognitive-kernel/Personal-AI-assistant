@@ -40,7 +40,7 @@ function Set-AutonomousStateBrokerSetupRecoveryMarker {
     if ([string]::IsNullOrWhiteSpace($RegistrySubKey)) {
         throw "A non-empty State Broker setup recovery-marker registry path is required."
     }
-    if ([string]::IsNullOrWhiteSpace($Reason) -or $Reason.Length -gt 100 -or $Reason -match "[\\r\\n]") {
+    if ([string]::IsNullOrWhiteSpace($Reason) -or $Reason.Length -gt 100 -or $Reason -match "[\r\n]") {
         throw "A short, single-line State Broker recovery reason is required."
     }
     $baseKey = Open-AutonomousStateBrokerSetupMarkerBaseKey
