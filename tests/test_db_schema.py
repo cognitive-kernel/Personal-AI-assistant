@@ -133,6 +133,7 @@ def test_learning_children_cascade_when_job_is_deleted(tmp_path, monkeypatch):
 def test_database_initialization_is_idempotent_and_preserves_user_settings(
     tmp_path, monkeypatch
 ):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     _init_stores(tmp_path, monkeypatch)
     db.update_settings({
         "ollama_model": "user-selected-model",
@@ -188,6 +189,7 @@ def test_spaced_repetition_history_cascades_when_topic_is_deleted(tmp_path, monk
 def test_existing_temporary_codex_chat_model_is_normalized_to_its_base_tag(
     tmp_path, monkeypatch
 ):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     _init_stores(tmp_path, monkeypatch)
     db.update_settings({
         "ollama_model": "legacy-model-choice",
@@ -206,6 +208,7 @@ def test_existing_temporary_codex_chat_model_is_normalized_to_its_base_tag(
 def test_temporary_chat_model_is_normalized_even_without_legacy_generic_model_key(
     tmp_path, monkeypatch
 ):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     _init_stores(tmp_path, monkeypatch)
     with db.settings_connection() as conn:
         conn.execute("DELETE FROM settings WHERE key='ollama_model'")
@@ -219,6 +222,7 @@ def test_temporary_chat_model_is_normalized_even_without_legacy_generic_model_ke
 def test_explicit_chat_model_environment_override_prevents_settings_migration(
     tmp_path, monkeypatch
 ):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     _init_stores(tmp_path, monkeypatch)
     db.update_settings({"chat_ollama_model": "qwen2.5:7b-codex-ctx2048"})
     monkeypatch.setenv("CHAT_OLLAMA_MODEL", "operator-selected:latest")
