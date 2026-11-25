@@ -214,3 +214,15 @@ def test_temporary_chat_model_is_normalized_even_without_legacy_generic_model_ke
     db.init_databases()
 
     assert db.get_settings()["chat_ollama_model"] == "qwen2.5:7b"
+
+
+def test_explicit_chat_model_environment_override_prevents_settings_migration(
+    tmp_path, monkeypatch
+):
+    _init_stores(tmp_path, monkeypatch)
+    db.update_settings({"chat_ollama_model": "qwen2.5:7b-codex-ctx2048"})
+    monkeypatch.setenv("CHAT_OLLAMA_MODEL", "operator-selected:latest")
+
+    db.init_databases()
+
+    assert db.get_settings()["chat_ollama_model"] == "qwen2.5:7b-codex-ctx2048"
