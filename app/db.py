@@ -89,30 +89,20 @@ def init_databases() -> None:
                             "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                             (json.dumps(existing_settings[legacy_key]), profile_key),
                         )
-            # Keep the legacy model choice for chat. Learning and programming
-            # get their own purpose-specific defaults unless explicitly configured.
-            if os.getenv("CHAT_OLLAMA_MODEL") is None:
-                if "chat_ollama_model" not in existing_settings:
-                    # A temporary Codex context tag is not a chat base model.
-                    # Preserve the legacy key, but seed the new chat profile from its base tag.
-                    conn.execute(
-                        "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                        (json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])), "chat_ollama_model"),
-                    )
-        # A Codex context variant is a generated task-local model, never a
-        # durable chat model. Normalize only this internal suffix; preserve
-        # every ordinary user-selected chat model and honor env overrides.
-        if (
-            "chat_ollama_model" in existing_settings
-            and os.getenv("CHAT_OLLAMA_MODEL") is None
-        ):
-            saved_chat_model = existing_settings["chat_ollama_model"]
-            base_chat_model = _legacy_chat_model_base(saved_chat_model)
-            if base_chat_model != saved_chat_model:
+
+            # Seed a missing chat profile from the legacy model choice.
+            if (
+                "chat_ollama_model" not in existing_settings
+                and os.getenv("CHAT_OLLAMA_MODEL") is None
+            ):
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                    (json.dumps(base_chat_model), "chat_ollama_model"),
+                    (
+                        json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])),
+                        "chat_ollama_model",
+                    ),
                 )
+
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
             learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
@@ -131,19 +121,20 @@ def init_databases() -> None:
                     (json.dumps("gpt-oss:20b"), "learning_ollama_model"),
                 )
 
-        # Older versions could persist an ephemeral Codex context tag as the chat
-        # model. It is deleted after its task, so retaining it makes chat unavailable
-        # on the next start. Normalize only this reserved suffix; preserve all valid
-        # user model choices and respect an explicit environment override.
-        if os.getenv("CHAT_OLLAMA_MODEL") is None and "chat_ollama_model" in existing_settings:
-            current_chat_model = existing_settings["chat_ollama_model"]
-            base_chat_model = _legacy_chat_model_base(current_chat_model)
-            if base_chat_model != current_chat_model:
+        # A Codex context variant is a generated task-local model, never a durable
+        # chat model. Normalize only this reserved suffix even when the legacy
+        # generic model key is absent; preserve valid user choices and env overrides.
+        if (
+            "chat_ollama_model" in existing_settings
+            and os.getenv("CHAT_OLLAMA_MODEL") is None
+        ):
+            saved_chat_model = existing_settings["chat_ollama_model"]
+            base_chat_model = _legacy_chat_model_base(saved_chat_model)
+            if base_chat_model != saved_chat_model:
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                     (json.dumps(base_chat_model), "chat_ollama_model"),
                 )
-
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:
