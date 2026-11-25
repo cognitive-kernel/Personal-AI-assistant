@@ -619,6 +619,7 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
     script = (
         "$ErrorActionPreference = 'Stop'; "
         "$before = $env:PSModulePath; "
+        "if ($before -notlike '*PowerShell\\7\\Modules*') { throw 'PowerShell 7 module path injection was not inherited' }; "
         f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
         f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
         "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
