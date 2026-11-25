@@ -1037,6 +1037,17 @@ def _ensure_ollama() -> list[str]:
             continue
         base_model = _internal_codex_context_base_model(model)
         if base_model is not None:
+            if (
+                role == "مدل گفتگو"
+                and base_model in installed_models
+                and os.getenv("CHAT_OLLAMA_MODEL") is None
+            ):
+                print(
+                    f"{role}: مقدار قدیمی به Codex context variant موقت اشاره می‌کند؛ "
+                    f"تنظیمات هنگام راه‌اندازی به مدل پایهٔ نصب‌شده {base_model} برمی‌گردد. هیچ pullای اجرا نمی‌شود.",
+                    flush=True,
+                )
+                continue
             base_state = (
                 f"مدل پایهٔ {base_model} نصب است؛ آن را در تنظیمات انتخاب کنید."
                 if base_model in installed_models
