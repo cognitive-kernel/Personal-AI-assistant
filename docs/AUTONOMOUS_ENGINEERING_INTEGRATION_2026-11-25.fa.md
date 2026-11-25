@@ -3,7 +3,7 @@
 ### Code and branch state
 - Main base: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
 - Integration branch: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`.
-- Code head for the lifecycle correction: `79559a247fb14d1d48922268d8a038befdcea27f`; subsequent commits in this report update documentation and PR metadata only.
+- Code head for the lifecycle correction: `c91298ca1bb2ad18428c5ec808900cfae411bfdb`; subsequent commits in this report update documentation and PR metadata only.
 - PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
 - The integration branch includes 80 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
 
@@ -25,10 +25,11 @@
 - Both autonomous and Windows diagnostic workflows run the exact temporary-model cleanup path.
 
 ### Current CI evidence boundary
-For code head `79559a247fb14d1d48922268d8a038befdcea27f`:
-- Tests: [45622196110](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622196110) — queued at snapshot time.
-- Dependency audit: [45622195998](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622195998) — in progress at snapshot time.
-- CodeQL: [45622195700](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622195700) — in progress at snapshot time.
+For code head `c91298ca1bb2ad18428c5ec808900cfae411bfdb`:
+- Tests: [45622801682](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622801682) — queued at snapshot time.
+- Dependency audit: [45622801823](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622801823) — in progress at snapshot time.
+- CodeQL: [45622801715](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622801715) — in progress at snapshot time.
+- Browser E2E: [45622801851](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622801851) — dashboard-smoke در حال اجرا در زمان ثبت.
 - Browser E2E was not triggered on this code head. A previous Browser E2E run on an earlier SHA is not exact-head evidence.
 - The successful CI recorded earlier for `583f482af18b2921225ce91ae1d3ebdc5d765aec` is historical and does not validate the new lifecycle changes.
 
