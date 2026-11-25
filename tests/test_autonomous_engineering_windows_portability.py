@@ -577,3 +577,17 @@ def test_live_pause_workflow_powershell_parses_on_windows():
         check=False,
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_run_scoped_temporary_codex_variants_are_rejected_as_base_models():
+    root = Path(__file__).resolve().parents[1]
+    paths = [
+        root / "scripts" / "provision_autonomous_runner.ps1",
+        root / "scripts" / "check_autonomous_agent.ps1",
+        root / "scripts" / "check_autonomous_runner.ps1",
+        root / "scripts" / "verify_ollama_context.ps1",
+    ]
+
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert "-paa-[0-9]+-[0-9]+-[a-f0-9]{12}" in source
