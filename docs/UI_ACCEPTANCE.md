@@ -198,6 +198,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [x] Base model is required to remain installed; unrelated model tags are never deleted by temporary cleanup.
 - [x] Legacy numeric context aliases are audit-only by default; deletion requires explicit `--delete-confirmed-legacy`.
 - [x] UI/API model selectors reject internal context variants, including run-scoped temporary tags, as base-model choices.
+- [x] Legacy settings migration seeds a missing chat profile from the base tag when the old generic model value is an internal Codex context variant; existing chat profile settings remain unchanged.
 - [ ] Exact-head Linux/Windows tests, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must all complete successfully on the final SHA.
 - [ ] Windows target-host acceptance: reproduce the prior PowerShell 5.1 duplicate-TypeData failure and verify the corrected import, Broker health/setup, Runner identity/ACL, and restart behavior.
 - [ ] Live Ollama/Codex acceptance: verify available-RAM context selection, real tool call, successful-task cleanup, failed-task cleanup, and preservation of the base model.
