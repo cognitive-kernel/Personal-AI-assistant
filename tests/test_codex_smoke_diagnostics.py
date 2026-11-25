@@ -235,7 +235,7 @@ def test_context_preflight_uses_run_scoped_temporary_variant_from_selected_base_
     assert 'model_is_loaded = $modelIsLoaded' in script
     assert 'from = $baseModel' in script
     assert '$existingContext.Success' not in script
-    assert "if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?" in script
+    assert 'if ($Model -match "(?i)-codex-ctx(?:[0-9]+)?' in script
     assert "Select the original Ollama model to prevent nested variants" in script
 
     root = Path(__file__).resolve().parents[1]
