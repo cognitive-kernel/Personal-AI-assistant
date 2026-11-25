@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -33,6 +34,23 @@ def settings_connection() -> sqlite3.Connection:
 
 def learning_connection() -> sqlite3.Connection:
     return _connect(defaults.learning_db_path)
+
+_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(
+    r"-codex-(?:ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?|64k)$",
+    re.IGNORECASE,
+)
+
+
+def _legacy_chat_model_base(model: Any) -> Any:
+    """Do not migrate an app-generated temporary Codex variant into chat settings."""
+    if not isinstance(model, str):
+        return model
+    value = model.strip()
+    match = _INTERNAL_CODEX_CONTEXT_VARIANT.search(value)
+    if match is None or match.start() == 0:
+        return model
+    return value[:match.start()]
+
 
 def init_databases() -> None:
     """Initialize versioned settings/learning stores and seed missing default settings."""
@@ -77,9 +95,11 @@ def init_databases() -> None:
                 "chat_ollama_model" not in existing_settings
                 and os.getenv("CHAT_OLLAMA_MODEL") is None
             ):
+                # A temporary Codex context tag is not a chat base model. Preserve
+                # the legacy key, but seed the new chat profile from its base tag.
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                    (json.dumps(existing_settings["ollama_model"]), "chat_ollama_model"),
+                    (json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])), "chat_ollama_model"),
                 )
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
