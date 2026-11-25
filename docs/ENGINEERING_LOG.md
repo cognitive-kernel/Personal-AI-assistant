@@ -2780,3 +2780,12 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - پذیرش Windows واقعی هنوز باز است: CI نمی‌تواند وضعیت module/type data و runspace موجود روی میزبان مالک را کامل بازتولید کند. تا اجرای تست روی همان میزبان و مشاهدهٔ Broker health، این مشکل operationally closed محسوب نمی‌شود.
 
 - تست دوم Windows اکنون سناریوی مهم‌تر را نیز پوشش می‌دهد: Security module ابتدا از مسیر خود PowerShell 5.1 بارگذاری می‌شود، سپس PSModulePath آلوده به مسیر PowerShell 7 بازمی‌گردد و identity module باید بدون re-import و بدون خطای duplicate TypeData بارگذاری شود.
+
+
+## 2026-11-25 — بازیابی مدل گفتگو پس از حذف Codex context موقت
+
+- ریشهٔ دوم مشکل مدل: tag موقت Codex می‌توانست در `chat_ollama_model` باقی بماند؛ چون بعد از task حذف می‌شود، اجرای بعدی به مدل ناموجود اشاره می‌کرد.
+- `db.init_databases` اکنون مقدار ذخیره‌شدهٔ chat را می‌خواند و فقط suffix رزروشدهٔ Codex را به base tag تبدیل می‌کند؛ این کار برای پروفایل موجود و default واردشده از environment نیز انجام می‌شود. مدل‌های عادی کاربر و کلید legacy عمومی تغییر نمی‌کنند.
+- Startup preflight نیز اگر base model نصب باشد، این وضعیت را recoverable تشخیص می‌دهد و هشدار unavailable/pull تولید نمی‌کند؛ اگر base نصب نباشد، قابلیت chat unavailable گزارش می‌شود و pull خودکار اجرا نمی‌شود.
+- Regression در `tests/test_db_schema.py`، `tests/test_core.py` و `tests/test_startup_model_preflight.py` اضافه/به‌روزرسانی شده است.
+- Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; documentation head after integration snapshot: `ee58b9ea37ff732bd174f1ea2f813ad1ca30b95c`. Exact-head CI is pending; target-host acceptance remains open.
