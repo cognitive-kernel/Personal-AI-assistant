@@ -4,8 +4,8 @@
 - Main base: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
 - Integration branch: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`.
 - Code head for the lifecycle correction: `d54f62c4460805f58eb789c655491dfc950ee789`; subsequent commits in this report update documentation and PR metadata only.
-- PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
-- The integration branch includes 80 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
+- PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #863 and #869 (including the #868 follow-up already merged into #863), #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
+- The integration branch includes 81 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
 
 ### Newly confirmed root causes and corrections
 
