@@ -66,7 +66,7 @@ def make_api(model_name, **kwargs):
         ["qwen2.5:7b", model_name],
         loaded=[model_name],
         modelfiles={
-            model_name: "FROM /blob/qwen\\nPARAMETER num_ctx 2048\\n",
+            model_name: "FROM /blob/qwen\nPARAMETER num_ctx 2048\n",
         },
         **kwargs,
     )
