@@ -91,16 +91,26 @@ def init_databases() -> None:
                         )
             # Keep the legacy model choice for chat. Learning and programming
             # get their own purpose-specific defaults unless explicitly configured.
-            if (
-                "chat_ollama_model" not in existing_settings
-                and os.getenv("CHAT_OLLAMA_MODEL") is None
-            ):
-                # A temporary Codex context tag is not a chat base model. Preserve
-                # the legacy key, but seed the new chat profile from its base tag.
-                conn.execute(
-                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                    (json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])), "chat_ollama_model"),
-                )
+            if os.getenv("CHAT_OLLAMA_MODEL") is None:
+                if "chat_ollama_model" not in existing_settings:
+                    # A temporary Codex context tag is not a chat base model.
+                    # Preserve the legacy key, but seed the new chat profile from its base tag.
+                    conn.execute(
+                        "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                        (json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])), "chat_ollama_model"),
+                    )
+                else:
+                    # Older versions could persist an ephemeral Codex context tag as
+                    # the chat model. It is deleted after its task, so retaining it
+                    # makes chat unavailable on the next start. Normalize only this
+                    # reserved internal suffix; preserve every valid user model choice.
+                    current_chat_model = existing_settings["chat_ollama_model"]
+                    base_chat_model = _legacy_chat_model_base(current_chat_model)
+                    if base_chat_model != current_chat_model:
+                        conn.execute(
+                            "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                            (json.dumps(base_chat_model), "chat_ollama_model"),
+                        )
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
             learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
