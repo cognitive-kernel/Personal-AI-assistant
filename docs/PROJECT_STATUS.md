@@ -721,3 +721,11 @@ The subsequent documentation-only evidence update does not change runtime code a
 - دو محل Import ماژول Security اصلاح شدند تا در صورت بارگذاری قبلی دوباره Import نکنند؛ module path خارج از $PSHOME\Modules رد می‌شود و PSModulePath حتماً restore می‌شود.
 - تست Windows جدید، import دوبارهٔ AutonomousWindowsIdentity.psm1 را در PowerShell 5.1 با مسیرهای PS7/PS5 آلوده آزمایش می‌کند؛ تست probe نیز guard و path validation را بررسی می‌کند.
 - Code head: abb2e7b8007e173b8c4116919e5051c36bf5c25b. CI در انتظار/در حال اجرا است و تا موفقیت exact-head و تست میزبان مالک، وضعیت مشکل باز می‌ماند.
+
+
+## 2026-11-25 — Chat profile recovery from ephemeral Codex tags
+
+- Persisted `chat_ollama_model` values ending in a reserved Codex context suffix are normalized to the corresponding base model during database initialization. Ordinary user-selected models and the legacy generic setting are preserved.
+- Startup preflight treats the temporary-tag case as recoverable only when the base model is already installed; it never pulls or starts Ollama automatically.
+- Regression coverage: existing temporary profile, absent legacy generic key, preservation of ordinary profile values, environment-seeded temporary value, and missing base-model behavior.
+- Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; latest integration report: `docs/AUTONOMOUS_ENGINEERING_INTEGRATION_2026-11-25.fa.md`. Exact-head CI and Windows owner-host acceptance remain open.
