@@ -2778,3 +2778,5 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Regression: تست Windows PowerShell 5.1 با PSModulePath آلوده به مسیر PowerShell 7، ماژول identity را دو بار با -Force import می‌کند و مسیر ماژول Security و بازیابی PSModulePath را بررسی می‌کند. تست discovery نیز وجود guard جلوگیری از import تکراری و کنترل مسیر host را assert می‌کند.
 - Code head تحت اعتبارسنجی: abb2e7b8007e173b8c4116919e5051c36bf5c25b. در زمان ثبت، Tests و Browser E2E و Dependency audit در صف بودند و CodeQL لغو شده بود؛ بنابراین هیچ نتیجهٔ موفقی برای این head ادعا نمی‌شود.
 - پذیرش Windows واقعی هنوز باز است: CI نمی‌تواند وضعیت module/type data و runspace موجود روی میزبان مالک را کامل بازتولید کند. تا اجرای تست روی همان میزبان و مشاهدهٔ Broker health، این مشکل operationally closed محسوب نمی‌شود.
+
+- تست دوم Windows اکنون سناریوی مهم‌تر را نیز پوشش می‌دهد: Security module ابتدا از مسیر خود PowerShell 5.1 بارگذاری می‌شود، سپس PSModulePath آلوده به مسیر PowerShell 7 بازمی‌گردد و identity module باید بدون re-import و بدون خطای duplicate TypeData بارگذاری شود.
