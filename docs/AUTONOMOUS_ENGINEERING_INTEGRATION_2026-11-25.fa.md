@@ -3,7 +3,7 @@
 ### Code and branch state
 - Main base: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
 - Integration branch: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`.
-- Code head for the lifecycle correction: `d54f62c4460805f58eb789c655491dfc950ee789`; subsequent commits in this report update documentation and PR metadata only.
+- Code head for the lifecycle correction: `4857f411b38574e88e8662e09e1c2a94150b7ed4`; subsequent commits in this report update documentation and PR metadata only.
 - PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #863 and #869 (including the #868 follow-up already merged into #863), #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
 - The integration branch includes 81 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
 
@@ -25,11 +25,11 @@
 - Both autonomous and Windows diagnostic workflows run the exact temporary-model cleanup path.
 
 ### Current CI evidence boundary
-For code head `d54f62c4460805f58eb789c655491dfc950ee789`:
-- Tests: [45623237155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237155) — jobهای اصلی Linux/Windows و Windows storage/Broker در صف؛ bootstrap macOS موفق.
-- Dependency audit: [45623237087](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237087) — موفق روی code head فعلی.
-- CodeQL: [45623237128](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237128) — پس از rerun در صف.
-- Browser E2E: [45623237170](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237170) — موفق.
+For code head `4857f411b38574e88e8662e09e1c2a94150b7ed4`:
+- Tests: [45627954707](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954707) — jobهای اصلی Linux/Windows و Windows storage/Broker در صف؛ bootstrap macOS موفق.
+- Dependency audit: [45627954566](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954566) — موفق روی code head فعلی.
+- CodeQL: [45627954696](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954696) — پس از rerun در صف.
+- Browser E2E: [45627954623](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954623) — موفق.
 - Browser E2E was not triggered on this code head. A previous Browser E2E run on an earlier SHA is not exact-head evidence.
 - The successful CI recorded earlier for `583f482af18b2921225ce91ae1d3ebdc5d765aec` is historical and does not validate the new lifecycle changes.
 
