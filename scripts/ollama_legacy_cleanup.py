@@ -119,7 +119,7 @@ def cleanup_legacy_context_variants(
     current_model: str,
     *,
     request_json: RequestJson | None = None,
-    audit_only: bool = False,
+    audit_only: bool = True,
     sleep: Callable[[float], None] = time.sleep,
     verify_attempts: int = 5,
     verify_interval_seconds: float = 0.25,
@@ -254,16 +254,22 @@ def main(argv: list[str] | None = None) -> int:
         description="Audit or remove obsolete numeric Codex context aliases across all local Ollama models."
     )
     parser.add_argument("--current-model", required=True)
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--audit-only",
         action="store_true",
-        help="Report eligible aliases without deleting anything.",
+        help="Report eligible aliases without deleting anything (the default).",
+    )
+    mode.add_argument(
+        "--delete-confirmed-legacy",
+        action="store_true",
+        help="Explicitly delete verified legacy aliases; never used by application startup.",
     )
     args = parser.parse_args(argv)
     try:
         result = cleanup_legacy_context_variants(
             args.current_model,
-            audit_only=args.audit_only,
+            audit_only=not args.delete_confirmed_legacy,
         )
     except (OllamaCleanupError, OSError, ValueError) as exc:
         print(f"Ollama legacy context cleanup failed: {exc}", file=sys.stderr)
