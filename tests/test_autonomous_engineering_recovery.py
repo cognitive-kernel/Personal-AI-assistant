@@ -443,9 +443,22 @@ def test_report_appends_summaries_and_emits_truthful_annotations(monkeypatch, tm
 def test_live_pause_missing_variable_defaults_false():
     class MissingVariableClient:
         def request(self, method, path, payload=None):
+            if path == "/actions/variables?per_page=1":
+                return {"total_count": 0, "variables": []}
             raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
 
     assert recovery._live_pause_enabled(MissingVariableClient()) is False
+
+
+def test_live_pause_missing_variable_fails_closed_without_variables_read_permission():
+    import pytest
+
+    class MissingPermissionClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    with pytest.raises(RuntimeError, match="repository Variables read permission"):
+        recovery._live_pause_enabled(MissingPermissionClient())
 
 
 def test_live_pause_api_failure_fails_closed():
@@ -498,6 +511,8 @@ def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
 def test_live_execution_mode_missing_variable_defaults_continuous():
     class MissingVariableClient:
         def request(self, method, path, payload=None):
+            if path == "/actions/variables?per_page=1":
+                return {"total_count": 0, "variables": []}
             raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
 
     assert recovery._live_execution_mode(MissingVariableClient()) == "continuous"
