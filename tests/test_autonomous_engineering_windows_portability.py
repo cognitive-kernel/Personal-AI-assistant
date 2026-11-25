@@ -605,7 +605,8 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
     if not powershell:
         pytest.skip("Windows PowerShell executable is unavailable")
 
-    module_path = str(ROOT / "scripts" / "AutonomousWindowsIdentity.psm1")
+    root = Path(__file__).resolve().parents[1]
+    module_path = str(root / "scripts" / "AutonomousWindowsIdentity.psm1")
     escaped_module_path = module_path.replace("'", "''")
     env = os.environ.copy()
     windows_powershell_modules = str(
@@ -638,7 +639,7 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
             "-Command",
             script,
         ],
-        cwd=ROOT,
+        cwd=root,
         env=env,
         capture_output=True,
         text=True,
