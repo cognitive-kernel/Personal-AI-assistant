@@ -151,7 +151,7 @@ def find_compatible_powershell(
         "if (-not (Get-Module -Name $moduleName)) { throw ('Required module did not load: ' + $moduleName) } "
         "}; "
         "$securityModule = Get-Module -Name Microsoft.PowerShell.Security | Select-Object -First 1; "
-        "$securityRoot = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')).TrimEnd('\\') + '\\'; "
+        "$securityRoot = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')).TrimEnd('\') + '\'; "
         "$securityPath = [IO.Path]::GetFullPath([string]$securityModule.Path); "
         "if (-not $securityPath.StartsWith($securityRoot,[StringComparison]::OrdinalIgnoreCase)) { throw 'Security module is loaded from outside the active host module directory' }; "
         "} catch { exit 42 } finally { $env:PSModulePath = $previousModulePath }; "
