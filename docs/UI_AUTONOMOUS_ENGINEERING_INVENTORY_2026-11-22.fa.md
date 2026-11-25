@@ -398,3 +398,36 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
 - This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
 - Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
+
+
+## الحاقیهٔ 2026-11-25 — اصلاح چرخهٔ عمر Ollama و وضعیت PRها
+
+### ریشه‌یابی مدل مهندسی
+- `scripts/verify_ollama_context.ps1` Context امن را از RAM آزاد و metadata مدل محاسبه می‌کرد، اما نسخهٔ قبلی tag پایدار `<base>-codex-ctx` می‌ساخت و پس از task آن را حذف نمی‌کرد.
+- workflow قبلی بعد از task فقط allocation را با `-VerifyOnly` بررسی می‌کرد؛ post-task model cleanup وجود نداشت.
+- `scripts/ollama_legacy_cleanup.py` می‌توانست aliasهای عددی `-codex-ctxN` را در تمام خانواده‌های مدل حذف کند، درحالی‌که این نام‌ها مالکیت اجرای جاری را ثابت نمی‌کنند.
+- نتیجه: خطای `pull model manifest: file does not exist` برای یک نام داخلی مانند `qwen2.5:7b-codex-ctx2048` نباید با pull مدل از registry پاسخ داده شود؛ این نام، مدل پایهٔ قابل انتخاب نیست.
+
+### قرارداد lifecycle اصلاح‌شده
+1. فقط مدل پایه‌ای که در Ollama نصب و توسط مالک انتخاب شده استفاده می‌شود؛ startup نه مدل pull می‌کند، نه مدل پایه را تغییر یا حذف می‌کند.
+2. Context از RAM آزاد، وزن مدل، KV cache و حداکثر context خود مدل محاسبه می‌شود؛ دادهٔ نامعتبر یا headroom ناکافی باعث توقف fail-closed می‌شود.
+3. برای هر run/attempt یک tag یکتا ساخته می‌شود: `<base>-codex-ctx<context>-paa-<run-id>-<attempt>-<nonce>`.
+4. tag و context دقیق پیش از `/api/create` در workflow environment ثبت می‌شوند تا شکست جزئی preflight هم قابل cleanup باشد.
+5. در پایان یا failure، `always()` فقط همان tag را unload می‌کند، خروج آن از `/api/ps` را بررسی می‌کند، وجود tag پایه را دوباره تأیید می‌کند، فقط همان tag موقت را حذف می‌کند و نبودنش را در `/api/tags` بررسی می‌کند.
+6. اگر مالکیت، context، base tag، unload یا deletion قابل اثبات نباشد، مدل حفظ می‌شود و cleanup خطا می‌دهد؛ مدل پایه و سایر tagها هدف قرار نمی‌گیرند.
+7. legacy aliasهای بدون شناسهٔ run فقط audit می‌شوند؛ حذف destructive تنها با `--delete-confirmed-legacy` ممکن است و در startup اجرا نمی‌شود.
+8. همین lifecycle در workflow اصلی و workflow diagnostic ویندوز اعمال شده است.
+
+### PR graph پس از reconciliation
+- `main`: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
+- PR #872: شاخهٔ integration مبتنی بر main، باز و Draft.
+- PR #875: startup-readiness slice در شاخهٔ PR #872 ادغام شده؛ merge آن به معنی ادغام در main نیست.
+- PRهای #866، #870 و #871 بسته و superseded هستند؛ branchهایشان برای audit حفظ شده‌اند.
+- PR #876 یک inventory documentation-only بر مبنای snapshot قبلی است؛ اطلاعات زندهٔ آن باید در همین inventory و گزارش integration به‌روز نگه داشته شود و نسخهٔ stale آن نباید به‌عنوان منبع وضعیت جاری استفاده شود.
+
+### وضعیت پذیرش
+- Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
+- CI روی head `1eb7f156d385e093793addafe41d60ba3835bb60` در زمان ثبت در صف/حال اجرا بود؛ هیچ pass برای آن head ادعا نمی‌شود.
+- اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
+- Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
+
