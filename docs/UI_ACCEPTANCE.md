@@ -162,3 +162,10 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
 - GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
 - Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.
+
+## 2026-11-25 — harden read-only Variables permission verification
+
+- GitHub may return HTTP 404 both for an absent repository variable and for a token that cannot access the variable endpoint. Repository metadata access alone does not prove the fine-grained token has Variables: read.
+- The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
+- This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
+- Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
