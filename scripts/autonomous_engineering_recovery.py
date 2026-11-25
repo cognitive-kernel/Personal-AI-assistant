@@ -205,8 +205,30 @@ def _verify_repository_access(client: GitHubActionsClient, expected_repository: 
         raise RuntimeError("The GitHub token could not verify the configured repository; recovery fails closed.")
 
 
+def _verify_variables_read_access(client: GitHubActionsClient) -> None:
+    """Prove Variables: read access before a named-variable 404 can mean absence."""
+    try:
+        inventory = _settings_request(client, "GET", "/actions/variables?per_page=1")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "The GitHub token could not verify repository Variables read permission; recovery fails closed."
+        ) from exc
+    total_count = inventory.get("total_count") if isinstance(inventory, dict) else None
+    variables = inventory.get("variables") if isinstance(inventory, dict) else None
+    if (
+        isinstance(total_count, bool)
+        or not isinstance(total_count, int)
+        or total_count < 0
+        or not isinstance(variables, list)
+    ):
+        raise RuntimeError(
+            "GitHub returned an invalid repository Variables inventory; recovery fails closed."
+        )
+
+
 
 def _live_pause_enabled(client: GitHubActionsClient) -> bool:
+    _verify_variables_read_access(client)
     try:
         setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
@@ -224,6 +246,7 @@ def _live_pause_enabled(client: GitHubActionsClient) -> bool:
 
 
 def _live_execution_mode(client: GitHubActionsClient) -> str:
+    _verify_variables_read_access(client)
     try:
         setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
