@@ -428,7 +428,7 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 
 ### وضعیت پذیرش
 - Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
-- آخرین code head ثبت‌شده `d54f62c4460805f58eb789c655491dfc950ee789` است. Tests run `45623237155` و Browser E2E run `45623237170` queued؛ dependency audit run `45622801823` و CodeQL run `45623237128` در حال اجرا هستند. هیچ pass برای این head ادعا نمی‌شود.
+- آخرین code head ثبت‌شده `d54f62c4460805f58eb789c655491dfc950ee789` است. Tests run `45623237155` در حال اجراست (bootstrap macOS موفق و jobهای اصلی Linux/Windows و Windows storage/Broker هنوز queued هستند)؛ Browser E2E run `45623237170` و dependency audit run `45623237087` موفق شده‌اند؛ CodeQL run `45623237128` پس از rerun در صف است. هیچ pass کامل برای این head ادعا نمی‌شود. هیچ pass برای این head ادعا نمی‌شود.
 - اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
 - Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
 
