@@ -21,7 +21,7 @@ This did not satisfy the required lifecycle of creating a hardware-sized context
 6. If ownership, context, base-tag presence, unload state, or deletion cannot be verified, preserve the model and fail cleanup. Never broaden cleanup to other tags.
 7. Legacy numeric aliases without run-ownership metadata are audit-only by default. Destructive legacy cleanup requires the explicit `--delete-confirmed-legacy` option and is not part of startup or normal task preflight.
 8. The same lifecycle applies to the autonomous engineering workflow and the Windows Codex sandbox diagnostic workflow.
-9. When creating a missing chat profile from the legacy generic model setting, strip an internal Codex context suffix and seed the base model only. Preserve the original legacy setting and never rewrite an existing chat profile.
+9. When creating a missing chat profile from the legacy generic model setting, strip an internal Codex context suffix and seed the base model only. If an existing chat profile contains a reserved ephemeral Codex context tag, normalize only that tag to its base model because the temporary tag is deleted after its task. Preserve the legacy setting and all valid existing chat model choices; an explicit CHAT_OLLAMA_MODEL environment override remains authoritative.
 
 ## Consequences
 
