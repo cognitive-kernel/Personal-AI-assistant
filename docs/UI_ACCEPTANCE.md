@@ -185,3 +185,23 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
 - گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
 - نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
+
+
+## 2026-11-25 — current integrated acceptance gates
+
+- [x] Startup checks are read-only: no implicit Broker UAC/setup, no automatic Ollama server start, and no automatic model pull.
+- [x] Broker setup is a separate explicit dashboard/API action; missing Broker limits the dependent capability rather than silently mutating Windows services or ACLs.
+- [x] PowerShell host selection is capability-based; Security module import is isolated to the active host's `$PSHOME\Modules` path.
+- [x] Ollama Context is calculated from installed base-model metadata and currently available hardware memory.
+- [x] Each autonomous run creates a unique temporary context tag containing context, run ID, attempt, and nonce; the exact tag is recorded before model creation.
+- [x] Main and diagnostic workflows have an `always()` cleanup step that unloads and deletes only the exact run-owned temporary tag and verifies its absence.
+- [x] Base model is required to remain installed; unrelated model tags are never deleted by temporary cleanup.
+- [x] Legacy numeric context aliases are audit-only by default; deletion requires explicit `--delete-confirmed-legacy`.
+- [x] UI/API model selectors reject internal context variants, including run-scoped temporary tags, as base-model choices.
+- [ ] Exact-head Linux/Windows tests, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must all complete successfully on the final SHA.
+- [ ] Windows target-host acceptance: reproduce the prior PowerShell 5.1 duplicate-TypeData failure and verify the corrected import, Broker health/setup, Runner identity/ACL, and restart behavior.
+- [ ] Live Ollama/Codex acceptance: verify available-RAM context selection, real tool call, successful-task cleanup, failed-task cleanup, and preservation of the base model.
+- [ ] End-to-end UI acceptance: dispatch a harmless task, observe progress/logs/PR/exact-SHA checks, then test Pause/Resume/Cancel and crash/restart checkpoint preservation.
+- [ ] Keyboard, screen-reader, contrast, and owner visual acceptance.
+- No merge is permitted while any required gate above remains open. CI success is not a substitute for target-host or owner acceptance.
+
