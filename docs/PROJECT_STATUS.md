@@ -1,3 +1,16 @@
+## 2026-11-25 — وضعیت جاری اصلاح ریشه‌ای Autonomous Engineering
+
+- مبنای integration: `main` با SHA `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
+- شاخهٔ کاری: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ PR #872 باز و Draft است. این شاخه در مقایسهٔ زنده با `main` دارای `behind=0` است؛ ادعاهای قدیمی‌تر دربارهٔ stacked بودن آن در سوابق پایین این فایل، وضعیت تاریخی‌اند.
+- اصلاحات قبلی در همین شاخه startup را فقط‌خواندنی کرده‌اند: startup دیگر Broker را با UAC نصب/ترمیم نمی‌کند و مدل Ollama را start/pull نمی‌کند؛ پیش‌نیاز ناقص فقط در همان قابلیت گزارش می‌شود. راه‌اندازی Broker باید اقدام صریح UI باشد.
+- خطای duplicate PowerShell TypeData با محدودکردن import ماژول Security به `$PSHOME\Modules` در فرایند جاری هدف‌گیری شده است؛ پذیرش نهایی آن روی Windows میزبان کاربر هنوز لازم است.
+- اصلاح جدید چرخهٔ مدل: Context از RAM آزاد و metadata مدل محاسبه می‌شود؛ tag موقت run-scoped ساخته می‌شود و در پایان/شکست workflow unload و حذف می‌شود. مدل پایه حفظ می‌شود. Legacy aliasهای فاقد شناسهٔ مالکیت فقط audit می‌شوند و حذف خودکار ندارند.
+- regression tests برای lifecycle و workflow اضافه/به‌روزرسانی شده‌اند. CI موفقِ SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec`، اصلاحات جدید را پوشش نمی‌دهد؛ exact-head CI برای head فعلی باید دوباره اجرا و ثبت شود.
+- گیت‌های target-host همچنان بازند: اجرای برنامه و UI واقعی، State Broker/LocalService، Runner non-admin، Ollama/Codex واقعی، task غیرمخرب از UI تا PR، Pause/Resume/Cancel، crash/restart و حفظ checkpoint، و پذیرش دستی دسترس‌پذیری UI.
+- هیچ merge یا deploy مجاز/انجام‌شده نیست. هیچ مدل، DB، سرویس، Runner، ACL، secret، variable یا checkpoint میزبان کاربر تغییر نکرده است.
+
+---
+
 ## 2026-11-24 — PR #872 diagnostic polling cache follow-up
 
 - Added a 60-second bounded cache for failed-run diagnostics to prevent repeated Broker reads during dashboard polling; regression coverage verifies reuse across consecutive polls.
