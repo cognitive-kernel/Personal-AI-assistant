@@ -99,20 +99,20 @@ def init_databases() -> None:
                         "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                         (json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])), "chat_ollama_model"),
                     )
-            # A Codex context variant is a generated task-local model, never a
-            # durable chat model. Normalize only this internal suffix; preserve
-            # every ordinary user-selected chat model and honor env overrides.
-            if (
-                "chat_ollama_model" in existing_settings
-                and os.getenv("CHAT_OLLAMA_MODEL") is None
-            ):
-                saved_chat_model = existing_settings["chat_ollama_model"]
-                base_chat_model = _legacy_chat_model_base(saved_chat_model)
-                if base_chat_model != saved_chat_model:
-                    conn.execute(
-                        "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                        (json.dumps(base_chat_model), "chat_ollama_model"),
-                    )
+        # A Codex context variant is a generated task-local model, never a
+        # durable chat model. Normalize only this internal suffix; preserve
+        # every ordinary user-selected chat model and honor env overrides.
+        if (
+            "chat_ollama_model" in existing_settings
+            and os.getenv("CHAT_OLLAMA_MODEL") is None
+        ):
+            saved_chat_model = existing_settings["chat_ollama_model"]
+            base_chat_model = _legacy_chat_model_base(saved_chat_model)
+            if base_chat_model != saved_chat_model:
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps(base_chat_model), "chat_ollama_model"),
+                )
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
             learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
