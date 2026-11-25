@@ -3202,8 +3202,24 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     end = workflow.index("- name: Execute one isolated task, validate, and publish for owner review", start)
     gate = workflow[start:end]
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
+    provision = workflow.index("- name: Provision verified GitHub CLI for this Runner job")
+    assert concurrency < start < provision
 
-    assert concurrency < start
+    gated_steps = (
+        "Provision verified GitHub CLI for this Runner job",
+        "Ensure Codex CLI is installed for the Runner service account",
+        "Verify local Ollama and Codex prerequisites",
+        "Verify the selected model's allocated Ollama context",
+        "Verify Ollama and a real workspace-confined Codex tool call",
+        "Install project dependencies for local test execution",
+        "Prepare bounded engineering instructions",
+    )
+    for step_name in gated_steps:
+        step_start = workflow.index("- name: " + step_name)
+        next_step = workflow.find("\\n      - name:", step_start + 1)
+        step_body = workflow[step_start:next_step if next_step >= 0 else len(workflow)]
+        assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in step_body
+
     assert "$repositoryUri = \"https://api.github.com/repos/$env:GITHUB_REPOSITORY\"" in gate
     assert "$repositoryMetadata = Invoke-RestMethod -Method Get" in gate
     assert "$repositoryMetadata.full_name" in gate
@@ -3242,7 +3258,12 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "Out-File" not in gate
     assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
     assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
-    execute_step = workflow[end:workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)]
+    verify_start = workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)
+    verify_end = workflow.index("- name: Unload and remove this run's temporary Ollama context model", verify_start)
+    verify_step = workflow[verify_start:verify_end]
+    assert "-VerifyOnly" in verify_step
+    assert "steps.execute.outcome == 'success'" in verify_step
+    execute_step = workflow[end:verify_start]
     assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in execute_step
     assert "github.ref == 'refs/heads/main'" in workflow
     assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in execute_step
