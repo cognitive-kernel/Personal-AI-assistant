@@ -3216,7 +3216,7 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     )
     for step_name in gated_steps:
         step_start = workflow.index("- name: " + step_name)
-        next_step = workflow.find("\\n      - name:", step_start + 1)
+        next_step = workflow.find("\n      - name:", step_start + 1)
         step_body = workflow[step_start:next_step if next_step >= 0 else len(workflow)]
         assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in step_body
 
