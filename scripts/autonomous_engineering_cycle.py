@@ -978,11 +978,33 @@ def _verify_repository_access(settings_token: str, repo: str) -> None:
         raise RuntimeError("The GitHub token could not verify the configured repository; no automatic task will start.")
 
 
+def _verify_variables_read_access(settings_token: str, repo: str) -> None:
+    """Prove Variables: read access before interpreting a named-variable 404 as absence."""
+    try:
+        inventory = _settings_api(settings_token, repo, "actions/variables?per_page=1")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Could not verify repository Variables read permission; no automatic task will start."
+        ) from exc
+    total_count = inventory.get("total_count") if isinstance(inventory, dict) else None
+    variables = inventory.get("variables") if isinstance(inventory, dict) else None
+    if (
+        isinstance(total_count, bool)
+        or not isinstance(total_count, int)
+        or total_count < 0
+        or not isinstance(variables, list)
+    ):
+        raise RuntimeError(
+            "GitHub returned an invalid repository Variables inventory; no automatic task will start."
+        )
+
+
 
 def _live_pause_enabled(settings_token: str, repo: str) -> bool:
     if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live Pause setting.")
     _verify_repository_access(settings_token, repo)
+    _verify_variables_read_access(settings_token, repo)
     try:
         setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
@@ -1003,6 +1025,7 @@ def _live_execution_mode(settings_token: str, repo: str) -> str:
     if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live execution mode.")
     _verify_repository_access(settings_token, repo)
+    _verify_variables_read_access(settings_token, repo)
     try:
         setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
