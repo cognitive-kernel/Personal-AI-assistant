@@ -861,6 +861,21 @@ jobs:
           if ([string]$repositoryMetadata.full_name -ine $env:GITHUB_REPOSITORY) {
             throw "Could not verify repository identity. Failing closed; no new task will start."
           }
+          # A named-variable GET can also return 404 when the token lacks
+          # Variables: read. Verify that permission independently before a
+          # later 404 is treated as an intentionally absent setting.
+          $variablesInventoryUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/variables?per_page=1"
+          $variablesInventory = Invoke-RestMethod -Method Get -Uri $variablesInventoryUri -Headers $headers -TimeoutSec 15
+          $variableCount = 0
+          if (
+            $null -eq $variablesInventory -or
+            -not [int]::TryParse([string]$variablesInventory.total_count, [ref]$variableCount) -or
+            $variableCount -lt 0 -or
+            $null -eq $variablesInventory.PSObject.Properties["variables"]
+          ) {
+            throw "Could not verify repository Variables read permission. Failing closed; no new task will start."
+          }
+          $variablesInventory = $null
           function Get-LiveRepositoryVariable {
             param(
               [string]$Name,
