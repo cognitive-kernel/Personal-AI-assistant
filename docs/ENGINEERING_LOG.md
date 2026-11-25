@@ -1,3 +1,18 @@
+## 2026-11-25 — ریشه‌یابی و اصلاح چرخهٔ عمر مدل موقت Ollama
+
+- بررسی مستقیم کد و تست‌ها نشان داد `scripts/verify_ollama_context.ps1` ظرفیت Context را از RAM آزاد و metadata مدل محاسبه می‌کرد، اما به‌جای مدل موقت مختص یک اجرا، tag پایدار `<base>-codex-ctx` می‌ساخت و پس از Codex فقط allocation را دوباره بررسی می‌کرد؛ حذف مدل بعد از task وجود نداشت.
+- `scripts/ollama_legacy_cleanup.py` نیز در حالت پیش‌فرض tagهای عددی `-codex-ctxN` را در تمام خانواده‌های مدل بررسی و حذف می‌کرد. چون این tagها شناسهٔ مالکیتِ اجرای جاری نداشتند، حذف خودکارشان می‌توانست به مدل‌های ساخته‌شده یا نگه‌داری‌شده توسط کاربر آسیب بزند.
+- اصلاح در PR #872: هر اجرای workflow یک tag یکتا با context، run ID، attempt و nonce می‌سازد؛ شناسهٔ دقیق قبل از درخواست create در `GITHUB_ENV` ثبت می‌شود تا حتی شکست preflight نیز مسیر cleanup داشته باشد. مدل پایه باید همچنان نصب باشد.
+- پس از task یا شکست، step دارای `always()` فقط همان tag را unload می‌کند، نبودن آن را در `/api/ps` تأیید می‌کند، tag پایه را دوباره بررسی می‌کند، سپس همان tag موقت را حذف و نبودنش را در `/api/tags` تأیید می‌کند. اگر مالکیت، context، unload یا وجود مدل پایه قابل اثبات نباشد، حذف متوقف می‌شود.
+- مسیر diagnostic ویندوز نیز به همان lifecycle متصل شد. تشخیص internal variant در `run.py` برای نام‌های run-scoped گسترش یافت.
+- پاک‌سازی legacy اکنون audit-only است؛ حذف tagهای قدیمی فقط با گزینهٔ صریح `--delete-confirmed-legacy` ممکن است. هیچ مدل پایه یا tag نامرتبطی هدف cleanup نیست.
+- تست‌های جدید برای run/attempt/context mismatch، مدل پایه، unload ناموفق، حذف تأییدنشده، idempotency و رد نام‌های legacy/unowned اضافه شدند. تست‌های workflow از قرارداد persistent به قرارداد temporary تغییر کردند.
+- محدودیت باقی‌مانده: خاموش‌شدن سخت میزبان یا kill شدن کامل Runner ممکن است مانع اجرای step cleanup شود؛ در آن حالت tag run-scoped باقی می‌ماند و باید فقط با بررسی مالکیت پاک شود. این رفتار fail-closed است، نه پاک‌سازی کور.
+- exact-head CI پس از این اصلاحات هنوز اجرا/تأیید نشده است؛ نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
+- هیچ مدل Ollama، تنظیم DB، سرویس، Runner، ACL، checkpoint یا دادهٔ میزبان کاربر توسط این تغییرات دست‌کاری نشده؛ هیچ PR merge نشده است.
+
+---
+
 ## 2026-11-24 — Cache failed-run diagnostics during dashboard polling
 
 - The runs endpoint already limited diagnostic reads to completed failed runs, but repeated dashboard polls could still re-read every failed run in the 100-run GitHub page.
