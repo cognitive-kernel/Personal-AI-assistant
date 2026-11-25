@@ -498,8 +498,10 @@ def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement
     assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in ensure
     assert "if ($abandoned -and -not $AcknowledgeAbandoned)" in lock_module
     assert "AcknowledgeAbandonedSetup" in lock_module
-    assert "ReleaseMutex" in abandoned
-    assert "AcknowledgeAbandonedSetup" in abandoned
+    assert "ReleaseMutex" not in abandoned
+    assert "AcknowledgeAbandonedSetup" in lock_module
+    assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "ReleaseMutex" in lock_module
     assert "AcknowledgeAbandonedSetup" in ensure
     python_setup = _read("app/autonomous_engineering_broker_setup.py")
     assert "-AcknowledgeAbandonedSetup" not in python_setup
