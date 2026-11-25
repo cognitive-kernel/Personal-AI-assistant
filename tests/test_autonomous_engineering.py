@@ -3183,7 +3183,8 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "function Get-LiveRepositoryVariable" in gate
     assert "/actions/variables/$Name" in gate
     assert "/actions/variables?per_page=1" in gate
-    assert gate.index("if ($statusCode -eq 404)") < gate.index("/actions/variables?per_page=1") < gate.index("return $DefaultValue")
+    variable_reader = gate[gate.index("function Get-LiveRepositoryVariable"):]
+    assert variable_reader.index("if ($statusCode -eq 404)") < variable_reader.index("/actions/variables?per_page=1") < variable_reader.index("return $DefaultValue")
     assert "Could not verify repository Variables read permission" in gate
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in gate
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in gate
