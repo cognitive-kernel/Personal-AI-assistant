@@ -1989,11 +1989,36 @@ def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
     def missing_variable(token, repo, method, path):
         if path == "":
             return {"full_name": repo}
+        if path == "actions/variables?per_page=1":
+            return {"total_count": 0, "variables": []}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
 
     monkeypatch.setattr(cycle, "api", missing_variable)
 
     assert cycle._live_pause_enabled("test-token", "owner/repository") is False
+
+
+def test_cycle_variable_404_fails_closed_when_variables_read_permission_is_missing(monkeypatch):
+    calls = []
+
+    def inaccessible_inventory(token, repo, method, path, payload=None):
+        calls.append(path)
+        if path == "":
+            return {"full_name": repo}
+        if path == "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+            raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
+        if path == "actions/variables?per_page=1":
+            raise RuntimeError("GitHub API GET actions/variables failed (404): not found")
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "api", inaccessible_inventory)
+    with pytest.raises(RuntimeError, match="Could not verify repository Variables read permission"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
+    assert calls == [
+        "",
+        "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED",
+        "actions/variables?per_page=1",
+    ]
 
 
 def test_cycle_live_pause_api_failure_fails_closed(monkeypatch):
@@ -2061,6 +2086,8 @@ def test_cycle_live_mode_missing_variable_defaults_continuous(monkeypatch):
     def missing_variable(token, repo, method, path):
         if path == "":
             return {"full_name": repo}
+        if path == "actions/variables?per_page=1":
+            return {"total_count": 0, "variables": []}
         raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_MODE failed (404): not found")
 
     monkeypatch.setattr(cycle, "api", missing_variable)
