@@ -153,6 +153,7 @@ def test_windows_broker_setup_uses_machine_wide_mutex_and_persistent_recovery_ma
     assert "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED" in lock_module
     assert 'SetValue("SetupReason", $Reason' in lock_module
     assert 'DeleteValue("SetupReason", $false)' in lock_module
+    assert '-or $Reason -match "[\\r\\n]"' in lock_module
     assert "$preserveSetupMutex = $false" in ensure
     assert "$requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0" in ensure
     assert "recovery marker persistence failed; setup mutex retained until process exit." in ensure
