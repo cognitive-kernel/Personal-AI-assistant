@@ -9,7 +9,7 @@ $model = if (-not [string]::IsNullOrWhiteSpace($SelectedModel)) {
     ""
 }
 $checks = @()
-$modelIsContextVariant = $model -match '(?i)-codex-ctx([0-9]+)?(-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?
+$modelIsContextVariant = $model -match "(?i)-codex-ctx([0-9]+)?(-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$"
 
 $ollamaOnline = $false
 $modelInstalled = $false
