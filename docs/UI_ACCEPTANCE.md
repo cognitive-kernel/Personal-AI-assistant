@@ -201,7 +201,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [x] Legacy settings migration seeds a missing chat profile from the base tag when the old generic model value is an internal Codex context variant; existing chat profile settings remain unchanged.
 - [ ] Exact-head Linux/Windows tests, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must all complete successfully on the final SHA.
 - [ ] Windows target-host acceptance: reproduce the prior PowerShell 5.1 duplicate-TypeData failure and verify the corrected import, Broker health/setup, Runner identity/ACL, and restart behavior.
-- [ ] Exact-head Windows CI must pass the PowerShell 5.1 repeated-import regression with inherited PowerShell 7 module paths; owner-host verification must confirm the previously failing module load and Broker health.
+- [ ] Exact-head Windows CI must pass PowerShell 5.1 regressions for clean import, repeated -Force import, and reuse of a preloaded Security module with inherited PowerShell 7 module paths; owner-host verification must confirm the previously failing module load and Broker health.
 - [ ] Live Ollama/Codex acceptance: verify available-RAM context selection, real tool call, successful-task cleanup, failed-task cleanup, and preservation of the base model.
 - [ ] End-to-end UI acceptance: dispatch a harmless task, observe progress/logs/PR/exact-SHA checks, then test Pause/Resume/Cancel and crash/restart checkpoint preservation.
 - [ ] Keyboard, screen-reader, contrast, and owner visual acceptance.
