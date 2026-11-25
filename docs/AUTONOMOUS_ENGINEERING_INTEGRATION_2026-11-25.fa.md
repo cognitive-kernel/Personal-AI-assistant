@@ -26,10 +26,10 @@
 
 ### Current CI evidence boundary
 For code head `d54f62c4460805f58eb789c655491dfc950ee789`:
-- Tests: [45623237155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237155) — queued at snapshot time.
-- Dependency audit: [45622801823](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45622801823) — in progress at snapshot time.
-- CodeQL: [45623237128](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237128) — in progress at snapshot time.
-- Browser E2E: [45623237170](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237170) — queued در زمان ثبت.
+- Tests: [45623237155](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237155) — jobهای اصلی Linux/Windows و Windows storage/Broker در صف؛ bootstrap macOS موفق.
+- Dependency audit: [45623237087](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237087) — موفق روی code head فعلی.
+- CodeQL: [45623237128](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237128) — پس از rerun در صف.
+- Browser E2E: [45623237170](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45623237170) — موفق.
 - Browser E2E was not triggered on this code head. A previous Browser E2E run on an earlier SHA is not exact-head evidence.
 - The successful CI recorded earlier for `583f482af18b2921225ce91ae1d3ebdc5d765aec` is historical and does not validate the new lifecycle changes.
 
