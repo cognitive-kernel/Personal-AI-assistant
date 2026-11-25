@@ -470,8 +470,8 @@ def test_linux_startup_does_not_download_or_run_an_ollama_installer(tmp_path, mo
         lambda *_args, **_kwargs: pytest.fail("Startup must not run an installer."),
     )
 
-    with pytest.raises(RuntimeError, match="Ollama نصب نیست"):
-        installer._ensure_ollama()
+    warnings = installer._ensure_ollama()
+    assert any("Ollama runtime" in warning and "Startup performs no installation" in warning for warning in warnings)
 
 
 @pytest.mark.skipif(shutil.which("sh") is None, reason="POSIX shell is required for Linux installer syntax validation")
