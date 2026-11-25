@@ -18,12 +18,14 @@ class FakeOllama:
         modelfiles=None,
         keep_loaded_after_unload=False,
         keep_after_delete=False,
+        remove_after_delete=(),
     ):
         self.names = list(names)
         self.loaded = list(loaded)
         self.modelfiles = dict(modelfiles or {})
         self.keep_loaded_after_unload = keep_loaded_after_unload
         self.keep_after_delete = keep_after_delete
+        self.remove_after_delete = tuple(remove_after_delete)
         self.calls = []
 
     def request(self, method, path, body=None, timeout=10.0):
@@ -47,6 +49,10 @@ class FakeOllama:
             name = body["model"]
             if not self.keep_after_delete:
                 self.names = [item for item in self.names if item.casefold() != name.casefold()]
+                self.names = [
+                    item for item in self.names
+                    if item.casefold() not in {value.casefold() for value in self.remove_after_delete}
+                ]
             return {"status": "success"}
         raise AssertionError(f"Unexpected Ollama request: {method} {path}")
 
@@ -63,7 +69,7 @@ def make_model_name():
 
 def make_api(model_name, **kwargs):
     return FakeOllama(
-        ["qwen2.5:7b", model_name],
+        ["qwen2.5:7b", "unrelated:1b", model_name],
         loaded=[model_name],
         modelfiles={
             model_name: "FROM /blob/qwen\nPARAMETER num_ctx 2048\n",
@@ -94,6 +100,7 @@ def test_cleanup_unloads_and_deletes_only_the_owned_temporary_variant():
     assert result["removed"] is True
     assert result["model"] == model
     assert "qwen2.5:7b" in api.names
+    assert "unrelated:1b" in api.names
     assert model not in api.names
     assert model not in api.loaded
     calls = [(method, path) for method, path, _body, _timeout in api.calls]
@@ -204,3 +211,22 @@ def test_cleanup_refuses_legacy_or_unowned_model_names(model):
 
     assert model in api.names
     assert not [call for call in api.calls if call[0] == "DELETE"]
+
+
+def test_cleanup_reports_if_base_tag_disappears_during_temporary_deletion():
+    model = make_model_name()
+    api = make_api(model, remove_after_delete=["qwen2.5:7b"])
+
+    with pytest.raises(OllamaTemporaryContextError, match="base-model tag disappeared during cleanup"):
+        cleanup_temporary_context_model(
+            model,
+            run_id="123456",
+            run_attempt="2",
+            expected_context=2048,
+            request_json=api.request,
+            sleep=lambda _seconds: None,
+        )
+
+    assert model not in api.names
+    assert "qwen2.5:7b" not in api.names
+    assert "unrelated:1b" in api.names
