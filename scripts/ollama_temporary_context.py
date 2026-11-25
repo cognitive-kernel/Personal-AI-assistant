@@ -248,6 +248,10 @@ def cleanup_temporary_context_model(
             for name in _model_names(api("GET", "/api/tags", None, 10.0), "/api/tags")
         }
         if model_name.casefold() not in refreshed:
+            if base_model.casefold() not in refreshed:
+                raise OllamaTemporaryContextError(
+                    "The temporary tag was removed, but the original base-model tag disappeared during cleanup."
+                )
             return {"model": model_name, "base_model": base_model, "removed": True, "already_absent": False}
         if attempt + 1 < verify_attempts:
             sleep(verify_interval_seconds)
