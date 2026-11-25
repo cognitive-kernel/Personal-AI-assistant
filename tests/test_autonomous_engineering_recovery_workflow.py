@@ -120,7 +120,7 @@ def test_manual_settings_probe_is_main_only_and_read_only():
     assert "permissions: {}" in probe
     assert "VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in probe
     assert 'method="GET"' in probe
-    assert "/actions/variables?per_page=1" in probe
+    assert "actions/variables?per_page=1" in probe
     assert "AUTONOMOUS_ENGINEERING_PAUSED" in probe
     assert "AUTONOMOUS_ENGINEERING_MODE" in probe
     assert "no task was dispatched" in probe
