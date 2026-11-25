@@ -14,6 +14,8 @@ Before enabling autonomous execution, create a fine-grained token restricted to 
 
 If the secret is missing, cannot read variables, or returns malformed settings, the live gate fails closed and starts no task. Never put the token in source files, workflow inputs, issues, logs, or chat.
 
+After this change is merged to `main`, the repository owner can verify the credential without starting an engineering task: open **Actions → Verify Autonomous Engineering settings → Run workflow**, select `main`, and run it. This manual-only, main-guarded workflow performs read-only repository identity, Variables inventory, Pause, and Mode GET requests. Its log reports only permission status and the non-secret Pause/Mode values; it does not dispatch, mutate variables, or use a write-capable `GITHUB_TOKEN`. A missing/invalid credential fails the probe.
+
 ## No paid API key
 
 - No `OPENAI_API_KEY` secret is used or required.
