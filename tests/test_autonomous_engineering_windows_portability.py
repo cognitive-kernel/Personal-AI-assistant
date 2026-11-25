@@ -671,6 +671,7 @@ def test_windows_identity_module_reuses_preloaded_security_module():
     script = (
         "$ErrorActionPreference = 'Stop'; "
         "$inherited = $env:PSModulePath; "
+        "if ($inherited -notlike '*PowerShell\\7\\Modules*') { throw 'PowerShell 7 module path injection was not inherited' }; "
         "$env:PSModulePath = Join-Path $PSHOME 'Modules'; "
         "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; "
         "$env:PSModulePath = $inherited; "
