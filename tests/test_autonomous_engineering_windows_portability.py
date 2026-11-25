@@ -542,7 +542,7 @@ def test_security_module_import_is_isolated_to_the_active_powershell_host():
     assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
         'Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop'
     )
-    assert module.index('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop') < module.index(
+    assert module.index('Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop') < module.index(
         '$env:PSModulePath = $previousModulePath'
     )
 
