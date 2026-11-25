@@ -214,3 +214,45 @@ def test_cleanup_rechecks_runtime_before_deleting_an_alias_that_becomes_loaded()
     assert result["removed_models"] == []
     assert not [call for call in api.calls if call[0] == "DELETE"]
     assert alias in api.names
+
+
+def test_cleanup_defaults_to_audit_only_for_legacy_aliases():
+    alias = "base:7b-codex-ctx8192"
+    api = FakeOllama(
+        ["base:7b", alias],
+        modelfiles={
+            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+        },
+    )
+
+    result = cleanup_legacy_context_variants(
+        "base:7b",
+        request_json=api.request,
+    )
+
+    assert result["would_remove_models"] == [alias]
+    assert result["removed_models"] == []
+    assert api.names == ["base:7b", alias]
+    assert not [call for call in api.calls if call[0] == "DELETE"]
+
+
+def test_legacy_cli_requires_explicit_delete_confirmation(monkeypatch, capsys):
+    import scripts.ollama_legacy_cleanup as cleanup
+
+    alias = "base:7b-codex-ctx8192"
+    api = FakeOllama(
+        ["base:7b", alias],
+        modelfiles={
+            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+        },
+    )
+    monkeypatch.setattr(cleanup, "_request_json", api.request)
+
+    assert cleanup.main(["--current-model", "base:7b"]) == 0
+    assert alias in api.names
+    assert not [call for call in api.calls if call[0] == "DELETE"]
+
+    assert cleanup.main([
+        "--current-model", "base:7b", "--delete-confirmed-legacy"
+    ]) == 0
+    assert alias not in api.names
