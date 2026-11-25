@@ -648,3 +648,56 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
 
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
     assert "PAA_SECURITY_IMPORT_OK" in result.stdout
+
+
+def test_windows_identity_module_reuses_preloaded_security_module():
+    if os.name != "nt":
+        pytest.skip("Windows PowerShell 5.1 integration check")
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("Windows PowerShell executable is unavailable")
+
+    module_path = str(ROOT / "scripts" / "AutonomousWindowsIdentity.psm1")
+    escaped_module_path = module_path.replace("'", "''")
+    env = os.environ.copy()
+    windows_modules = str(
+        Path(env.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
+    )
+    powershell7_modules = str(
+        Path(env.get("ProgramFiles", r"C:\Program Files")) / "PowerShell" / "7" / "Modules"
+    )
+    env["PSModulePath"] = ";".join([powershell7_modules, windows_modules])
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$inherited = $env:PSModulePath; "
+        "$env:PSModulePath = Join-Path $PSHOME 'Modules'; "
+        "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; "
+        "$env:PSModulePath = $inherited; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
+        "$expected = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')); "
+        "$actual = [IO.Path]::GetFullPath($security.Path); "
+        "if (-not $actual.StartsWith(($expected.TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Preloaded Security module path is not from the active host' }; "
+        "if ($env:PSModulePath -ne $inherited) { throw 'PSModulePath was not preserved after reusing the loaded module' }; "
+        "Write-Output 'PAA_PRELOADED_SECURITY_REUSE_OK'"
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    assert "PAA_PRELOADED_SECURITY_REUSE_OK" in result.stdout
