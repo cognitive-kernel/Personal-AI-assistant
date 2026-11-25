@@ -262,3 +262,8 @@ Normal application startup is read-only. It checks Broker health but does not re
 The installer discovers a compatible PowerShell host by capability and reuses the active executable for elevation. It uses a machine-wide mutex owned by the elevated child and a protected abandoned-setup marker. If a previous setup was interrupted, do not repeatedly retry or delete the marker: inspect service state, Broker health, and ACL integrity first, then use the explicit `-AcknowledgeAbandonedSetup` recovery switch. The marker is cleared only after full setup and health verification succeed.
 
 The Broker executable is built and SHA-256 verified by CI; the target machine no longer needs a C# compiler. It still requires the supported Windows service/ACL APIs and .NET Framework 4.8 or later runtime. Runner is a separate execution capability and is not required to install or use the local Broker.
+
+
+### PowerShell Security module loading and duplicate type data
+
+The identity module and the PowerShell capability probe must not blindly re-import Microsoft.PowerShell.Security. First inspect Get-Module; import only when it is not already loaded. Resolve the module from the active host's $PSHOME\Modules directory, reject a preloaded module whose path belongs to another PowerShell edition, verify the required ACL cmdlets, and restore the original PSModulePath in a finally block. This avoids reapplying extended type data to System.Security.AccessControl.ObjectSecurity, which can fail with duplicate members. The Windows regression test deliberately injects both PowerShell 7 and Windows PowerShell module paths and imports the identity module twice. Owner-host validation remains mandatory because CI cannot reproduce every pre-existing runspace/module state.
