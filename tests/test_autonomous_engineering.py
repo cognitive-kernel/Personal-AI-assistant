@@ -834,13 +834,6 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
     assert "original Ollama model" in result["model_metadata_error"]
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        "base-model:14b-codex-ctx65536",
-        "base-model:14b-codex-ctx65536-paa-123-2-a1b2c3d4e5f6",
-    ],
-)
 def test_ollama_status_hides_run_scoped_codex_context_variants(monkeypatch):
     model = "base-model:14b-codex-ctx65536-paa-123-2-a1b2c3d4e5f6"
 
@@ -862,6 +855,13 @@ def test_ollama_status_hides_run_scoped_codex_context_variants(monkeypatch):
     assert result["selectable_models"] == ["base-model:14b"]
 
 
+@pytest.mark.parametrize(
+    "model",
+    [
+        "base-model:14b-codex-ctx65536",
+        "base-model:14b-codex-ctx65536-paa-123-2-a1b2c3d4e5f6",
+    ],
+)
 def test_save_settings_rejects_generated_codex_context_variant_before_local_or_github_access(monkeypatch, model):
     def unexpected_model_lookup(model):
         raise AssertionError("Generated context variants must be rejected before Ollama access.")
