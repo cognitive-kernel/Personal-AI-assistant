@@ -3,44 +3,46 @@
 ### Code and branch state
 - Main base: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
 - Integration branch: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`.
-- Code head for the lifecycle correction: `4857f411b38574e88e8662e09e1c2a94150b7ed4`; subsequent commits in this report update documentation and PR metadata only.
-- PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #863 and #869 (including the #868 follow-up already merged into #863), #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
-- The integration branch includes 81 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
+- Latest code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; latest documentation/PR head: `a951838b0b5f0bc25d21e145157faaa7ba778444`.
+- PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main); superseded PRs are closed and their branches retained.
+- Last live comparison: ahead=469, behind=0, 82 changed files. Recheck before merge.
 
 ### Newly confirmed root causes and corrections
 
-1. **Implicit model pull:** main's previous startup path treated an internal Codex context tag such as `qwen2.5:7b-codex-ctx2048` as a registry model and attempted `ollama pull`. This caused `pull model manifest: file does not exist`. The integration branch performs read-only model inventory checks, identifies internal variants, does not pull or substitute models, and leaves model selection explicit.
-2. **Persistent context variant:** the previous context preflight calculated a safe context from available RAM but created a shared persistent `<base>-codex-ctx` tag; the post-task step only verified allocation and did not remove it. The corrected workflow creates a unique run-scoped tag `<base>-codex-ctx<context>-paa-<run-id>-<attempt>-<nonce>`, records it before creation, and unloads/deletes only that tag in an `always()` cleanup step after task success or failure.
-3. **Unsafe legacy sweep:** legacy numeric aliases have no run-ownership proof. Their cleanup is audit-only by default; destructive deletion requires explicit `--delete-confirmed-legacy`. The current task cleanup never sweeps other model tags.
-4. **PowerShell Security import:** the Windows identity module isolates `PSModulePath` to the active PowerShell host's `$PSHOME\Modules` while importing the built-in Security module, avoiding PowerShell 5.1/7 cross-edition TypeData collisions. The target-host reproduction is still required.
-5. **Model selector boundaries:** API/status, startup preflight, provisioning, and Windows readiness checks reject run-scoped temporary variants as base-model selections.
+1. **Implicit model pull:** an internal Codex context tag such as `qwen2.5:7b-codex-ctx2048` was treated as a registry model and triggered an invalid pull. Startup now performs read-only inventory checks, recognizes internal variants, and never pulls or substitutes a model.
+2. **Persistent context variant:** previous preflight created a shared persistent `<base>-codex-ctx` tag and did not delete it after a task. Each workflow now creates a unique run-scoped tag `<base>-codex-ctx<context>-paa-<run-id>-<attempt>-<nonce>`, records it before creation, then unloads/deletes only that tag in an `always()` cleanup step after success or failure.
+3. **Unsafe legacy sweep:** legacy numeric aliases have no run-ownership proof. Cleanup is audit-only by default; destructive deletion requires explicit `--delete-confirmed-legacy`. Task cleanup never sweeps other tags.
+4. **PowerShell duplicate TypeData:** both the identity module and capability probe could re-import `Microsoft.PowerShell.Security`. They now reuse an already-loaded module, import only when absent, reject a module loaded from outside the active host's `$PSHOME\Modules`, verify ACL commands, and restore `PSModulePath`. Windows tests cover clean import, repeated `-Force` import, and reuse of a preloaded module.
+5. **Stale chat model profile:** a previous run could leave an ephemeral tag such as `qwen2.5:7b-codex-ctx2048` saved as `chat_ollama_model`. Since the tag is deleted after the task, the next app start could not use chat. Database initialization now normalizes only the reserved internal suffix to its base tag, including when the tag was environment-seeded; ordinary saved model choices and the legacy generic key are preserved. Startup preflight recognizes the same recoverable case and avoids a false unavailable warning when the base model is installed.
+6. **Model selector boundaries:** API/status, startup preflight, provisioning, and Windows readiness checks reject internal temporary variants as base-model selections.
 
 ### Regression coverage added or updated
 - Temporary tag format binds base model, context, run ID, attempt, and nonce.
-- Cleanup is idempotent and preserves the base model and unrelated model tags.
+- Cleanup is idempotent and preserves the base model and unrelated tags.
 - Wrong run, attempt, context, legacy name, or unowned tag is rejected before deletion.
 - Loaded models are unloaded and checked through `/api/ps`; deletion is verified through `/api/tags`.
-- Failed unload, failed deletion, or disappearance of the base tag fails closed.
+- Failed unload/deletion or disappearance of the base tag fails closed.
 - Legacy alias cleanup defaults to audit-only; explicit deletion requires the confirmation flag.
-- Both autonomous and Windows diagnostic workflows run the exact temporary-model cleanup path.
+- Database tests cover normalization of an existing temporary chat tag, missing legacy generic key, ordinary user-selected chat model preservation, and environment-seeded temporary tags.
+- Startup preflight tests cover base-installed recovery and the case where the base model is not installed.
+- Windows PowerShell tests cover clean import, repeated import, preloaded Security module reuse, host path validation, and `PSModulePath` restoration.
 
-### Current CI evidence boundary
-For code head `4857f411b38574e88e8662e09e1c2a94150b7ed4`:
-- Tests: [45627954707](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954707) — jobهای اصلی Linux/Windows و Windows storage/Broker در صف؛ bootstrap macOS موفق.
-- Dependency audit: [45627954566](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954566) — موفق روی code head فعلی.
-- CodeQL: [45627954696](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954696) — پس از rerun در صف.
-- Browser E2E: [45627954623](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45627954623) — موفق.
-- Browser E2E was not triggered on this code head. A previous Browser E2E run on an earlier SHA is not exact-head evidence.
-- The successful CI recorded earlier for `583f482af18b2921225ce91ae1d3ebdc5d765aec` is historical and does not validate the new lifecycle changes.
+### Current exact-head CI evidence
+For documentation/PR head `a951838b0b5f0bc25d21e145157faaa7ba778444`:
+- Tests: [45628406423](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45628406423) — queued.
+- Browser E2E: [45628406451](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45628406451) — queued.
+- CodeQL: [45628406200](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45628406200) — queued.
+- Dependency audit: [45628406224](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45628406224) — queued.
+- Previous successful or cancelled runs on older SHAs are not evidence for this head. No exact-head pass is claimed yet.
 
 ### Remaining acceptance gates
-- Exact-head Tests, Windows full suite, Windows storage/Broker integration, Browser E2E, CodeQL and dependency audit must complete successfully for the final code head.
-- Reproduce and resolve the user's Windows PowerShell 5.1 duplicate-TypeData error on the actual target host.
+- All exact-head Tests, Windows full suite, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must complete successfully.
+- Reproduce the original PowerShell 5.1 duplicate-TypeData failure on the owner's Windows host and verify the corrected import.
 - Verify Broker setup/health, non-admin Runner identity and ACLs on the target host.
-- Run a harmless end-to-end task from the UI through dispatch, Codex, progress, PR and exact-SHA checks.
-- Verify successful and failed task cleanup against the real local Ollama API; prove the base model remains installed and the run-scoped variant disappears.
-- Exercise Pause/Resume/Cancel, crash/restart, checkpoint/worktree preservation and manual accessibility/owner acceptance.
-- No merge to main is allowed while these gates remain open.
+- Run a harmless task from the UI through dispatch, Codex, progress, PR, and exact-SHA checks.
+- Verify successful and failed task cleanup against real Ollama; prove the base model remains installed and the run-scoped variant disappears.
+- Exercise Pause/Resume/Cancel, crash/restart, checkpoint/worktree preservation, accessibility, and owner acceptance.
+- No merge to main while any required gate remains open.
 
 ---
 
