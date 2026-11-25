@@ -105,3 +105,27 @@ def test_legacy_codex_context_alias_is_not_pulled_or_written_back(monkeypatch):
     warnings = startup._ensure_ollama()
     assert any("variant داخلی Codex" in warning for warning in warnings)
     assert not any("مدل‌های انتخاب‌شده نصب نیستند" in warning for warning in warnings)
+
+
+def test_run_scoped_internal_context_variant_is_not_treated_as_registry_model(monkeypatch):
+    models = {
+        "chat_ollama_model": "qwen2.5:7b-codex-ctx2048-paa-123456-2-a1b2c3d4e5f6",
+        "research_plan_ollama_model": "research-local",
+        "learning_ollama_model": "learning-local",
+        "programming_ollama_model": "programming-local",
+        "ollama_embedding_model": "embedding-local",
+        "factual_review_ollama_model": "",
+    }
+    installed = {
+        "qwen2.5:7b",
+        "research-local",
+        "learning-local",
+        "programming-local",
+        "embedding-local",
+    }
+    configure_profiles(monkeypatch, models, installed)
+    warnings = startup._ensure_ollama()
+
+    assert any("variant داخلی Codex" in warning for warning in warnings)
+    assert any("مدل پایهٔ qwen2.5:7b نصب است" in warning for warning in warnings)
+    assert not any("مدل از UI" in warning and "qwen2.5:7b-codex" in warning for warning in warnings)
