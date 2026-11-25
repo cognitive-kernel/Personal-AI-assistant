@@ -619,6 +619,7 @@ def test_windows_powershell_security_import_ignores_inherited_cross_edition_modu
         "$ErrorActionPreference = 'Stop'; "
         "$before = $env:PSModulePath; "
         f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
         "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
         "if (-not $security) { throw 'Security module did not load' }; "
         "$expected = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')); "
