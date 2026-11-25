@@ -8,7 +8,7 @@
 - اصلاح جدید چرخهٔ مدل: Context از RAM آزاد و metadata مدل محاسبه می‌شود؛ tag موقت run-scoped ساخته می‌شود و در پایان/شکست workflow unload و حذف می‌شود. مدل پایه حفظ می‌شود. Legacy aliasهای فاقد شناسهٔ مالکیت فقط audit می‌شوند و حذف خودکار ندارند.
 - regression tests برای lifecycle، workflow و migration legacy model اضافه/به‌روزرسانی شده‌اند. Code head `d54f62c4460805f58eb789c655491dfc950ee789` است؛ Tests run `45623237155` و Browser E2E run `45623237170` queued، dependency audit run `45622801823` و CodeQL run `45623237128` در حال اجرا هستند. CI موفق SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` این اصلاحات را پوشش نمی‌دهد.
 - گیت‌های target-host همچنان بازند: اجرای برنامه و UI واقعی، State Broker/LocalService، Runner non-admin، Ollama/Codex واقعی، task غیرمخرب از UI تا PR، Pause/Resume/Cancel، crash/restart و حفظ checkpoint، و پذیرش دستی دسترس‌پذیری UI.
-- PR graph: #875 در شاخهٔ #872 ادغام شده؛ #866/#870/#871 به‌عنوان superseded بسته شده‌اند؛ #876 پس از انتقال inventory بسته شده است. PR #872 تنها integration فعال و Draft است.
+- PR graph: #875 در شاخهٔ #872 ادغام شده؛ #863/#869 و #866/#870/#871 به‌عنوان superseded بسته شده‌اند؛ #876 پس از انتقال inventory بسته شده است. #868 در شاخهٔ #863 ادغام شده بود و کدش به #872 منتقل شده است. PR #872 تنها integration فعال و Draft است.
 - هیچ merge به main یا deploy انجام نشده است. هیچ مدل، DB، سرویس، Runner، ACL، secret، variable یا checkpoint میزبان کاربر تغییر نکرده است.
 
 ---
