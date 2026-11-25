@@ -191,7 +191,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 
 - [x] Startup checks are read-only: no implicit Broker UAC/setup, no automatic Ollama server start, and no automatic model pull.
 - [x] Broker setup is a separate explicit dashboard/API action; missing Broker limits the dependent capability rather than silently mutating Windows services or ACLs.
-- [x] PowerShell host selection is capability-based; Security module import is isolated to the active host's `$PSHOME\Modules` path.
+- [x] PowerShell host selection is capability-based; Security module import is isolated to the active host's `$PSHOME\Modules` path and a Windows CI integration test verifies behavior with inherited PowerShell 7 module paths.
 - [x] Ollama Context is calculated from installed base-model metadata and currently available hardware memory.
 - [x] Each autonomous run creates a unique temporary context tag containing context, run ID, attempt, and nonce; the exact tag is recorded before model creation.
 - [x] Main and diagnostic workflows have an `always()` cleanup step that unloads and deletes only the exact run-owned temporary tag and verifies its absence.
