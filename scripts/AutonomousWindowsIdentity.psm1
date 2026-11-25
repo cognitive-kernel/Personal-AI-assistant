@@ -8,7 +8,7 @@ if (-not $securityModule) {
     $previousModulePath = $env:PSModulePath
     try {
         $env:PSModulePath = Join-Path $PSHOME "Modules"
-        Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+        Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop
     } finally {
         $env:PSModulePath = $previousModulePath
     }
