@@ -225,3 +225,11 @@ checkpoint files. No human login name, group name, home directory, or fixed hard
 identifier is configured by the operator. Model context is selected from runtime
 metadata and available memory/compute resources, not a hard-coded GPU/CPU model.
 State-root resolution does not require a login home directory. The current home is consulted only to discover a legacy per-user state tree for one-time migration; if the service identity has no home, the shared site-data root still resolves normally.
+
+## Explicit Windows State Broker setup (2026-11-25)
+
+Normal application startup is read-only. It checks Broker health but does not request elevation, install/repair the Windows service, stop Runner services, or change ACLs. If the engineering dashboard reports Broker unavailable, use its explicit **راه‌اندازی یا ترمیم فضای ثبت پیشرفت** action and approve the Windows UAC prompt only for that operation.
+
+The installer discovers a compatible PowerShell host by capability and reuses the active executable for elevation. It uses a machine-wide mutex owned by the elevated child and a protected abandoned-setup marker. If a previous setup was interrupted, do not repeatedly retry or delete the marker: inspect service state, Broker health, and ACL integrity first, then use the explicit `-AcknowledgeAbandonedSetup` recovery switch. The marker is cleared only after full setup and health verification succeed.
+
+The Broker executable is built and SHA-256 verified by CI; the target machine no longer needs a C# compiler. It still requires the supported Windows service/ACL APIs and .NET Framework 4.8 or later runtime. Runner is a separate execution capability and is not required to install or use the local Broker.

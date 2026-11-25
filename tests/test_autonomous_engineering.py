@@ -184,8 +184,8 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 
@@ -296,7 +296,7 @@ def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monke
     assert len(result["correlation_id"]) == 32
     assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
     assert calls[2][0][1:3] == ["workflow", "run"]
-    assert "--field" in calls[2][0]
+    assert "--raw-field" in calls[2][0]
     assert "correlation_id=" + result["correlation_id"] in calls[2][0]
     assert calls[2][1] is True
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
@@ -1268,14 +1268,14 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    task = "بررسی Issue #52؛ عبارت ; gh secret list نباید اجرا شود"
+    task = "بررسی Issue #52؛ عبارت ; gh secret list نباید اجرا شود؛ متن @C:\\Temp\\engineering-task.txt باید عیناً ارسال شود"
 
     result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
 
     assert result["accepted"] is True
     assert len(result["correlation_id"]) == 32
-    assert calls[-1][-2:] == ["--field", "manual_task=" + task]
-    assert calls[-1][-4] == "--field"
+    assert calls[-1][-2:] == ["--raw-field", "manual_task=" + task]
+    assert calls[-1][-4] == "--raw-field"
     assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
 
 
@@ -1979,7 +1979,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
 
     assert "new AbortController()" in core
     assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
-    assert "requestedTimeoutMs > 120000" in core
+    assert "requestedTimeoutMs > 300000" in core
     assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
@@ -2404,7 +2404,7 @@ def test_empty_dispatch_resumes_verified_checkpoint(monkeypatch):
 
     assert result["accepted"] is True
     assert result["manual_task_submitted"] is False
-    assert calls[-1][-2:] == ["--field", "manual_task="]
+    assert calls[-1][-2:] == ["--raw-field", "manual_task="]
 
 
 def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypatch):
@@ -2538,8 +2538,8 @@ def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatc
     assert response.headers["X-Correlation-ID"] == correlation_id
     assert response.json()["correlation_id"] == correlation_id
     assert calls[-1][-4:] == [
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 

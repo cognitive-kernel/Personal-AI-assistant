@@ -297,7 +297,7 @@ def test_empty_dispatch_remains_available_to_resume_persisted_work(monkeypatch):
 
     assert result["accepted"] is True
     workflow_call = next(command for command in calls if command[1:3] == ["workflow", "run"])
-    assert "--field" in workflow_call
+    assert "--raw-field" in workflow_call
     assert "manual_task=" in workflow_call
 
 

@@ -6431,3 +6431,84 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
                 diagnostics["trace_error"] = str(exc)
             diagnostics_path.write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
             browser.close()
+
+def test_autonomous_engineering_broker_setup_requires_explicit_ui_action_and_refreshes_readiness():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    state = {"broker_ready": False, "setup_calls": 0}
+    browser_errors = []
+    status_payload = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {
+            "ollama_online": False, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": False, "github_cli_authenticated": False,
+            "github_runs_available": False, "progress_storage_accessible": False,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": False, "blocked": True,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True},
+            "reason": "State Broker is not ready.",
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+
+    def status(route):
+        payload = dict(status_payload)
+        payload["checks"] = dict(status_payload["checks"])
+        payload["checks"]["progress_storage_accessible"] = state["broker_ready"]
+        payload["pending_work"] = dict(status_payload["pending_work"])
+        payload["pending_work"]["available"] = state["broker_ready"]
+        payload["pending_work"]["blocked"] = not state["broker_ready"]
+        payload["pending_work"]["reason"] = None if state["broker_ready"] else "State Broker is not ready."
+        route.fulfill(status=200, json=payload)
+
+    def setup(route):
+        state["setup_calls"] += 1
+        assert route.request.method == "POST"
+        state["broker_ready"] = True
+        route.fulfill(status=200, json={
+            "ready": True,
+            "already_ready": False,
+            "message": "Broker ready",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", status)
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": False},
+        ))
+        page.route("**/api/autonomous-engineering/broker/setup", setup)
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#setup-state-broker')?.hidden === false",
+            timeout=10000,
+        )
+        assert state["setup_calls"] == 0, "Broker provisioning must never run automatically during UI startup."
+        page.locator("#setup-state-broker").click()
+        page.wait_for_function(
+            "() => document.querySelector('#setup-state-broker')?.hidden === true",
+            timeout=10000,
+        )
+        assert state["setup_calls"] == 1
+        assert "Broker ready" in page.locator("#agent-message").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()

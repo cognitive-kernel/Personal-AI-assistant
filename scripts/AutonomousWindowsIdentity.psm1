@@ -1,39 +1,17 @@
 Set-StrictMode -Version Latest
 
-# Windows PowerShell 5.1 can inherit PowerShell 7 module directories from a
-# parent process (for example, a VS Code terminal). Loading the PowerShell 7
-# Security module into the 5.1 runtime adds duplicate ObjectSecurity type data
-# and aborts module import. Filter those paths only in this process; do not
-# change the machine/user environment permanently.
-if ($PSVersionTable.PSEdition -eq "Desktop") {
-    $compatibleModulePaths = @(
-        $env:PSModulePath -split [IO.Path]::PathSeparator |
-            ForEach-Object {
-                $candidate = $_.Trim().TrimEnd([char[]]@('\', '/'))
-                if (
-                    $candidate -and
-                    $candidate -notlike '*\Documents\PowerShell\Modules' -and
-                    $candidate -notlike '*\Program Files\PowerShell\Modules' -and
-                    $candidate -notlike '*\Program Files\PowerShell\*\Modules' -and
-                    $candidate -notlike '*\Program Files (x86)\PowerShell\Modules' -and
-                    $candidate -notlike '*\Program Files (x86)\PowerShell\*\Modules'
-                ) {
-                    $candidate
-                }
-            } |
-            Select-Object -Unique
-    )
-    if ($compatibleModulePaths.Count -eq 0) {
-        throw "No compatible Windows PowerShell module paths remain; refusing to load security cmdlets."
-    }
-    $env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator
+# Import security cmdlets from the active host's own inbox modules only.
+# A process can inherit PSModulePath entries belonging to another PowerShell
+# edition or installation. Isolate discovery for this import, then restore the
+# caller's process environment so unrelated modules remain discoverable.
+$previousModulePath = $env:PSModulePath
+try {
+    $env:PSModulePath = Join-Path $PSHOME "Modules"
+    Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
+} finally {
+    $env:PSModulePath = $previousModulePath
 }
 
-
-# Get-Acl and Set-Acl are exported by this built-in module. Import it in this
-# module scope so scriptblocks used during protected ACL reconciliation do
-# not depend on implicit module auto-loading in an elevated PowerShell process.
-Import-Module Microsoft.PowerShell.Security -ErrorAction Stop
 
 function ConvertTo-AutonomousWindowsAccountName {
     [CmdletBinding()]
@@ -139,7 +117,8 @@ function Set-AutonomousDirectoryTreeAcl {
         [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Path,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string[]]$ModifySids,
         [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$OwnerSid,
-        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid
+        [Parameter(Mandatory=$true)][ValidatePattern("^S-1-")][string]$InstallerSid,
+        [switch]$PassThru
     )
 
     $root = [System.IO.Path]::GetFullPath($Path)
@@ -312,6 +291,78 @@ function Set-AutonomousDirectoryTreeAcl {
             }
         }
     }
+    if ($PassThru) {
+        return ,([pscustomobject]@{
+            Root = $root
+            InstallerSid = $InstallerSid
+            Entries = @($snapshots.ToArray())
+        })
+    }
+
 }
 
-Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl
+function Restore-AutonomousDirectoryTreeAcl {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory=$true)][ValidateNotNull()][object]$Snapshot
+    )
+
+    $entries = @($Snapshot.Entries)
+    if ($entries.Count -eq 0) { return }
+    $installerSid = [string]$Snapshot.InstallerSid
+    if ($installerSid -notmatch '^S-1-') {
+        throw "The ACL rollback journal has no valid installer SID."
+    }
+
+    $takeown = Get-Command takeown.exe -ErrorAction Stop
+    $icacls = Get-Command icacls.exe -ErrorAction Stop
+    $prepared = New-Object 'System.Collections.Generic.List[object]'
+    $failures = New-Object 'System.Collections.Generic.List[string]'
+
+    # The final protected DACL intentionally excludes the elevated installer.
+    # Reacquire temporary ownership/access for every journaled entry before
+    # restoring parent descriptors, so a parent restore cannot strand children.
+    foreach ($entry in $entries) {
+        $entryPath = if ($null -ne $entry.Item) { [string]$entry.Item.FullName } else { "<unknown>" }
+        if ($null -eq $entry.Item -or $null -eq $entry.Acl -or
+            [string]::IsNullOrWhiteSpace($entryPath)) {
+            $failures.Add("invalid rollback journal entry")
+            continue
+        }
+        $prepared.Add($entry)
+        try {
+            & $takeown.Source /F $entryPath | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "takeown failed"
+            }
+            $grant = if ($entry.Item -is [System.IO.DirectoryInfo]) {
+                "*$($installerSid):(OI)(CI)M"
+            } else {
+                "*$($installerSid):M"
+            }
+            & $icacls.Source $entryPath /grant:r $grant /C /Q | Out-Null
+            if ($LASTEXITCODE -ne 0) {
+                throw "icacls failed"
+            }
+        } catch {
+            $failures.Add("temporary access ($($_.Exception.GetType().Name))")
+        }
+    }
+
+    $restoreTargets = @(
+        $prepared | Sort-Object -Property @{ Expression = { $_.Item.FullName.Length }; Descending = $false }
+    )
+    foreach ($entry in $restoreTargets) {
+        $entryPath = [string]$entry.Item.FullName
+        try {
+            Set-Acl -LiteralPath $entryPath -AclObject $entry.Acl -ErrorAction Stop
+        } catch {
+            $failures.Add("descriptor restore ($($_.Exception.GetType().Name))")
+        }
+    }
+    if ($failures.Count -gt 0) {
+        throw "Shared-state ACL rollback was incomplete ($($failures.Count) operation(s) failed)."
+    }
+}
+
+Export-ModuleMember -Function ConvertTo-AutonomousWindowsAccountName, Get-AutonomousLocalAccountName, Get-AutonomousWindowsAccountSid, Set-AutonomousDirectoryAcl, Set-AutonomousDirectoryTreeAcl, Restore-AutonomousDirectoryTreeAcl

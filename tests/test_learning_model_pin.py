@@ -93,84 +93,77 @@ def _load_bootstrap():
     return module
 
 
-def test_startup_installs_and_verifies_learning_model_separately(tmp_path, monkeypatch):
-    bootstrap = _load_bootstrap()
-    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
-    monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
-    monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
-    pull_commands = []
-
-    def fake_list(command, **kwargs):
-        models = "NAME ID SIZE\nqwen2.5:7b abc 4GB\n"
-        if ["ollama", "pull", "gpt-oss:20b"] in pull_commands:
-            models += "gpt-oss:20b def 14GB\n"
-        return subprocess.CompletedProcess(command, 0, models, "")
-
-    monkeypatch.setattr(bootstrap.subprocess, "run", fake_list)
-
-    def fake_run(command, **kwargs):
-        pull_commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-
-    bootstrap._ensure_ollama()
-
-    assert pull_commands == [["ollama", "pull", "gpt-oss:20b"]]
-
-
-def test_startup_respects_explicit_learning_model_override(tmp_path, monkeypatch):
-    bootstrap = _load_bootstrap()
-    monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
-    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "custom-learning:latest")
-    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
-    list_outputs = iter([
-        "NAME ID SIZE\nqwen2.5:7b abc 4GB\n",
-        "NAME ID SIZE\nqwen2.5:7b abc 4GB\ncustom-learning:latest def 14GB\n",
-    ])
-    monkeypatch.setattr(
-        bootstrap.subprocess,
-        "run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, next(list_outputs), ""
-        ),
-    )
-    pull_commands = []
-
-    def fake_run(command, **kwargs):
-        pull_commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "", "")
-
-    monkeypatch.setattr(bootstrap, "_run", fake_run)
-
-    bootstrap._ensure_ollama()
-
-    assert pull_commands == [["ollama", "pull", "custom-learning:latest"]]
-
-
-def test_startup_fails_when_learning_model_pull_fails(tmp_path, monkeypatch):
+def test_startup_reports_missing_learning_model_without_implicit_pull(tmp_path, monkeypatch):
     bootstrap = _load_bootstrap()
     monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
     monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.delenv("LEARNING_OLLAMA_MODEL", raising=False)
     monkeypatch.setattr(
-        bootstrap.subprocess,
-        "run",
-        lambda command, **kwargs: subprocess.CompletedProcess(
-            command, 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
+        bootstrap,
+        "_ollama_list",
+        lambda _executable: subprocess.CompletedProcess(
+            ["ollama", "list"], 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
         ),
     )
     monkeypatch.setattr(
         bootstrap,
         "_run",
-        lambda command, **kwargs: subprocess.CompletedProcess(command, 1, "", "pull failed"),
+        lambda *_args, **_kwargs: pytest.fail("Startup must not pull a missing learning model."),
     )
 
-    with pytest.raises(RuntimeError, match="مدل یادگیری"):
-        bootstrap._ensure_ollama()
+    warnings = bootstrap._ensure_ollama()
+
+    assert any("مدل یادگیری" in warning and "gpt-oss:20b" in warning for warning in warnings)
+
+
+def test_startup_respects_explicit_learning_model_override_without_pulling(tmp_path, monkeypatch):
+    bootstrap = _load_bootstrap()
+    monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "custom-learning:latest")
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
+    monkeypatch.setattr(
+        bootstrap,
+        "_ollama_list",
+        lambda _executable: subprocess.CompletedProcess(
+            ["ollama", "list"], 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail("Startup must not pull an explicitly selected model."),
+    )
+
+    warnings = bootstrap._ensure_ollama()
+
+    assert any("مدل یادگیری" in warning and "custom-learning:latest" in warning for warning in warnings)
+
+
+def test_startup_never_attempts_pull_when_learning_model_is_missing(tmp_path, monkeypatch):
+    bootstrap = _load_bootstrap()
+    monkeypatch.setenv("SETTINGS_DB_PATH", str(tmp_path / "missing-settings.db"))
+    monkeypatch.setattr(bootstrap, "_find_ollama", lambda: "ollama")
+    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.setenv("LEARNING_OLLAMA_MODEL", "gpt-oss:20b")
+    monkeypatch.setattr(
+        bootstrap,
+        "_ollama_list",
+        lambda _executable: subprocess.CompletedProcess(
+            ["ollama", "list"], 0, "NAME ID SIZE\nqwen2.5:7b abc 4GB\n", ""
+        ),
+    )
+    monkeypatch.setattr(
+        bootstrap,
+        "_run",
+        lambda *_args, **_kwargs: pytest.fail("Startup must never call ollama pull."),
+    )
+
+    warnings = bootstrap._ensure_ollama()
+
+    assert any("gpt-oss:20b" in warning for warning in warnings)
+
 
 
 def test_learning_model_selection_uses_configured_compatible_provider_without_ollama(
@@ -231,6 +224,5 @@ def test_startup_skips_ollama_when_all_llm_and_embedding_profiles_are_external(m
         lambda: (_ for _ in ()).throw(AssertionError("Ollama must not be installed or started")),
     )
 
-    bootstrap._ensure_ollama()
-
-    assert "Ollama" in capsys.readouterr().out
+    assert bootstrap._ensure_ollama() == []
+    assert capsys.readouterr().out == ""

@@ -32,13 +32,14 @@ $ensureScript = Join-Path $PSScriptRoot "ensure_autonomous_state_broker.ps1"
 if (-not (Test-Path -LiteralPath $ensureScript -PathType Leaf)) {
     throw "The canonical state-broker reconciliation script is missing: $ensureScript"
 }
-$powershell = Join-Path $PSHOME "powershell.exe"
-if (-not (Test-Path -LiteralPath $powershell -PathType Leaf)) {
-    $powershell = Get-Command powershell.exe -ErrorAction Stop | Select-Object -ExpandProperty Source
+$powershell = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+if ([string]::IsNullOrWhiteSpace($powershell) -or
+    -not (Test-Path -LiteralPath $powershell -PathType Leaf)) {
+    throw "Could not resolve the executable path of the active PowerShell host."
 }
 
 Write-Host "Delegating shared-state ACL and broker repair to the canonical fail-closed setup."
-& $powershell -NoProfile -ExecutionPolicy Bypass -File $ensureScript
+& $powershell -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $ensureScript
 if ($LASTEXITCODE -ne 0) {
     throw "The canonical state-broker reconciliation failed with exit code $LASTEXITCODE."
 }

@@ -132,6 +132,35 @@
       pullModelButton.disabled = false;
     }
   });
+  const setupBrokerButton = $("setup-state-broker");
+  let brokerSetupActive = false;
+  setupBrokerButton.addEventListener("click", async () => {
+    if (brokerSetupActive || setupBrokerButton.disabled) return;
+    brokerSetupActive = true;
+    setupBrokerButton.disabled = true;
+    setupBrokerButton.textContent = "در حال راه‌اندازی سرویس محلی…";
+    setMessage("درخواست نصب/ترمیم Broker ارسال شد؛ در صورت نیاز، پنجرهٔ تأیید مدیر سیستم را تأیید کنید.");
+    try {
+      const result = await request("broker/setup", {
+        method: "POST",
+        timeoutMs: 300000
+      });
+      try { await status.refresh(true); } catch (_) {}
+      setMessage(result.message || "سرویس Broker آماده شد.", "success");
+    } catch (error) {
+      try { await status.refresh(true); } catch (_) {}
+      setMessage(error.message || "راه‌اندازی Broker ناموفق بود.", "error");
+      if (error.ambiguous || error.retryable) {
+        setupBrokerButton.disabled = true;
+      } else {
+        setupBrokerButton.disabled = false;
+      }
+    } finally {
+      brokerSetupActive = false;
+      setupBrokerButton.textContent = "راه‌اندازی یا ترمیم فضای ثبت پیشرفت";
+    }
+  });
+
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!status.canStartManualTask()) {

@@ -275,3 +275,49 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - **اصلاح در branch `fix/autonomous-engineering-status-refresh-serialization-20261124`:** refreshهای پس از mutation با `statusMutationRefreshPromise` سریالی شده‌اند. هر refresh منتظر mutation قبلی و poll پیشین می‌ماند و سپس یک درخواست authoritative مستقل اجرا می‌کند.
 - **Regression:** تست Playwright جدید، poll قبلی را معلق نگه می‌دارد، دو refresh پس از mutation را هم‌زمان درخواست می‌کند و حداکثر یک درخواست status فعال و به‌روزرسانی نهایی پس از هر دو mutation را assert می‌کند.
 - **وضعیت:** کد و تست به branch اضافه شده‌اند؛ اجرای Browser E2E و exact-head CI هنوز pending است. Gate D تا عبور تست‌ها بسته نمی‌شود.
+
+## الحاقیهٔ 2026-11-25 — startup فقط‌خواندنی و راه‌اندازی صریح Broker
+
+### event → API → owner → transition
+
+| رویداد UI | API | مالک و پیش‌شرط | transition و retry |
+|---|---|---|---|
+| بررسی Broker هنگام startup | فقط `GET /v1/health/verify` از `run.py::_ensure_state_broker` | برنامه؛ read-only | اگر سالم بود Ready؛ در غیر این صورت فقط capability مربوط به Broker unavailable می‌ماند. UAC، نصب سرویس و ACL mutation در startup ممنوع است. |
+| راه‌اندازی/ترمیم Broker | `POST /api/autonomous-engineering/broker/setup` | فقط اقدام صریح کاربر از UI loopback؛ API lock بین‌پردازه‌ای و mutex سراسری Windows | unavailable → setup requested → elevated child → service/ACL reconciliation → health verified → ready. هیچ success پیش از health معتبر اعلام نمی‌شود. |
+| لغو یا شکست setup | همان `POST /broker/setup` | خروجی process، نوع خطا و log امن | cancellation/timeout/failure → unavailable؛ task/checkpoint حفظ می‌شوند؛ retry خودکار ممنوع است. |
+| بازیابی setup نیمه‌تمام | اجرای صریح installer با `-AcknowledgeAbandonedSetup` پس از بررسی سرویس/ACL | مالک سیستم؛ recovery marker در HKLM | marker تا موفقیت کامل و health verify باقی می‌ماند؛ شکست preflight یا setup marker را پاک نمی‌کند. |
+
+### root causeهای اثبات‌شده و اصلاح
+
+1. `run.py` پیش از اجرای Uvicorn، provisioning سرویس Broker را فراخوانی می‌کرد؛ در نتیجه شروع عادی UI می‌توانست UAC و تغییر machine ACL را آغاز کند. اکنون startup فقط health check می‌کند و provisioning به endpoint loopback و دکمهٔ صریح UI منتقل شده است.
+2. `AutonomousWindowsIdentity.psm1` مسیرهای شناخته‌شدهٔ PowerShell 7 را فیلتر می‌کرد، اما محیط‌های سفارشی/ترکیبی را کامل ایزوله نمی‌کرد. اکنون هنگام import امنیت، `PSModulePath` موقتاً به `$PSHOME\Modules` همان host محدود و در `finally` بازیابی می‌شود.
+3. اسکریپت Broker از `$PSHOME\powershell.exe` استفاده می‌کرد؛ این مسیر برای PowerShell Core معتبر نیست. اسکریپت اکنون executable واقعی پردازهٔ جاری را از `Get-Process -Id $PID` می‌گیرد و همان engine را elevated relaunch می‌کند.
+4. startup Ollama در نبود مدل ذخیره‌شده، `ollama pull` اجرا می‌کرد. اکنون preflight فقط فهرست مدل‌های نصب‌شده را می‌خواند؛ مدل chat/research/learning/programming/embedding/factual-review بر اساس purpose جداگانه بررسی می‌شود. مدل optional factual reviewer در صورت خالی بودن تنظیم، مسیر فعال محسوب نمی‌شود. Codex context alias قدیمی به‌عنوان variant نامعتبر تشخیص داده می‌شود و pull نمی‌شود.
+5. نصب Broker با mutex سراسری `Global\PersonalAIAssistant.StateBrokerSetup` سریالی شده است. abandoned mutex به recovery marker پایدار تبدیل می‌شود و marker فقط پس از setup و health verification موفق پاک می‌شود.
+
+### regression و شواهد
+
+- `tests/test_autonomous_state_broker_bootstrap.py`: startup read-only، import ایزوله، انتخاب executable همان PowerShell host و ترتیب mutex/recovery marker.
+- `tests/test_run_powershell_discovery.py` و `tests/test_autonomous_engineering_broker_setup.py`: کشف capability میزبان و setup explicit.
+- `tests/test_startup_model_preflight.py`: بررسی purposeها، optional reviewer، مدل برنامه‌نویسی و رد Codex alias بدون pull.
+- `tests/test_autonomous_engineering_broker_setup_route.py`: route loopback POST و envelope خطای امن.
+- `tests/test_browser_e2e.py`: دکمه Broker در startup مخفی/غیرفعال باقی نمی‌ماند، هیچ provisioning خودکاری رخ نمی‌دهد و فقط کلیک کاربر POST را اجرا می‌کند؛ پس از health-ready، readiness refresh می‌شود.
+
+### وضعیت Gateها در این branch
+
+- Gate A: inventory و transitionهای جدید ثبت شده‌اند؛ اجرای دستی تمام کنترل‌های موجود و مرور همهٔ PRهای stacked هنوز باز است.
+- Gate B: mutex/recovery در کد و regressionهای static ثبت شده؛ اثبات واقعی multi-process، abandoned owner و ACL rollback روی Windows target هنوز pending است. lease epoch و owner fencing موجود در main دست‌نخورده مانده‌اند.
+- Gate C/D: endpoint و کنترل UI اضافه شده‌اند؛ Browser E2E exact-head باید سبز شود.
+- Gate E/F: CI exact-head این branch هنوز در حال اجرا/انتظار است؛ هیچ نتیجه‌ای از SHA قدیمی به head جدید تعمیم داده نمی‌شود.
+- Gate G/H/J: UAC واقعی، Broker service، Runner، Ollama/Codex، crash/restart و پذیرش مالک هنوز اجرا نشده‌اند.
+- Gate K: PowerShell host discovery و startup model preflight بهبود یافته‌اند؛ بستهٔ prebuilt Broker و حذف وابستگی فعلی به C# compiler میزبان هنوز در این branch منتقل نشده و باید جداگانه تعیین تکلیف شود.
+
+این branch بخشی از انتقال #863/#869 است؛ PRها و branchهای قبلی حفظ می‌شوند و تا تطبیق کامل diffهای مشترک، هیچ‌کدام حذف یا مستقل merge نمی‌شوند.
+
+
+### Dispatch input contract — literal untrusted values
+
+- Root cause: `gh workflow run --field key=value` supports typed/file-style value parsing; a task beginning with `@path` can be interpreted as a file reference instead of literal user text. This is unsafe for the manual task and correlation fields.
+- Correction in this integration branch: Dispatch and Resume use `--raw-field` for every workflow input currently sent (`manual_task` and `correlation_id`). This preserves the exact user-supplied task as data and avoids file expansion.
+- Regression: the manual-task test includes a Windows `@C:\Temp\engineering-task.txt` value and asserts the raw-field argument contract. The same raw-field contract is asserted for empty-cycle dispatch and Resume.
+- Remaining integration: PR #872 also adds durable two-phase dispatch reservation and live Pause/Mode gates through #866/#870. Those changes are not considered integrated merely because this raw-field fix is present; their broker, workflow, controller, recovery and test diffs must still be transferred and validated together.

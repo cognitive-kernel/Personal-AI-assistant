@@ -258,6 +258,27 @@ def test_broker_pipe_open_retries_transient_missing_instance(monkeypatch):
     assert fake.calls == 2
 
 
+
+
+def test_broker_pipe_open_reports_missing_service_instead_of_hiding_it_as_timeout(monkeypatch):
+    class MissingServiceKernel:
+        def __init__(self):
+            self.calls = 0
+
+        def CreateFileW(self, *_args):
+            self.calls += 1
+            return broker._INVALID_HANDLE_VALUE
+
+    fake = MissingServiceKernel()
+    monkeypatch.setattr(broker.ctypes, "get_last_error", lambda: broker._ERROR_FILE_NOT_FOUND, raising=False)
+    monkeypatch.setattr(broker.time, "sleep", lambda _seconds: None)
+
+    with pytest.raises(broker.StateBrokerError, match=r"pipe is unavailable \(WinError 2\)"):
+        broker._open_pipe(fake, broker.time.monotonic() + 5)
+
+    assert fake.calls == broker._ERROR_FILE_NOT_FOUND_RETRIES
+
+
 def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
     class FakeKernel:
         def __init__(self):
@@ -372,3 +393,18 @@ def test_python_broker_health_preserves_posix_and_extends_windows_contract(monke
     assert broker.health(timeout_ms=30000) is False
 
 
+
+
+def test_broker_cleanup_failures_are_returned_as_protocol_errors_instead_of_closing_the_pipe():
+    service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
+    route = service[service.index('if (method == "POST" && path == "/v1/cleanup")'):]
+
+    assert "catch (Exception exception)" in route
+    assert "string code = CleanupFailureCode(exception)" in route
+    assert "WriteResponse(pipe, 503, Error(code))" in route
+    assert "cleanup_access_denied" in service
+    assert "state_directory_missing" in service
+    assert "durable_state_unverified" in service
+    assert "cleanup_lock_timeout" in service
+    assert "cleanup_io_failed" in service
+    assert "cleanup_failed" in service

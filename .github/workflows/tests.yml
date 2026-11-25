@@ -55,7 +55,11 @@ jobs:
 
   windows-storage-regressions:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -166,6 +170,8 @@ jobs:
           `$ErrorActionPreference = "Stop"
           if (`$PSVersionTable.PSEdition -ne "Desktop") { throw "The probe must run under Windows PowerShell 5.1." }
           Import-Module '$repo\scripts\AutonomousWindowsIdentity.psm1' -Force -ErrorAction Stop
+          Import-Module '$repo\scripts\AutonomousStateBrokerInstall.psm1' -Force -ErrorAction Stop
+          if (-not (Test-AutonomousDotNetFramework48)) { throw "The Windows runner must expose .NET Framework 4.8 or later." }
           if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl was not imported." }
           if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl was not imported." }
           Write-Output "Windows PowerShell 5.1 security module import passed with inherited PowerShell 7 paths."
@@ -173,32 +179,108 @@ jobs:
           $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($probe))
           & $windowsPowerShell -NoProfile -EncodedCommand $encoded
           if ($LASTEXITCODE -ne 0) { throw "Windows PowerShell 5.1 rejected the inherited PowerShell 7 module-path probe." }
-      - name: Compile the Windows machine state broker against .NET Framework
+
+      - name: Verify PowerShell Core broker modules and active-host relaunch
         shell: pwsh
         run: |
-          $frameworkCandidates = @(
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319"),
-            (Join-Path $env:WINDIR "Microsoft.NET\Framework\v4.0.30319")
+          if ($PSVersionTable.PSEdition -ne "Core") {
+            throw "This CI probe must run under a PowerShell Core runtime."
+          }
+          $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+          if ([string]::IsNullOrWhiteSpace($activeHost) -or -not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "The active PowerShell Core executable could not be resolved."
+          }
+          $modules = @(
+            "AutonomousWindowsIdentity.psm1",
+            "AutonomousWindowsPaths.psm1",
+            "AutonomousStateBroker.psm1",
+            "AutonomousStateBrokerInstall.psm1"
           )
-          $frameworkRoot = $frameworkCandidates | Where-Object {
-            Test-Path -LiteralPath (Join-Path $_ "csc.exe") -PathType Leaf
-          } | Select-Object -First 1
-          if (-not $frameworkRoot) { throw ".NET Framework C# compiler was not found." }
-          $source = Join-Path $env:GITHUB_WORKSPACE "scripts\AutonomousStateBrokerService.cs"
-          $output = Join-Path $env:RUNNER_TEMP "AutonomousStateBrokerService.exe"
-          $references = @("System.Core.dll", "System.ServiceProcess.dll", "System.Web.Extensions.dll")
-          $pipeAccess = Join-Path $frameworkRoot "System.IO.Pipes.AccessControl.dll"
-          if (Test-Path -LiteralPath $pipeAccess) { $references += "System.IO.Pipes.AccessControl.dll" }
-          $arguments = @("/nologo", "/target:exe", "/out:$output")
-          foreach ($reference in $references) {
-            $arguments += "/reference:" + (Join-Path $frameworkRoot $reference)
+          foreach ($module in $modules) {
+            Import-Module (Join-Path $env:GITHUB_WORKSPACE "scripts\\$module") -Force -ErrorAction Stop
           }
-          $arguments += $source
-          & (Join-Path $frameworkRoot "csc.exe") @arguments
-          if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $output)) {
-            throw "Windows state broker did not compile."
+          if (-not (Get-Command Get-Acl -ErrorAction SilentlyContinue)) { throw "Get-Acl is unavailable under PowerShell Core." }
+          if (-not (Get-Command Set-Acl -ErrorAction SilentlyContinue)) { throw "Set-Acl is unavailable under PowerShell Core." }
+          if (-not (Test-AutonomousDotNetFramework48)) {
+            throw "The Windows runner must expose the .NET Framework 4.8 runtime capability."
           }
-          Write-Host "Windows state broker compiled successfully."
+          $probe = '$PSVersionTable.PSEdition + "|" + $PSVersionTable.PSVersion.ToString()'
+          $childVersion = & $activeHost -NoLogo -NoProfile -NonInteractive -Command $probe
+          $expectedChildVersion = "Core|" + $PSVersionTable.PSVersion.ToString()
+          if ($LASTEXITCODE -ne 0 -or $childVersion -ne $expectedChildVersion) {
+            throw "The active PowerShell Core host did not start a same-engine child process."
+          }
+          Write-Host "PowerShell Core broker module imports and active-host child launch passed: $childVersion"
+
+      - name: Set up pinned .NET SDK for broker packaging
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 11.0.100
+
+      - name: Build and stage the Windows machine state broker
+        shell: pwsh
+        working-directory: scripts
+        run: |
+          $ErrorActionPreference = "Stop"
+          $project = Join-Path (Get-Location) "AutonomousStateBrokerService.csproj"
+          $packageRoot = Join-Path (Get-Location) "bin"
+          $buildRoot = Join-Path $env:RUNNER_TEMP "state-broker-build"
+          New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+          New-Item -ItemType Directory -Path $packageRoot -Force | Out-Null
+
+          dotnet --info
+          dotnet build $project --configuration Release --output $buildRoot -p:Deterministic=true -p:DebugType=None -p:DebugSymbols=false
+          if ($LASTEXITCODE -ne 0) {
+            throw "The Windows state broker did not build against the pinned .NET Framework reference package."
+          }
+
+          $freshExe = Join-Path $buildRoot "PersonalAIAssistant.StateBroker.exe"
+          if (-not (Test-Path -LiteralPath $freshExe -PathType Leaf)) {
+            throw "The CI build did not produce PersonalAIAssistant.StateBroker.exe."
+          }
+          $freshHash = (Get-FileHash -LiteralPath $freshExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+          $packagedExe = Join-Path $packageRoot "PersonalAIAssistant.StateBroker.exe"
+          $hashFile = $packagedExe + ".sha256"
+
+          if (Test-Path -LiteralPath $packagedExe -PathType Leaf) {
+            if (-not (Test-Path -LiteralPath $hashFile -PathType Leaf)) {
+              throw "The committed broker executable has no SHA-256 manifest."
+            }
+            $expectedHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim().ToLowerInvariant()
+            $committedHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+            if ($expectedHash -notmatch '^[0-9a-f]{64}$' -or $committedHash -ne $expectedHash) {
+              throw "The committed broker executable does not match its SHA-256 manifest."
+            }
+            if ($freshHash -ne $committedHash) {
+              throw "The fresh deterministic broker build differs from the committed executable."
+            }
+          } else {
+            Copy-Item -LiteralPath $freshExe -Destination $packagedExe -ErrorAction Stop
+            [System.IO.File]::WriteAllText($hashFile, $freshHash, [Text.Encoding]::ASCII)
+            Write-Host "No committed broker package exists yet; staged the freshly built, hash-verified CI package."
+          }
+
+          $finalHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+          $manifestHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim().ToLowerInvariant()
+          if ($finalHash -ne $manifestHash -or $finalHash -ne $freshHash) {
+            throw "The staged broker package failed final deterministic SHA-256 verification."
+          }
+          Write-Host "Broker package verified: $finalHash"
+
+      - name: Upload the prebuilt Windows state broker package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-state-broker-package
+          path: |
+            scripts/bin/PersonalAIAssistant.StateBroker.exe
+            scripts/bin/PersonalAIAssistant.StateBroker.exe.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Attest the Windows state broker package
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: scripts/bin/PersonalAIAssistant.StateBroker.exe
 
       - name: Exercise recursive protected state ACLs on Windows
         shell: pwsh
@@ -275,10 +357,62 @@ jobs:
           }
           Write-Host "Reparse-point rejection completed before any ownership or ACL changes."
 
+          $rollbackRoot = Join-Path $env:RUNNER_TEMP ("autonomous-state-acl-rollback-" + [guid]::NewGuid().ToString("N"))
+          $rollbackNested = Join-Path $rollbackRoot "nested"
+          New-Item -ItemType Directory -Path $rollbackNested -Force | Out-Null
+          $rollbackFile = Join-Path $rollbackNested "preserved.json"
+          [System.IO.File]::WriteAllText($rollbackFile, '{"rollback":true}')
+          $rollbackPaths = @($rollbackRoot, $rollbackNested, $rollbackFile)
+          $originalDescriptors = @{}
+          foreach ($path in $rollbackPaths) {
+            $originalDescriptors[$path] = (Get-Acl -LiteralPath $path).Sddl
+          }
+          try {
+            $aclSnapshot = Set-AutonomousDirectoryTreeAcl -Path $rollbackRoot -ModifySids @($brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid -PassThru
+            if ($null -eq $aclSnapshot -or @($aclSnapshot.Entries).Count -ne 3) {
+              throw "The ACL transaction did not return a complete rollback journal."
+            }
+            Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot
+            foreach ($path in $rollbackPaths) {
+              $restoredDescriptor = (Get-Acl -LiteralPath $path).Sddl
+              # Windows may set the DACL auto-inherited control bit when the
+              # original descriptor is restored. Compare owner/group/ACE data
+              # exactly while normalizing only that OS-maintained control bit.
+              $expectedComparable = [string]$originalDescriptors[$path] -replace 'D:AI(?=\()', 'D:'
+              $restoredComparable = [string]$restoredDescriptor -replace 'D:AI(?=\()', 'D:'
+              if ($restoredComparable -ne $expectedComparable) {
+                throw "The original ACL owner/group/ACE entries were not restored for $path. Expected=[$($originalDescriptors[$path])] Actual=[$restoredDescriptor]"
+              }
+            }
+            if ([System.IO.File]::ReadAllText($rollbackFile) -ne '{"rollback":true}') {
+              throw "ACL rollback changed existing file contents."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $rollbackRoot) {
+              & takeown.exe /F $rollbackRoot /R /D Y | Out-Null
+              & icacls.exe $rollbackRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+              Remove-Item -LiteralPath $rollbackRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "Transactional ACL snapshot and exact rollback passed."
+
       - name: Exercise the live LocalService broker and Python named-pipe client
         shell: pwsh
         run: |
-          & "$env:GITHUB_WORKSPACE\scripts\test_autonomous_state_broker_service.ps1"
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/test_autonomous_state_broker_service.ps1")
+
+      - name: Exercise the packaged broker under Windows PowerShell Desktop
+        shell: powershell
+        run: |
+          $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+          if (-not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "Windows PowerShell Desktop did not expose its active executable path."
+          }
+          $childEdition = & $activeHost -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSEdition'
+          if ($LASTEXITCODE -ne 0 -or $childEdition -notmatch "Desktop") {
+            throw "Windows PowerShell Desktop could not relaunch its own executable."
+          }
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/test_autonomous_state_broker_service.ps1")
 
       - name: Test shared Ollama runtime API contract
         shell: pwsh
@@ -368,6 +502,57 @@ jobs:
           tests/test_schema_registry.py::test_application_database_initializer_migrates_observed_legacy_learning_store
           tests/test_schema_registry.py::test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file
           tests/test_storage_routes.py::test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots
+
+  commit-broker-package:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: windows-storage-regressions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-state-broker-package
+          path: ${{ runner.temp }}/state-broker-package
+      - name: Commit the reproducible broker package to this PR branch
+        shell: bash
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          artifact_root="${{ runner.temp }}/state-broker-package"
+          exe="PersonalAIAssistant.StateBroker.exe"
+          manifest="${exe}.sha256"
+          expected="$(tr -d '\r\n' < "$artifact_root/$manifest")"
+          actual="$(sha256sum "$artifact_root/$exe" | awk '{print $1}')"
+          if [[ "$expected" != "$actual" ]]; then
+            echo "Downloaded broker artifact does not match its SHA-256 manifest." >&2
+            exit 1
+          fi
+          mkdir -p scripts/bin
+          if [[ -f "scripts/bin/$exe" && -f "scripts/bin/$manifest" ]] &&
+             cmp -s "$artifact_root/$exe" "scripts/bin/$exe" &&
+             cmp -s "$artifact_root/$manifest" "scripts/bin/$manifest"; then
+            echo "The reproducible broker package is already committed; no branch update is needed."
+            exit 0
+          fi
+          install -m 0644 "$artifact_root/$exe" "scripts/bin/$exe"
+          install -m 0644 "$artifact_root/$manifest" "scripts/bin/$manifest"
+          git add "scripts/bin/$exe" "scripts/bin/$manifest"
+          if git diff --cached --quiet; then
+            echo "No broker package changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add reproducible Windows state broker package"
+          git push origin "HEAD:refs/heads/$PR_HEAD_REF"
 
   runtime-bootstrap:
     name: Managed Python bootstrap (${{ matrix.os }})

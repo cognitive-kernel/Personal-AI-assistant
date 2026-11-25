@@ -2480,3 +2480,22 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 
 - The second Browser E2E attempt failed during Python test collection: one line of the multi-line `page.wait_for_function` predicate was missing its opening quote. No product code executed in that run.
 - Corrected the predicate string. The next exact-head run must pass Python collection and execute the controlled Playwright race test; this failure remains recorded rather than hidden.
+
+### 2026-11-25 — Startup readiness and explicit Broker provisioning
+
+- Confirmed the current startup path could provision the machine State Broker and request UAC before the operator used the engineering UI. Startup is now a read-only health check; machine-level setup is exposed as an explicit loopback-only UI action.
+- The Windows Security module import now temporarily searches only the active PowerShell host's inbox module directory and restores the original process `PSModulePath` in `finally`, preventing cross-edition module discovery from contaminating ACL cmdlets.
+- Ollama startup preflight no longer installs Ollama, starts its service, or pulls a missing model. It validates configured models independently for chat, research planning, learning, programming, embedding, and factual review; missing legacy Codex context aliases are reported as non-registry variants rather than pulled.
+- No settings database, `.env`, Ollama model, Runner registration, service, ACL, task, or checkpoint was modified by these source changes.
+- Validation still required: exact-head Linux/Windows suites, Browser E2E, security/dependency checks, then target-host Windows Broker setup and live Ollama/Codex acceptance. The unrelated managed-Python Runner bootstrap failure remains under investigation because its job log was not available through the repository API.
+
+## 2026-11-25 — Broker portability, explicit setup, and per-capability readiness
+
+- Transferred the verified portions of the #863/#869 Broker work onto a branch based on current main, preserving the existing lease-epoch/owner fencing baseline.
+- Startup no longer elevates or provisions Broker. The dashboard's loopback-only `POST /broker/setup` is the explicit machine-level action. The elevated child uses the exact active PowerShell executable; Security module import is isolated to that host's inbox modules and restores the inherited `PSModulePath`.
+- The elevated installer owns a machine-wide mutex, records an abandoned-owner marker in the 64-bit HKLM view, and clears it only after service/ACL reconciliation and live health verification. Windows ACL changes have a rollback snapshot. The Windows storage script now exercises separate-process mutex ownership, launcher termination, abandoned-owner recovery, explicit acknowledgement, ACL rollback, and LocalService pipe health.
+- Removed target-host C# compilation: CI builds the net48 service deterministically, verifies SHA-256, attests provenance, tests the packaged service, and commits the package to the PR branch. A later exact-head run must compare the committed binary against a fresh build. The unavoidable Windows capability is .NET Framework 4.8+ runtime plus Service Control Manager; a local C# compiler is no longer required.
+- Ollama startup is read-only and returns purpose-scoped warnings for chat, research, learning, programming, embedding and optional factual review. Missing model selection does not trigger a pull or silently switch a profile; normal UI startup continues, while `--check-only` remains nonzero when a required capability is unavailable.
+- Dispatch and Resume now pass task/correlation values with `gh workflow run --raw-field`; a regression includes a literal Windows `@path` input to guard against file expansion.
+- Regression coverage includes Windows host discovery, broker setup endpoint, UI button behavior, model profile readiness, raw workflow fields, Broker transport errors, and package/mutex/ACL integration. Exact-head CI and owner target-host acceptance remain pending; no user machine state was changed.
+- Still not transferred in this slice: the full live Pause/Mode admission and recovered-PR recovery stack (#866/#870), plus durable dispatch reservation and the full #872 retry/report/UI changes. Repository secret `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` remains an owner-managed prerequisite for the live Variables API gate.

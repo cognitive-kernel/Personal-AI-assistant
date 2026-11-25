@@ -155,8 +155,11 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Install-AutonomousStateBrokerService" in provision
     assert "PersonalAIAssistantStateBroker" in installer
     assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in installer
-    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in installer
-    assert "AutonomousStateBrokerService.cs" in installer
+    assert '$programData = [string]$env:ProgramData' in installer
+    assert 'ServiceRoot = Join-Path $programData ("PersonalAIAssistant" + [char]92 + "StateBroker")' in installer
+    assert "AutonomousStateBrokerService.cs" not in installer
+    assert "csc.exe" not in installer
+    assert "Get-AutonomousStateBrokerPackage" in installer
     assert "Invoke-AutonomousStateBroker" in installer
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "Runner.Worker.exe" in ensure
@@ -196,7 +199,7 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
     assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
     assert 'value.get("acl_ready") is True' in client
-    assert run.count('health(timeout_ms=30000, verify=True)') == 2
+    assert run.count('health(timeout_ms=30000, verify=True)') == 1
     assert 'TimeoutMilliseconds 30000' in ensure
     assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
     assert 'Path "/v1/health" -TimeoutMilliseconds 30000' in runtime_test
@@ -328,3 +331,205 @@ def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
     ]
     assert '"state_directory"' not in health_details
     assert '"state_path"' not in health_details
+
+
+def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_compiler():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert 'Join-Path $PSScriptRoot "bin"' in installer
+    assert 'PersonalAIAssistant.StateBroker.exe' in installer
+    assert '$hashFile = $packagedExe + ".sha256"' in installer
+    assert 'Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256' in installer
+    assert 'Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256' in installer
+    assert 'Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe' in installer
+    assert 'csc.exe' not in installer
+    assert 'Microsoft.NET' not in installer
+    assert 'Build and stage the Windows machine state broker' in workflow
+    assert workflow.count("\n  windows-storage-regressions:\n") == 1
+    assert workflow.count("\n  runtime-bootstrap:\n") == 1
+    runtime_job = workflow.split("\n  runtime-bootstrap:\n", 1)[1]
+    assert "-or $committedHash -ne $expectedHash) {" not in runtime_job
+    assert 'upload-artifact@v4' in workflow
+    assert 'actions/attest-build-provenance@v3' in workflow
+    assert 'attestations: write' in workflow
+    assert 'windows-state-broker-package' in workflow
+    assert 'Exercise the packaged broker under Windows PowerShell Desktop' in workflow
+    assert workflow.count('Test-AutonomousDotNetFramework48') >= 2
+    assert '$PSVersionTable.PSEdition' in workflow
+    live_test = _read("scripts/test_autonomous_state_broker_service.ps1")
+    assert 'PersonalAIAssistant.StateBroker.exe' in live_test
+    assert 'Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256' in live_test
+    assert 'Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256' in live_test
+    assert 'Copy-Item -LiteralPath $servicePackage -Destination $serviceExe' in live_test
+    assert 'csc.exe' not in live_test
+    build_step = workflow.split('Build and stage the Windows machine state broker', 1)[1].split(
+        'Upload the prebuilt Windows state broker package', 1
+    )[0]
+    assert 'dotnet build $project' in build_step
+    assert 'csc.exe' not in build_step
+    assert '--output $buildRoot' in build_step
+    assert '$freshHash' in build_step and '$committedHash' in build_step
+    assert 'fresh deterministic broker build differs' in build_step
+    assert 'No committed broker package exists yet' in build_step
+    assert 'final deterministic SHA-256 verification' in build_step
+    assert 'commit-broker-package:' in workflow
+    assert 'contents: write' in workflow
+    assert 'git push origin' in workflow
+    commit_job = workflow.split('commit-broker-package:', 1)[1].split('runtime-bootstrap:', 1)[0]
+    assert 'cmp -s' in commit_job
+    assert 'already committed; no branch update is needed' in commit_job
+    broker_project = _read("scripts/AutonomousStateBrokerService.csproj")
+    assert '<TargetFramework>net48</TargetFramework>' in broker_project
+    assert '<Deterministic>true</Deterministic>' in broker_project
+    assert 'Microsoft.NETFramework.ReferenceAssemblies.net48' in broker_project
+    assert 'Version="1.0.3"' in broker_project
+    assert '<Reference Include="System.IO.Pipes.AccessControl" />' in broker_project
+    sdk_pin = _read("scripts/global.json")
+    assert '"version": "11.0.100"' in sdk_pin
+    assert 'dotnet-version: 11.0.100' in workflow
+
+
+def test_broker_setup_preflights_package_before_runner_or_acl_mutation():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+
+    package_preflight = ensure.index("$brokerPackage = Get-AutonomousStateBrokerPackage")
+    runner_discovery = ensure.index("$runnerServiceCandidates")
+    runner_stop = ensure.index("Stop-Service -Name $service.Name")
+    state_acl_change = ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+
+    assert package_preflight < runner_discovery < runner_stop < state_acl_change
+    assert "Get-AutonomousStateBrokerPackage" in installer
+    assert '"Get-Acl", "Set-Acl", "Get-CimInstance"' in installer
+    assert "Get-Command $commandName -ErrorAction Stop" in installer
+    assert "Get-Command takeown.exe -ErrorAction Stop" in installer
+    assert "Get-Command icacls.exe -ErrorAction Stop" in installer
+    assert "Get-Command sc.exe -ErrorAction Stop" in installer
+    assert "$serviceSource" not in installer
+    assert "AutonomousStateBrokerService.cs is missing" not in installer
+    assert "csc.exe" not in installer
+
+
+def test_broker_setup_rolls_back_acl_and_manifest_when_install_fails():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    identity = _read("scripts/AutonomousWindowsIdentity.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert "[switch]$PassThru" in identity
+    assert "function Restore-AutonomousDirectoryTreeAcl" in identity
+    assert "InstallerSid = $InstallerSid" in identity
+    assert "& $takeown.Source /F $entryPath" in identity
+    assert "& $icacls.Source $entryPath /grant:r $grant /C /Q" in identity
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction" in ensure
+    assert "$previousStateModifySids" in ensure
+    assert "if (-not $setupCommitted)" in ensure
+    assert ensure.index("Install-AutonomousStateBrokerService") < ensure.index("$setupCommitted = $true")
+    assert "Transactional ACL snapshot and exact rollback passed." in workflow
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot" in workflow
+
+
+def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_failure():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    install = installer.split("function Install-AutonomousStateBrokerService", 1)[1]
+
+    stage_start = install.index("try {")
+    stop_service = install.index("Stop-Service -Name $serviceName", stage_start)
+    stage_catch = install.index("} catch {", stop_service)
+    cleanup = install.index("Remove-Item -LiteralPath $temporaryExe", stage_catch)
+    stage_catch_end = install.index("\n    }\n\n    $hadServiceExe", stage_catch)
+
+    assert stage_start < stop_service < stage_catch < cleanup < stage_catch_end
+    assert "if ($wasRunning)" in install[stage_catch:stage_catch_end]
+    assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:stage_catch_end]
+    assert "$existingServicePath" in install
+    assert 'Write-Warning "Could not restore the previous state-broker service configuration."' in install
+    assert "'binPath=' $binaryPath" in install
+    assert '"StartPending"' in install and '"StopPending"' in install
+    assert 'refusing to replace its executable' in install
+
+
+def test_broker_installer_preflights_net48_and_service_control_before_mutation():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
+    service_root_creation = installer.index("New-Item -ItemType Directory -Path $serviceRoot")
+    service_lookup = installer.index("Get-Service -Name $serviceName")
+
+    assert "RegistryView]::Registry64" in installer
+    assert "RegistryView]::Registry32" in installer
+    assert "$frameworkRelease -lt 528040" in installer
+    assert release_check < service_root_creation < service_lookup
+    assert "$scCommand = Get-Command sc.exe -ErrorAction Stop" in installer
+    assert installer.index("$scCommand = Get-Command sc.exe") < service_root_creation
+
+
+
+def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+
+    mutex = ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')
+    assert mutex > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
+    assert mutex < ensure.index('$brokerLogDirectory =')
+    assert mutex < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert mutex < ensure.index("Get-CimInstance Win32_Service")
+    assert mutex < ensure.index("Stop-Service -Name $service.Name")
+    assert mutex < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert "$setupMutex.WaitOne(0)" in ensure
+    assert "Another elevated state-broker setup is already running" in ensure
+    assert "catch [System.Threading.AbandonedMutexException]" in ensure
+    assert "fail closed" in ensure
+    assert "$setupMutex.ReleaseMutex()" in ensure
+    assert "$setupMutex.Dispose()" in ensure
+    assert ensure.rfind("$setupMutex.ReleaseMutex()") < ensure.rfind("$setupMutex.Dispose()")
+
+
+def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    parent = ensure[:ensure.index("$setupMutexName")]
+    abandoned = ensure[ensure.index("catch [System.Threading.AbandonedMutexException]"):ensure.index("if (-not $setupMutexAcquired)")]
+
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in parent
+    assert "if (-not $AcknowledgeAbandonedSetup)" in abandoned
+    assert "$setupMutexAbandonedUnacknowledged = $true" in abandoned
+    assert "rerun with -AcknowledgeAbandonedSetup" in abandoned
+    assert "$setupMutex.ReleaseMutex()" not in abandoned
+    assert "$setupMutexAbandonedUnacknowledged" in ensure
+    python_setup = _read("app/autonomous_engineering_broker_setup.py")
+    assert "-AcknowledgeAbandonedSetup" not in python_setup
+
+
+def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_mutation():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    elevation = ensure[:ensure.index('$setupMutexName = "Global\\PersonalAIAssistant.StateBrokerSetup"')]
+
+    assert "[switch]$ElevatedChild" in parameters
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert "[switch]$WindowsPowerShellHost" not in parameters
+    assert "Get-Process -Id $PID -ErrorAction Stop).Path" in elevation
+    assert 'Join-Path $PSHOME "Modules"' in elevation
+    assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in elevation
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in elevation
+    assert elevation.index('Join-Path $PSHOME "Modules"') < elevation.index("Start-Process -FilePath $hostExecutable")
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index(
+        'Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")'
+    )
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < ensure.index("$setupMutexName")
+    assert "$env:PSModulePath = $previousModulePath" in elevation
+    assert "$windowsPowerShellPath" not in elevation
+
+
+def test_security_module_import_is_isolated_to_the_active_powershell_host():
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+    assert '$previousModulePath = $env:PSModulePath' in module
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in module
+    assert 'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop' in module
+    assert '$env:PSModulePath = $previousModulePath' in module
+    assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
+        'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop'
+    )
+    assert module.index('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop') < module.index(
+        '$env:PSModulePath = $previousModulePath'
+    )

@@ -101,3 +101,21 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - PR #846 Draft می‌ماند تا Gateهای میزبان واقعی تأیید شوند؛ PR #847 mirror بسته شده و branch آن حفظ شده است.
 
 ---
+
+### 2026-11-25 — Explicit Broker setup and startup isolation
+
+- [ ] Starting the app with an unhealthy Broker performs only a read-only health check and never triggers UAC, service installation, or ACL changes.
+- [ ] The engineering dashboard exposes Broker setup only while Broker health is unavailable; clicking it is the only UI action that starts provisioning.
+- [ ] Successful setup is confirmed by a fresh Broker health check; cancellation, timeout, and failure are shown without claiming success or automatically retrying.
+- [ ] PowerShell Security module discovery is isolated to the active host during import and the original `PSModulePath` is restored.
+- [ ] Startup validates each configured Ollama profile without pulling or replacing any saved model selection.
+
+## 2026-11-25 — Broker startup and dispatch input regressions
+
+- [ ] Startup performs only read-only Broker/Ollama health checks; it never requests UAC, installs a service, changes ACLs, starts Ollama, or pulls a model.
+- [ ] The Broker setup button is hidden only when health is verified; provisioning occurs only after an explicit click and a loopback-protected POST. Success is shown only after a fresh health verification.
+- [ ] Windows storage CI proves the elevated child owns the machine mutex, a terminated launcher cannot permit a second setup, abandoned-owner recovery remains fail-closed, acknowledgement is explicit, and ACL rollback restores owner/group/ACE state.
+- [ ] CI builds the Broker package reproducibly, verifies its SHA-256 and provenance, and a later exact-head run matches the committed package byte-for-byte.
+- [ ] A missing model produces a warning for only its configured purpose; no other model profile is silently substituted and no startup pull occurs.
+- [ ] Dispatch and Resume use `--raw-field`; a literal `@path` in manual task text reaches GitHub as data.
+- [ ] Full live Pause/Mode admission, durable dispatch reservation, real workflow/Runner execution, crash/restart and owner UI acceptance are still required before merge.

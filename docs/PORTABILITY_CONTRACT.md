@@ -91,3 +91,11 @@ Run conformance tests across supported OS versions, x64/ARM64 where applicable, 
 - Missing Runner/Ollama/Git/browser/GPU capability does not prevent unrelated core features from starting.
 - An unsupported OS/architecture or missing required security primitive is detected before services, ACLs, or existing state are changed.
 - Upgrade tests prove that existing state and configuration are retained and rollback is possible.
+
+## Windows State Broker portability addendum (2026-11-25)
+
+- Discover Windows PowerShell Desktop and PowerShell Core as separate engines. Select a host by the actual required cmdlets, registry APIs, elevation support, architecture and executable path; do not require one major version when another tested host satisfies the capability.
+- Reuse the active PowerShell executable for elevated child execution. Temporarily isolate `PSModulePath` to the active host's own modules during Windows Security import and restore it in `finally`.
+- The State Broker service is a deterministic CI-built .NET Framework 4.8 executable with a committed SHA-256 manifest and build provenance. Target hosts verify the package and staged copy; they do not compile C# or require a local compiler. The runtime and Windows Service Control Manager remain capability requirements.
+- Machine-level Broker setup is an explicit user action, never an application-startup side effect. The elevated child owns the global setup mutex; abandoned ownership is fail-closed until explicit acknowledgement and successful health verification.
+- Missing Ollama/model/Runner/GitHub/Codex readiness is reported per consuming capability. Startup must not install, start, download, or substitute models or tools without explicit user action.

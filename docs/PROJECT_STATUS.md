@@ -602,3 +602,14 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 - PR #864 first Browser E2E attempt failed in the newly added status-refresh regression because the test intercepted `fetch` after initial page polling had already started; the controlled resolver did not own that pre-existing request. This was a test-harness defect, not evidence that the serialization fix failed.
 - The test now stubs API responses before navigation and waits for the initial status snapshot before starting the controlled race. A new exact-head CI run is required; prior Browser E2E failure remains in the audit trail.
+
+### 2026-11-25 — Engineering startup blockers
+
+The dedicated branch `fix/autonomous-engineering-startup-readiness-20261125` contains a first corrective slice: read-only startup preflights, explicit UI-triggered Broker setup, host-isolated PowerShell Security module import, and per-purpose Ollama model checks without implicit downloads. It is not merged. CI and real Windows target-host acceptance remain mandatory. The managed-Python bootstrap failure in the latest self-hosted workflow run is separate and is not marked resolved without its exact log.
+
+## 2026-11-25 — first integration slice for Autonomous Engineering
+
+- Draft PR [#875](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/875), based on current main `8b7c20c50ef4fd9346e924d212a35f36ff646515`, carries the read-only startup, explicit Broker setup, portable PowerShell, machine mutex/recovery, transactional ACL rollback, CI-built Broker package, per-purpose Ollama readiness, and raw-field Dispatch/Resume corrections.
+- The PR's Windows storage workflow builds and verifies the prebuilt Broker binary; after its first successful package run, a bot commit may add the binary/hash to the PR branch. A subsequent exact-head workflow must prove deterministic binary equality.
+- All gates remain pending until the exact current PR SHA completes full Linux/Windows tests, Windows storage integration, Browser E2E, CodeQL and dependency audit. Target-host non-admin/UAC/Runner/Ollama/Codex/recovery and owner UI acceptance remain separate mandatory gates.
+- PR #875 does not yet include the full live Pause/Mode stack (#866/#870) or the full durable dispatch reservation/retry/report hardening (#872). Those changes and the required `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` owner secret remain explicit follow-up blockers. No existing PR/branch was deleted, no active workflow was cancelled, and no merge occurred.
