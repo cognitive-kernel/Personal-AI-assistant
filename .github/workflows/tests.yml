@@ -6,7 +6,7 @@ env:
 
 on:
   push:
-    branches: [main, feat/autonomous-engineering-complete-20261112]
+    branches: [main, feat/autonomous-engineering-complete-20261112, "fix/autonomous-engineering-backend-ui-hardening-20261124-rebased"]
   pull_request:
   workflow_dispatch:
 
