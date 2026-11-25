@@ -1,4 +1,4 @@
-"""Safely remove obsolete numeric-suffix Codex context aliases from local Ollama."""
+"""Audit legacy numeric-suffix Codex aliases; destructive deletion requires explicit opt-in."""
 
 from __future__ import annotations
 
@@ -124,7 +124,7 @@ def cleanup_legacy_context_variants(
     verify_attempts: int = 5,
     verify_interval_seconds: float = 0.25,
 ) -> dict[str, Any]:
-    """Clean generated numeric aliases across every base-model family.
+    """Audit legacy numeric aliases across every base-model family, optionally deleting only when explicitly requested.
 
     A tag is eligible only when its name ends in -codex-ctxN and Ollama's saved
     Modelfile/parameters independently declares the same positive num_ctx.
@@ -251,7 +251,7 @@ def cleanup_legacy_context_variants(
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Audit or remove obsolete numeric Codex context aliases across all local Ollama models."
+        description="Audit legacy numeric Codex context aliases; deletion requires explicit confirmation."
     )
     parser.add_argument("--current-model", required=True)
     mode = parser.add_mutually_exclusive_group()
