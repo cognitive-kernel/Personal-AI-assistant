@@ -66,6 +66,7 @@ def test_cleanup_removes_verified_numeric_aliases_across_all_base_models():
     result = cleanup_legacy_context_variants(
         "gpt-oss:20b",
         request_json=api.request,
+        audit_only=False,
         sleep=lambda _seconds: None,
     )
 
@@ -100,6 +101,7 @@ def test_cleanup_preserves_unverified_or_context_mismatched_numeric_aliases():
     result = cleanup_legacy_context_variants(
         "base:7b",
         request_json=api.request,
+        audit_only=False,
         sleep=lambda _seconds: None,
     )
 
@@ -183,6 +185,7 @@ def test_cleanup_fails_if_ollama_still_lists_a_deleted_alias():
         cleanup_legacy_context_variants(
             "base:7b",
             request_json=api.request,
+            audit_only=False,
             sleep=lambda _seconds: None,
             verify_attempts=2,
         )
