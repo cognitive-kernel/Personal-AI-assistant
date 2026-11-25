@@ -537,10 +537,10 @@ def test_security_module_import_is_isolated_to_the_active_powershell_host():
     module = _read("scripts/AutonomousWindowsIdentity.psm1")
     assert '$previousModulePath = $env:PSModulePath' in module
     assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in module
-    assert 'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop' in module
+    assert 'Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop' in module
     assert '$env:PSModulePath = $previousModulePath' in module
     assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
-        'Import-Module Microsoft.PowerShell.Security -ErrorAction Stop'
+        'Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop'
     )
     assert module.index('Import-Module Microsoft.PowerShell.Security -ErrorAction Stop') < module.index(
         '$env:PSModulePath = $previousModulePath'
