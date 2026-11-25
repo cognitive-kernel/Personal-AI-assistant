@@ -6,9 +6,10 @@
 - پس از task یا شکست، step دارای `always()` فقط همان tag را unload می‌کند، نبودن آن را در `/api/ps` تأیید می‌کند، tag پایه را دوباره بررسی می‌کند، سپس همان tag موقت را حذف و نبودنش را در `/api/tags` تأیید می‌کند. اگر مالکیت، context، unload یا وجود مدل پایه قابل اثبات نباشد، حذف متوقف می‌شود.
 - مسیر diagnostic ویندوز نیز به همان lifecycle متصل شد. تشخیص internal variant در `run.py` برای نام‌های run-scoped گسترش یافت.
 - پاک‌سازی legacy اکنون audit-only است؛ حذف tagهای قدیمی فقط با گزینهٔ صریح `--delete-confirmed-legacy` ممکن است. هیچ مدل پایه یا tag نامرتبطی هدف cleanup نیست.
+- مهاجرت legacy settings نیز اصلاح شد: اگر پروفایل chat هنوز وجود نداشته باشد و مقدار عمومی `ollama_model` یک Codex context variant داخلی باشد، فقط base tag برای ساخت chat profile استفاده می‌شود؛ کلید legacy حفظ می‌شود و مقدار profile موجود هرگز بازنویسی نمی‌شود.
 - تست‌های جدید برای run/attempt/context mismatch، مدل پایه، unload ناموفق، حذف تأییدنشده، idempotency و رد نام‌های legacy/unowned اضافه شدند. تست‌های workflow از قرارداد persistent به قرارداد temporary تغییر کردند.
 - محدودیت باقی‌مانده: خاموش‌شدن سخت میزبان یا kill شدن کامل Runner ممکن است مانع اجرای step cleanup شود؛ در آن حالت tag run-scoped باقی می‌ماند و باید فقط با بررسی مالکیت پاک شود. این رفتار fail-closed است، نه پاک‌سازی کور.
-- code head ثبت‌شده پس از اصلاحات `246b8c2f3351af7c5c5bfb9477872a3e7e7a9cb7` است؛ Tests run `45621524449` و dependency audit run `45621524608` queued و CodeQL run `45621524463` pending هستند؛ Browser E2E روی این SHA اجرا نشده است. نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
+- code head ثبت‌شده پس از اصلاحات `79559a247fb14d1d48922268d8a038befdcea27f` است؛ Tests run `45622196110` و Browser E2E run `45622195798` queued، dependency audit run `45622195998` و CodeQL run `45622195700` در حال اجرا هستند. نتیجهٔ pass تا تکمیل همهٔ jobها ادعا نمی‌شود. نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
 - هیچ مدل Ollama، تنظیم DB، سرویس، Runner، ACL، checkpoint یا دادهٔ میزبان کاربر توسط این تغییرات دست‌کاری نشده؛ هیچ PR merge نشده است.
 
 ---
