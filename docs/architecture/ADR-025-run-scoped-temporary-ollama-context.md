@@ -6,7 +6,7 @@
 
 ## Context
 
-The Codex context preflight calculates a safe context from the selected installed base model, model metadata, available physical RAM, model weight size, and KV-cache estimate. The previous implementation persisted a shared `<base>-codex-ctx` tag and only re-verified its allocation after the task. Separately, the legacy cleanup helper could delete numeric-suffix tags across every model family when their saved `num_ctx` matched the suffix. Those tags did not carry proof that they belonged to the current run.
+The Codex context preflight calculates a safe context from the selected installed base model, model metadata, available physical RAM, model weight size, and KV-cache estimate. The previous implementation persisted a shared `<base>-codex-ctx` tag and only re-verified its allocation after the task. Separately, the legacy cleanup helper could delete numeric-suffix tags across every model family when their saved `num_ctx` matched the suffix. Those tags did not carry proof that they belonged to the current run. A separate settings migration also copied the legacy generic model value directly into a new chat profile; if that value was a temporary Codex variant, it could persist as a non-selectable chat model.
 
 This did not satisfy the required lifecycle of creating a hardware-sized context variant for one engineering run and removing that variant after the run, while preserving user-owned models.
 
@@ -21,6 +21,7 @@ This did not satisfy the required lifecycle of creating a hardware-sized context
 6. If ownership, context, base-tag presence, unload state, or deletion cannot be verified, preserve the model and fail cleanup. Never broaden cleanup to other tags.
 7. Legacy numeric aliases without run-ownership metadata are audit-only by default. Destructive legacy cleanup requires the explicit `--delete-confirmed-legacy` option and is not part of startup or normal task preflight.
 8. The same lifecycle applies to the autonomous engineering workflow and the Windows Codex sandbox diagnostic workflow.
+9. When creating a missing chat profile from the legacy generic model setting, strip an internal Codex context suffix and seed the base model only. Preserve the original legacy setting and never rewrite an existing chat profile.
 
 ## Consequences
 
