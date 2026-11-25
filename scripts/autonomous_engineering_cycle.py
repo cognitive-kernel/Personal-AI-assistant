@@ -1004,11 +1004,11 @@ def _live_pause_enabled(settings_token: str, repo: str) -> bool:
     if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live Pause setting.")
     _verify_repository_access(settings_token, repo)
-    _verify_variables_read_access(settings_token, repo)
     try:
         setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
+            _verify_variables_read_access(settings_token, repo)
             return False
         raise RuntimeError(
             "Could not verify the live durable Pause setting; no new task will start."
@@ -1025,11 +1025,11 @@ def _live_execution_mode(settings_token: str, repo: str) -> str:
     if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid read-only Variables token and repository are required to verify the live execution mode.")
     _verify_repository_access(settings_token, repo)
-    _verify_variables_read_access(settings_token, repo)
     try:
         setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
     except RuntimeError as exc:
         if "failed (404)" in str(exc):
+            _verify_variables_read_access(settings_token, repo)
             return "continuous"
         raise RuntimeError(
             "Could not verify the live execution mode; no automatic task will start."
