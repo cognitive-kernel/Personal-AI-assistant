@@ -64,7 +64,10 @@ function Clear-AutonomousStateBrokerSetupRecoveryMarker {
     try {
         $key = $baseKey.OpenSubKey($RegistrySubKey, $true)
         if ($null -eq $key) { return }
-        try { $key.DeleteValue("SetupAbandoned", $false) } finally { $key.Dispose() }
+        try {
+            $key.DeleteValue("SetupAbandoned", $false)
+            $key.DeleteValue("SetupReason", $false)
+        } finally { $key.Dispose() }
     } finally { $baseKey.Dispose() }
 }
 
