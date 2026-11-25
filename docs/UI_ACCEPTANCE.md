@@ -184,7 +184,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - اصلاحات اصلی: `--raw-field` برای workflow inputs؛ durable cross-process dispatch admission؛ Resume یک‌باره با live Pause/Mode gate؛ exact-run Cancel؛ Broker setup صریح و startup فقط‌خواندنی؛ Broker package قابل‌راستی‌آزمایی؛ Codex report/retry diagnostics؛ UI state/polling hardening.
 - بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
 - گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
-- نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
+- نتیجهٔ تاریخی: Gateهای repository CI و Browser E2E روی SHA قبلی موفق بودند؛ این نتایج برای code head جدید evidence محسوب نمی‌شوند. ماژول هنوز operationally accepted یا ready-to-merge نیست و PR تا تکمیل گیت‌های فعلی و میزبان Draft می‌ماند.
 
 
 ## 2026-11-25 — current integrated acceptance gates
@@ -199,7 +199,7 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - [x] Legacy numeric context aliases are audit-only by default; deletion requires explicit `--delete-confirmed-legacy`.
 - [x] UI/API model selectors reject internal context variants, including run-scoped temporary tags, as base-model choices.
 - [x] Legacy settings migration seeds a missing chat profile from the base tag and repairs an existing chat profile only when it contains a reserved ephemeral Codex context tag; valid user model choices and explicit CHAT_OLLAMA_MODEL overrides are preserved.
-- [ ] Regression tests must verify migration of an existing temporary chat tag, preservation of ordinary existing chat models, and behavior when the legacy generic model key is absent.
+- [x] Regression tests added for migration of an existing temporary chat tag, preservation of ordinary existing chat models, explicit environment overrides, and behavior when the legacy generic model key is absent (`tests/test_db_schema.py` and `tests/test_core.py`); execution on the current code head is pending.
 - [ ] Exact-head Linux/Windows tests, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must all complete successfully on the final SHA.
 - [ ] Windows target-host acceptance: reproduce the prior PowerShell 5.1 duplicate-TypeData failure and verify the corrected import, Broker health/setup, Runner identity/ACL, and restart behavior.
 - [ ] Exact-head Windows CI must pass PowerShell 5.1 regressions for clean import, repeated -Force import, and reuse of a preloaded Security module with inherited PowerShell 7 module paths; owner-host verification must confirm the previously failing module load and Broker health.
