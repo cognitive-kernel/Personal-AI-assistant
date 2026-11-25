@@ -207,6 +207,7 @@ def test_cleanup_rechecks_runtime_before_deleting_an_alias_that_becomes_loaded()
     result = cleanup_legacy_context_variants(
         "base:7b",
         request_json=api.request,
+        audit_only=False,
         sleep=lambda _seconds: None,
     )
 
