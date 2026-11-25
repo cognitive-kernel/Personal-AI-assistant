@@ -122,13 +122,15 @@ def init_databases() -> None:
                 )
 
         # A Codex context variant is a generated task-local model, never a durable
-        # chat model. Normalize only this reserved suffix even when the legacy
-        # generic model key is absent; preserve valid user choices and env overrides.
-        if (
-            "chat_ollama_model" in existing_settings
-            and os.getenv("CHAT_OLLAMA_MODEL") is None
-        ):
-            saved_chat_model = existing_settings["chat_ollama_model"]
+        # chat model. Normalize the persisted value regardless of whether it came
+        # from a legacy setting, a profile, or an environment-seeded default.
+        # Ordinary user-selected model tags are not changed.
+        chat_model_row = conn.execute(
+            "SELECT value_json FROM settings WHERE key=?",
+            ("chat_ollama_model",),
+        ).fetchone()
+        if chat_model_row is not None:
+            saved_chat_model = json.loads(chat_model_row["value_json"])
             base_chat_model = _legacy_chat_model_base(saved_chat_model)
             if base_chat_model != saved_chat_model:
                 conn.execute(
