@@ -1,3 +1,15 @@
+## 2026-11-24 — ممیزی زنده و اولویت عملیاتی UI مهندسی
+
+- مبنای بررسی زنده main: `8a879d0962b00897744e114ff7297e5c6228ff1d`.
+- 10 check از 11 check روی همین SHA موفق‌اند؛ job `codex` در workflow run شمارهٔ 375 با شناسهٔ `45413836616` هنوز queued بود. این اجرای زنده دست‌نخورده باقی می‌ماند.
+- PRهای باز زنجیره‌ای‌اند: #863 و #866 روی base قدیمی `3d1e843...`؛ #869 بر #863؛ #870 بر #866؛ #872 بر #870. headهای #863/#866/#869/#870 در زمان ممیزی check-run نداشتند. #872 با head `476bcdc76c777457131224c017ea48520fe1ccee` هشت check موفق دارد، اما 3 commit از main عقب و روی زنجیرهٔ stacked قرار دارد؛ CI سبز آن مجوز ادغام مستقیم نیست.
+- صفحهٔ `/autonomous-engineering`، 7 فایل UI تخصصی، 13 API route و 21 تست browser با نام Autonomous Engineering در main شناسایی شدند. فهرست controlها، endpointها، state ownership، شواهد CI و گیت‌های باز در [ممیزی زندهٔ UI](UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md) ثبت شده است.
+- اولویت اجرای بعدی فقط تکمیل همین ماژول است: ابتدا حل امن dependency graph و انتقال PRهای موجود، سپس تثبیت state/recovery، سپس browser/fault E2E و در پایان پذیرش واقعی Windows با Ollama/Codex/Runner. توسعهٔ قابلیت جدید در سایر ماژول‌ها متوقف می‌ماند.
+- مالک تأیید کرده مدل مهندسی `gpt-oss:20b` است. مقدار واقعی repository variable و inventory کامل مدل‌های نصب‌شده هنوز از میزبان قابل تأیید نیست؛ هیچ مدل یا مسیر کاری خودکار تغییر نمی‌کند.
+- هیچ PR، branch، workflow run، task، checkpoint، Runner یا دادهٔ durable حذف/لغو/بازنویسی نشده است.
+
+---
+
 ## 2026-11-24 — snapshot زنده و اصلاح race در UI ماژول مهندسی
 
 - مبنای main با PR #863 تأیید شد: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
