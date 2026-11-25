@@ -9,7 +9,7 @@
 - مهاجرت legacy settings نیز اصلاح شد: اگر پروفایل chat هنوز وجود نداشته باشد و مقدار عمومی `ollama_model` یک Codex context variant داخلی باشد، فقط base tag برای ساخت chat profile استفاده می‌شود؛ کلید legacy حفظ می‌شود و مقدار profile موجود هرگز بازنویسی نمی‌شود.
 - تست‌های جدید برای run/attempt/context mismatch، مدل پایه، unload ناموفق، حذف تأییدنشده، idempotency و رد نام‌های legacy/unowned اضافه شدند. تست‌های workflow از قرارداد persistent به قرارداد temporary تغییر کردند.
 - محدودیت باقی‌مانده: خاموش‌شدن سخت میزبان یا kill شدن کامل Runner ممکن است مانع اجرای step cleanup شود؛ در آن حالت tag run-scoped باقی می‌ماند و باید فقط با بررسی مالکیت پاک شود. این رفتار fail-closed است، نه پاک‌سازی کور.
-- code head ثبت‌شده پس از اصلاحات `79559a247fb14d1d48922268d8a038befdcea27f` است؛ Tests run `45622196110` و Browser E2E run `45622195798` queued، dependency audit run `45622195998` و CodeQL run `45622195700` در حال اجرا هستند. نتیجهٔ pass تا تکمیل همهٔ jobها ادعا نمی‌شود. نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
+- code head ثبت‌شده پس از اصلاحات `c91298ca1bb2ad18428c5ec808900cfae411bfdb` است؛ Tests run `45622801682` و Browser E2E run `45622801851` queued، dependency audit run `45622801823` و CodeQL run `45622801715` در حال اجرا هستند. نتیجهٔ pass تا تکمیل همهٔ jobها ادعا نمی‌شود. نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
 - هیچ مدل Ollama، تنظیم DB، سرویس، Runner، ACL، checkpoint یا دادهٔ میزبان کاربر توسط این تغییرات دست‌کاری نشده؛ هیچ PR merge نشده است.
 
 ---
