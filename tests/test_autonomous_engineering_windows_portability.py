@@ -1,4 +1,9 @@
+import os
+import shutil
+import subprocess
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -591,3 +596,54 @@ def test_run_scoped_temporary_codex_variants_are_rejected_as_base_models():
     for path in paths:
         source = path.read_text(encoding="utf-8")
         assert "-paa-[0-9]+-[0-9]+-[a-f0-9]{12}" in source
+
+
+def test_windows_powershell_security_import_ignores_inherited_cross_edition_module_paths():
+    if os.name != "nt":
+        pytest.skip("Windows PowerShell 5.1 integration check")
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("Windows PowerShell executable is unavailable")
+
+    module_path = str(ROOT / "scripts" / "AutonomousWindowsIdentity.psm1")
+    escaped_module_path = module_path.replace("'", "''")
+    env = os.environ.copy()
+    windows_powershell_modules = str(
+        Path(env.get("WINDIR", r"C:\\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
+    )
+    powershell7_modules = str(
+        Path(env.get("ProgramFiles", r"C:\\Program Files")) / "PowerShell" / "7" / "Modules"
+    )
+    env["PSModulePath"] = ";".join([powershell7_modules, windows_powershell_modules])
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$before = $env:PSModulePath; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
+        "if (-not $security) { throw 'Security module did not load' }; "
+        "$expected = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')); "
+        "$actual = [IO.Path]::GetFullPath($security.Path); "
+        "if (-not $actual.StartsWith(($expected.TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Security module loaded outside PSHOME Modules' }; "
+        "if ($env:PSModulePath -ne $before) { throw 'PSModulePath was not restored' }; "
+        "Write-Output 'PAA_SECURITY_IMPORT_OK'"
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    assert "PAA_SECURITY_IMPORT_OK" in result.stdout
