@@ -372,3 +372,12 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - Codex: failure feedback پالایش‌شده در retry، طبقه‌بندی enum برای نبود پیام نهایی/نشانگر ناقص/نشانگر غیرپایانی، timeout محدود ۶۰۰ ثانیه برای report-only repair، و پذیرش نشانگر فقط در آخرین خط غیرخالی.
 - UI: پیام چسبنده، refresh callback بدون Event argument، حفظ keyed run/log panels، حفظ Cancel/Pause/Resume در poll failure، معنای درست retryable، وضعیت خطای cleanup ناقص، تاریخ معتبر، fallback بازه، عدم بلعیدن timeout بدنهٔ response و اصلاح مسیر راه‌اندازی.
 - وضعیت: پیاده‌سازی و regression test اضافه شده‌اند؛ exact-head CI، build/integration سرویس Windows Broker، browser E2E و پذیرش روی Windows واقعی هنوز اجرا/تأیید نشده‌اند.
+
+
+## 2026-11-25 — latest-main reconciliation for the engineering stack
+
+- Integrated the current mainline history through `8b7c20c50ef4fd9346e924d212a35f36ff646515` as a merge parent; the branch retains its stronger Broker-backed dispatch/resume reservation and exact-run Cancel contract.
+- Preserved the mainline serialized post-mutation status-refresh regression and job-aware cancellation improvements. The branch's UI contract additionally sends the exact run ID from the last successful snapshot and fails closed if the selected run is no longer active or has no active Codex job.
+- Updated the pinned `actions/setup-node` reference to the current `v7.1.0` commit.
+- Added the current live UI-to-API audit as `UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md`; it is a static audit, not target-host acceptance.
+- Exact-head validation is required again after integration with the startup-readiness changes. No runtime workflow was dispatched by this merge preparation.
