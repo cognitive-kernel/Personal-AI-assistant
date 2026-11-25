@@ -423,11 +423,11 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 - PR #872: شاخهٔ integration مبتنی بر main، باز و Draft.
 - PR #875: startup-readiness slice در شاخهٔ PR #872 ادغام شده؛ merge آن به معنی ادغام در main نیست.
 - PRهای #866، #870 و #871 بسته و superseded هستند؛ branchهایشان برای audit حفظ شده‌اند.
-- PR #876 یک inventory documentation-only بر مبنای snapshot قبلی است؛ اطلاعات زندهٔ آن باید در همین inventory و گزارش integration به‌روز نگه داشته شود و نسخهٔ stale آن نباید به‌عنوان منبع وضعیت جاری استفاده شود.
+- PR #876 پس از انتقال و به‌روزرسانی محتوای inventory در همین شاخه، به‌عنوان سند تکراری بسته شد؛ branch آن برای audit حفظ شده است.
 
 ### وضعیت پذیرش
 - Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
-- CI روی head `1eb7f156d385e093793addafe41d60ba3835bb60` در زمان ثبت در صف/حال اجرا بود؛ هیچ pass برای آن head ادعا نمی‌شود.
+- آخرین code head ثبت‌شده `246b8c2f3351af7c5c5bfb9477872a3e7e7a9cb7` است. Tests run `45621524449` و dependency audit run `45621524608` در صف و CodeQL run `45621524463` در وضعیت pending ثبت شده‌اند؛ Browser E2E روی این SHA اجرا نشده است. هیچ pass برای این head ادعا نمی‌شود.
 - اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
 - Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
 
