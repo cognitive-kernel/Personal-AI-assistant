@@ -30,7 +30,7 @@ def test_recovery_workflow_checks_out_trusted_policy_and_invokes_it():
     assert "def _verify_repository_access(client: GitHubActionsClient, expected_repository: str)" in policy
     assert "_verify_repository_access(client, repository)" in policy
     assert "def _verify_variables_read_access(client: GitHubActionsClient)" in policy
-    assert '"\/actions\/variables?per_page=1"' in policy
+    assert '"/actions/variables?per_page=1"' in policy
     assert "repository Variables read permission" in policy
     assert policy.index("_verify_repository_access(client, repository)") < policy.index("if _live_execution_mode(client)")
     assert policy.rindex("_verify_repository_access(client, repository)") > policy.index("time.sleep(delay_seconds)")
