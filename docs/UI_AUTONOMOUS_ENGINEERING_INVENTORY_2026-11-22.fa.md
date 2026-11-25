@@ -416,8 +416,8 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 5. در پایان یا failure، `always()` فقط همان tag را unload می‌کند، خروج آن از `/api/ps` را بررسی می‌کند، وجود tag پایه را دوباره تأیید می‌کند، فقط همان tag موقت را حذف می‌کند و نبودنش را در `/api/tags` بررسی می‌کند.
 6. اگر مالکیت، context، base tag، unload یا deletion قابل اثبات نباشد، مدل حفظ می‌شود و cleanup خطا می‌دهد؛ مدل پایه و سایر tagها هدف قرار نمی‌گیرند.
 7. legacy aliasهای بدون شناسهٔ run فقط audit می‌شوند؛ حذف destructive تنها با `--delete-confirmed-legacy` ممکن است و در startup اجرا نمی‌شود.
-8. مهاجرت legacy settings هنگام ساخت chat profile جدید، Codex context variant را به base tag تبدیل می‌کند؛ اگر پروفایل موجود به tag موقت اشاره کند نیز فقط همان suffix اصلاح می‌شود. مقدار legacy و انتخاب‌های معتبر کاربر حفظ می‌شوند.
-8. همین lifecycle در workflow اصلی و workflow diagnostic ویندوز اعمال شده است.
+9. مهاجرت legacy settings هنگام ساخت chat profile جدید، Codex context variant را به base tag تبدیل می‌کند؛ اگر پروفایل موجود به tag موقت اشاره کند نیز فقط همان suffix اصلاح می‌شود. مقدار legacy و انتخاب‌های معتبر کاربر حفظ می‌شوند.
+10. همین lifecycle در workflow اصلی و workflow diagnostic ویندوز اعمال شده است.
 
 ### PR graph پس از reconciliation
 - `main`: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
@@ -428,7 +428,7 @@ The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-
 
 ### وضعیت پذیرش
 - Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
-- آخرین code head ثبت‌شده `d54f62c4460805f58eb789c655491dfc950ee789` است. Tests run `45623237155` در حال اجراست (bootstrap macOS موفق و jobهای اصلی Linux/Windows و Windows storage/Broker هنوز queued هستند)؛ Browser E2E run `45623237170` و dependency audit run `45623237087` موفق شده‌اند؛ CodeQL run `45623237128` پس از rerun در صف است. هیچ pass کامل برای این head ادعا نمی‌شود. هیچ pass برای این head ادعا نمی‌شود.
+- آخرین code head ثبت‌شده `d54f62c4460805f58eb789c655491dfc950ee789` است. Tests run `45623237155` در حال اجراست (bootstrap macOS موفق و jobهای اصلی Linux/Windows و Windows storage/Broker هنوز queued هستند)؛ Browser E2E run `45623237170` و dependency audit run `45623237087` موفق شده‌اند؛ CodeQL run `45623237128` پس از rerun در صف است. هیچ pass کامل برای این head ادعا نمی‌شود.
 - اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
 - Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
 
