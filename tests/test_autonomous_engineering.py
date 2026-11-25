@@ -3182,6 +3182,9 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert gate.index("$repositoryMetadata = Invoke-RestMethod") < gate.index('Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"')
     assert "function Get-LiveRepositoryVariable" in gate
     assert "/actions/variables/$Name" in gate
+    assert "/actions/variables?per_page=1" in gate
+    assert gate.index("if ($statusCode -eq 404)") < gate.index("/actions/variables?per_page=1") < gate.index("return $DefaultValue")
+    assert "Could not verify repository Variables read permission" in gate
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in gate
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in gate
     assert "EVENT_NAME" in gate and "RECOVERY_ATTEMPT" in gate
