@@ -85,7 +85,7 @@ def test_missing_programming_model_is_reported_without_automatic_pull(monkeypatc
     assert not any("مدل گفتگو" in warning for warning in warnings)
 
 
-def test_legacy_codex_context_alias_is_not_pulled_or_written_back(monkeypatch):
+def test_legacy_codex_context_alias_recovers_to_installed_base_without_limited_mode(monkeypatch, capsys):
     models = {
         "chat_ollama_model": "qwen2.5:7b-codex-ctx2048",
         "research_plan_ollama_model": "research-local",
@@ -101,13 +101,14 @@ def test_legacy_codex_context_alias_is_not_pulled_or_written_back(monkeypatch):
         "programming-local",
         "embedding-local",
     }
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     configure_profiles(monkeypatch, models, installed)
     warnings = startup._ensure_ollama()
-    assert any("variant داخلی Codex" in warning for warning in warnings)
-    assert not any("مدل‌های انتخاب‌شده نصب نیستند" in warning for warning in warnings)
+    assert warnings == []
+    assert "مدل پایهٔ نصب‌شده qwen2.5:7b" in capsys.readouterr().out
 
 
-def test_run_scoped_internal_context_variant_is_not_treated_as_registry_model(monkeypatch):
+def test_run_scoped_internal_context_variant_recovers_to_installed_base(monkeypatch, capsys):
     models = {
         "chat_ollama_model": "qwen2.5:7b-codex-ctx2048-paa-123456-2-a1b2c3d4e5f6",
         "research_plan_ollama_model": "research-local",
@@ -123,9 +124,52 @@ def test_run_scoped_internal_context_variant_is_not_treated_as_registry_model(mo
         "programming-local",
         "embedding-local",
     }
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     configure_profiles(monkeypatch, models, installed)
     warnings = startup._ensure_ollama()
 
+    assert warnings == []
+    assert "مدل پایهٔ نصب‌شده qwen2.5:7b" in capsys.readouterr().out
+
+
+def test_internal_chat_variant_stays_unavailable_when_its_base_is_not_installed(monkeypatch):
+    models = {
+        "chat_ollama_model": "qwen2.5:7b-codex-ctx2048",
+        "research_plan_ollama_model": "research-local",
+        "learning_ollama_model": "learning-local",
+        "programming_ollama_model": "programming-local",
+        "ollama_embedding_model": "embedding-local",
+        "factual_review_ollama_model": "",
+    }
+    installed = {"research-local", "learning-local", "programming-local", "embedding-local"}
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
+    configure_profiles(monkeypatch, models, installed)
+
+    warnings = startup._ensure_ollama()
+
     assert any("variant داخلی Codex" in warning for warning in warnings)
-    assert any("مدل پایهٔ qwen2.5:7b نصب است" in warning for warning in warnings)
-    assert not any("مدل از UI" in warning and "qwen2.5:7b-codex" in warning for warning in warnings)
+    assert any("مدل پایهٔ qwen2.5:7b نیز نصب نیست" in warning for warning in warnings)
+
+
+def test_explicit_chat_model_environment_override_prevents_implicit_base_recovery(monkeypatch):
+    models = {
+        "chat_ollama_model": "qwen2.5:7b-codex-ctx2048",
+        "research_plan_ollama_model": "research-local",
+        "learning_ollama_model": "learning-local",
+        "programming_ollama_model": "programming-local",
+        "ollama_embedding_model": "embedding-local",
+        "factual_review_ollama_model": "",
+    }
+    installed = {
+        "qwen2.5:7b",
+        "research-local",
+        "learning-local",
+        "programming-local",
+        "embedding-local",
+    }
+    monkeypatch.setenv("CHAT_OLLAMA_MODEL", "custom-chat")
+    configure_profiles(monkeypatch, models, installed)
+
+    warnings = startup._ensure_ollama()
+
+    assert any("variant داخلی Codex" in warning for warning in warnings)
