@@ -275,3 +275,107 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 - **اصلاح در branch `fix/autonomous-engineering-status-refresh-serialization-20261124`:** refreshهای پس از mutation با `statusMutationRefreshPromise` سریالی شده‌اند. هر refresh منتظر mutation قبلی و poll پیشین می‌ماند و سپس یک درخواست authoritative مستقل اجرا می‌کند.
 - **Regression:** تست Playwright جدید، poll قبلی را معلق نگه می‌دارد، دو refresh پس از mutation را هم‌زمان درخواست می‌کند و حداکثر یک درخواست status فعال و به‌روزرسانی نهایی پس از هر دو mutation را assert می‌کند.
 - **وضعیت:** کد و تست به branch اضافه شده‌اند؛ اجرای Browser E2E و exact-head CI هنوز pending است. Gate D تا عبور تست‌ها بسته نمی‌شود.
+
+
+---
+
+## الحاقیهٔ ممیزی زنده و بازبینی وابستگی PRها — 2026-11-25
+
+### مبنای دقیق این بازبینی
+
+- شاخهٔ مبنا: `main`
+- SHA فعلی main هنگام بازبینی: `8b7c20c50ef4fd9346e924d212a35f36ff646515`
+- قرارداد اصلی مهندسی: `docs/MASTER_ENGINEERING_PROMPT.md` در شاخهٔ `docs/master-engineering-continuity-prompt`، blob `ef2cc3efcd9be33612c93fb0ac7873deec46f8c5`
+- پرامپت اجرایی UI: `docs/MASTER_UI_ENGINEERING_PROMPT.fa.md` در شاخهٔ `docs/ui-engineering-first-module-20261121`؛ متن کامل آن به‌عنوان ادامهٔ قرارداد اصلی بررسی شد.
+- این الحاقیه جایگزین inventory قبلی نیست؛ snapshotهای قدیمی را حفظ می‌کند و وضعیت زنده را جدا ثبت می‌کند.
+
+### نقشهٔ زندهٔ UI → API
+
+| کنترل/بخش UI | فایل/handler | API و اثر |
+|---|---|---|
+| بازخوانی و readiness | `autonomous-engineering-status.js` | `GET /status`؛ فقط خواندن وضعیت Ollama، مدل، Codex، Runner، GitHub، storage و کار ذخیره‌شده |
+| ذخیرهٔ حالت/فاصله/مدل | `autonomous-engineering-controls.js` | `POST /settings`؛ نوشتن تنظیمات GitHub repository variables |
+| دانلود مدل | `autonomous-engineering-controls.js` | `POST /models/pull` و polling با `GET /models/pull/{job_id}`؛ mutation محلی Ollama فقط پس از اقدام صریح |
+| ارسال task دستی | `autonomous-engineering-controls.js` | `POST /dispatch` با payload؛ ایجاد/رزرو اجرای جدید، مشروط به admission |
+| اجرای چرخه از صف | `autonomous-engineering-controls.js` | `POST /dispatch` بدون task؛ ادامهٔ صف/checkpoint طبق قرارداد admission |
+| توقف امن | `autonomous-engineering-controls.js` | `POST /pause`؛ تغییر Pause؛ به معنی kill یا suspend اجرای جاری نیست |
+| Resume | `autonomous-engineering-controls.js` | `POST /resume`؛ اعتبارسنجی state و dispatch یک‌باره در صورت نیاز |
+| لغو اجرای فعال | `autonomous-engineering-controls.js` | `POST /cancel`؛ باید run ID canonical و وضعیت job بررسی شود |
+| سوابق اجرا | `autonomous-engineering-runs.js` | `GET /runs` و `GET /runs/{run_id}/logs` |
+| حذف run پایان‌یافته | `autonomous-engineering-runs.js` | `DELETE /runs/{run_id}`؛ فقط پس از تأیید مالکیت و وضعیت مجاز |
+| پاک‌سازی فایل‌های موقت | `autonomous-engineering-runs.js` | `POST /cleanup`؛ تحت قفل‌های durable-state/checkpoint/repository |
+| نمودار و رخدادهای پیشرفت | `autonomous-engineering-progress.js` | `GET /progress` با فیلتر بازه؛ projection از دادهٔ ثبت‌شده |
+| transport و خطا | `autonomous-engineering-core.js` | timeout، JSON، correlation ID، error code، retryable و safe details |
+| راه‌اندازی Broker (در شاخهٔ PR #875) | controls + صفحه | `POST /broker/setup`؛ اقدام صریح کاربر، نه پیش‌نیاز خودکار startup |
+
+### فایل‌ها و مرزهای مشاهده‌شده روی main
+
+- HTML: `app/static/autonomous-engineering.html`
+- transport: `app/static/autonomous-engineering-core.js`
+- کنترل‌ها: `app/static/autonomous-engineering-controls.js`
+- readiness/status: `app/static/autonomous-engineering-status.js`
+- runs/logs/cleanup: `app/static/autonomous-engineering-runs.js`
+- progress: `app/static/autonomous-engineering-progress.js`
+- bootstrap/lifecycle: `app/static/autonomous-engineering.js`
+- API و route handlers: `app/autonomous_engineering.py`
+- cycle/recovery/workflow: `scripts/autonomous_engineering_cycle.py`, `scripts/autonomous_engineering_recovery.py`, `.github/workflows/autonomous-codex-engineering.yml`, `.github/workflows/autonomous-codex-recovery.yml`
+- baseline lease epoch/fencing از PR #799 در main است؛ نباید دوباره پیاده‌سازی موازی شود.
+
+### وضعیت زندهٔ PRها و CI
+
+| PR | head SHA | base | وضعیت PR | شواهد exact-head هنگام بازبینی |
+|---|---|---|---|---|
+| #866 | `242f39e4f904d3ca31643f00ba6da763e0265049` | `main` | باز، Draft، mergeable=false/dirty | GitHub Check Runs: صفر |
+| #870 | `b67aa237ba54428cfbeed2813b768031beef3f8d` | شاخهٔ #866 | باز، Draft، mergeable=false/dirty | GitHub Check Runs: صفر |
+| #872 | `476bcdc76c777457131224c017ea48520fe1ccee` | شاخهٔ #870 | باز، Draft | ۸ check موفق؛ شامل test، Full test suite (Windows)، Windows storage regressions، browser smoke، dependency audit و bootstrap matrix |
+| #875 | `5f1433858bec18ecddaab54bee80abf1ce7be619` | `main` | باز، Draft | CodeQL، dependency audit و browser E2E موفق؛ workflow تست هنوز در حال اجرا بود و jobهای Linux، Full Windows suite و Windows storage regressions کامل نشده بودند |
+
+**نتیجهٔ dependency audit:** #872 شامل زنجیرهٔ #866/#870 در ancestry خود است و CI آن روی SHA نهایی #872 موفق شده؛ بنابراین صفر بودن Check Runs روی headهای قدیمی #866/#870 به‌تنهایی نتیجهٔ #872 را باطل نمی‌کند. بااین‌حال #875 شاخه‌ای مستقل از main است و چندین فایل مشترک با #872 را تغییر می‌دهد؛ این دو PR را نمی‌توان بدون ادغام/بازبینی تعارض‌ها و اجرای CI روی SHA ترکیبی، مستقل merge کرد.
+
+فایل‌های مشترکِ مهم بین #872 و #875 عبارت‌اند از:
+`app/autonomous_engineering.py`,
+`app/autonomous_engineering_state_broker.py`,
+`app/static/autonomous-engineering-controls.js`,
+`app/static/autonomous-engineering-core.js`,
+`app/static/autonomous-engineering-status.js`,
+`app/static/autonomous-engineering.html`,
+`docs/ENGINEERING_LOG.md`,
+`docs/PROJECT_STATUS.md`,
+`docs/UI_ACCEPTANCE.md`,
+`docs/UI_AUTONOMOUS_ENGINEERING_INVENTORY_2026-11-22.fa.md`,
+`docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md`,
+و چند فایل تست مشترک. ابتدا باید قراردادهای dispatch/admission/cancel از #872 با setup/readiness/broker changes از #875 در یک شاخهٔ واحد reconcile شوند.
+
+### یافته‌های قطعی و موارد نیازمند reproduction
+
+1. **مستند عملیاتی main با طراحی startup جدید ناسازگار است:** نسخهٔ فعلی `docs/operations/CODEX_AUTONOMOUS_ENGINEERING.md` هنوز می‌گوید `run.py` هنگام startup Broker را بررسی و در صورت نیاز setup همراه UAC اجرا می‌کند و Broker پیش‌نیاز core dashboard است. PR #875 دقیقاً startup را read-only کرده و setup را به endpoint/button صریح منتقل می‌کند. متن مستند باید با کد پذیرفته‌شده هم‌راستا شود؛ تا زمان ادغام و CI، رفتار جدید را در main واقعیت جاری فرض نکنید.
+2. **گیت startup باید capability-scoped بماند:** نبود Broker، Runner، Ollama، مدل یا GitHub نباید startup و storage و صفحات مستقل را متوقف کند. PR #875 این جهت را پیاده‌سازی می‌کند؛ نتیجهٔ تست exact-head آن هنوز کامل نبود.
+3. **گیت live Pause/Mode باید authoritative باشد:** PR #866/#870 کنترل زنده را پس از concurrency admission و در cycle/recovery اضافه می‌کنند؛ #872 مسیر admission، Resume و Cancel را سخت‌تر می‌کند. فقط CI موفق #872 در این بازبینی تأیید شد؛ پذیرش واقعی Windows target همچنان جداست.
+4. **محدودیت evidence مرورگر:** workflow موفق browser E2E روی #872 و #875 به‌تنهایی اثبات اجرای واقعی Runner/Ollama/Codex/GitHub روی رایانهٔ مقصد نیست.
+5. **نیاز به reproduction باقی است:** اجرای واقعی از مرورگر تا dispatch، دریافت run، progress، ساخت PR، exact-SHA CI، pause/resume/cancel، restart و recovery روی Windows target انجام‌شده محسوب نمی‌شود. هیچ نتیجه‌ای از این مسیر بدون اجرای واقعی ثبت نشود.
+
+### وضعیت Gateها پس از این بازبینی
+
+| Gate | وضعیت مستند |
+|---|---|
+| A — Inventory/reproduction | inventory و نگاشت UI/API به‌روزرسانی شد؛ reproduction کامل مرورگر/target host هنوز باز است |
+| B — Ownership/fencing/recovery | baseline PR #799 و تغییرات #872 موجود؛ ممیزی تمام mutation call-siteها و crash/restart target-host هنوز باز |
+| C — Structured errors/Codex diagnostics | قرارداد پایه در main و تغییرات #872 موجود؛ بررسی producer/consumer روی ترکیب نهایی لازم است |
+| D — UI state machine/fault isolation | تغییرات #872 روی exact head CI موفق؛ ترکیب با #875 و regression مجدد لازم |
+| E — Browser E2E | workflow #872 موفق؛ workflow #875 موفق؛ این شواهد هنوز target-host نیستند |
+| F — Exact-head CI | #872 موفق؛ #875 در زمان ثبت ناقص/در حال اجرا؛ SHA ترکیبی وجود ندارد |
+| G — Windows target host | باز؛ نیازمند اجرای واقعی روی رایانهٔ مالک |
+| H — Crash/restart/recovery | باز؛ نیازمند fault injection و اثبات حفظ همان task/checkpoint |
+| I — Docs/ADR/runbook/rollback | این inventory به‌روزرسانی شد؛ مستند عملیاتی startup باید با طراحی نهایی همسان شود |
+| J — Owner acceptance | باز؛ تا تأیید UI واقعی و گیت‌های قبلی، merge انجام نشود |
+| K — Portability/local-first | بخشی از PR #875؛ ماتریس واقعی target host و ترکیب نهایی هنوز اثبات نشده |
+
+### ترتیب اقدام بعدی
+
+1. نتیجهٔ نهایی workflow تست PR #875 و jobهای Windows/Linux را روی همان SHA دریافت کن.
+2. تغییرات #872 و #875 را با حفظ ancestry و قراردادهای هر دو در یک شاخهٔ integration ترکیب کن؛ فایل‌های مشترک را دستی و با بررسی diff reconcile کن، نه با overwrite یک PR روی دیگری.
+3. روی شاخهٔ ترکیبی، تمام test suiteهای Linux/Windows، storage regressions، Browser E2E، CodeQL و dependency audit را روی exact head اجرا کن.
+4. Gate B را با state-transition table و call-site inventory تکمیل کن؛ هر mutation باید owner، epoch/fencing، lock order، atomicity، retry/idempotency و audit event داشته باشد.
+5. پس از شواهد CI، پذیرش واقعی Windows target را انجام بده؛ تا آن زمان PRها Draft بمانند و merge نشوند.
+
+**محدودیت این snapshot:** این گزارش فقط از محتوای مخزن و وضعیت GitHub قابل‌خواندن در زمان ثبت ساخته شده است. هیچ workflow واقعی اجرا/dispatch نشد، هیچ repository variable یا secret تغییر نکرد، و هیچ task/checkpoint/Runner/service روی دستگاه مالک دست‌کاری نشد.
