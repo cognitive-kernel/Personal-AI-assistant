@@ -1,3 +1,48 @@
+## 2026-11-25 — latest root-cause correction and validation snapshot
+
+### Code and branch state
+- Main base: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
+- Integration branch: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`.
+- Code head for the lifecycle correction: `246b8c2f3351af7c5c5bfb9477872a3e7e7a9cb7`; subsequent commits in this report update documentation and PR metadata only.
+- PR #872 is the sole active integration PR, based directly on `main`, open and Draft. PR #875 was merged into the #872 branch (not into main). PRs #866, #870, #871 and documentation-only PR #876 are closed as superseded; their branches are retained.
+- The integration branch includes 80 changed files and is ahead of main with behind=0 at the last live comparison before the final documentation-only updates.
+
+### Newly confirmed root causes and corrections
+
+1. **Implicit model pull:** main's previous startup path treated an internal Codex context tag such as `qwen2.5:7b-codex-ctx2048` as a registry model and attempted `ollama pull`. This caused `pull model manifest: file does not exist`. The integration branch performs read-only model inventory checks, identifies internal variants, does not pull or substitute models, and leaves model selection explicit.
+2. **Persistent context variant:** the previous context preflight calculated a safe context from available RAM but created a shared persistent `<base>-codex-ctx` tag; the post-task step only verified allocation and did not remove it. The corrected workflow creates a unique run-scoped tag `<base>-codex-ctx<context>-paa-<run-id>-<attempt>-<nonce>`, records it before creation, and unloads/deletes only that tag in an `always()` cleanup step after task success or failure.
+3. **Unsafe legacy sweep:** legacy numeric aliases have no run-ownership proof. Their cleanup is audit-only by default; destructive deletion requires explicit `--delete-confirmed-legacy`. The current task cleanup never sweeps other model tags.
+4. **PowerShell Security import:** the Windows identity module isolates `PSModulePath` to the active PowerShell host's `$PSHOME\Modules` while importing the built-in Security module, avoiding PowerShell 5.1/7 cross-edition TypeData collisions. The target-host reproduction is still required.
+5. **Model selector boundaries:** API/status, startup preflight, provisioning, and Windows readiness checks reject run-scoped temporary variants as base-model selections.
+
+### Regression coverage added or updated
+- Temporary tag format binds base model, context, run ID, attempt, and nonce.
+- Cleanup is idempotent and preserves the base model and unrelated model tags.
+- Wrong run, attempt, context, legacy name, or unowned tag is rejected before deletion.
+- Loaded models are unloaded and checked through `/api/ps`; deletion is verified through `/api/tags`.
+- Failed unload, failed deletion, or disappearance of the base tag fails closed.
+- Legacy alias cleanup defaults to audit-only; explicit deletion requires the confirmation flag.
+- Both autonomous and Windows diagnostic workflows run the exact temporary-model cleanup path.
+
+### Current CI evidence boundary
+For code head `246b8c2f3351af7c5c5bfb9477872a3e7e7a9cb7`:
+- Tests: [45621524449](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45621524449) — queued at snapshot time.
+- Dependency audit: [45621524608](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45621524608) — queued at snapshot time.
+- CodeQL: [45621524463](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45621524463) — pending at snapshot time.
+- Browser E2E was not triggered on this code head. A previous Browser E2E run on an earlier SHA is not exact-head evidence.
+- The successful CI recorded earlier for `583f482af18b2921225ce91ae1d3ebdc5d765aec` is historical and does not validate the new lifecycle changes.
+
+### Remaining acceptance gates
+- Exact-head Tests, Windows full suite, Windows storage/Broker integration, Browser E2E, CodeQL and dependency audit must complete successfully for the final code head.
+- Reproduce and resolve the user's Windows PowerShell 5.1 duplicate-TypeData error on the actual target host.
+- Verify Broker setup/health, non-admin Runner identity and ACLs on the target host.
+- Run a harmless end-to-end task from the UI through dispatch, Codex, progress, PR and exact-SHA checks.
+- Verify successful and failed task cleanup against the real local Ollama API; prove the base model remains installed and the run-scoped variant disappears.
+- Exercise Pause/Resume/Cancel, crash/restart, checkpoint/worktree preservation and manual accessibility/owner acceptance.
+- No merge to main is allowed while these gates remain open.
+
+---
+
 # گزارش یکپارچه‌سازی و اعتبارسنجی ماژول Autonomous Engineering — 2026-11-25
 
 ## مبنا و شاخه
