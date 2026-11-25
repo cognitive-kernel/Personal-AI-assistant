@@ -870,6 +870,23 @@ def test_existing_generic_ollama_preferences_seed_new_profiles(tmp_path, monkeyp
 
 
 
+def test_legacy_temporary_codex_variant_seeds_chat_profile_from_base_model(tmp_path, monkeypatch):
+    monkeypatch.setattr(db.defaults, "settings_db_path", str(tmp_path / "settings.db"))
+    monkeypatch.setattr(db.defaults, "learning_db_path", str(tmp_path / "learning.db"))
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
+    db.init_databases()
+    legacy_variant = "qwen2.5:7b-codex-ctx2048"
+    db.update_settings({"ollama_model": legacy_variant})
+    with db.settings_connection() as conn:
+        conn.execute("DELETE FROM settings WHERE key='chat_ollama_model'")
+
+    db.init_databases()
+    settings = db.get_settings()
+
+    assert settings["chat_ollama_model"] == "qwen2.5:7b"
+    assert settings["ollama_model"] == legacy_variant
+
+
 def test_ollama_chat_sends_ram_aware_keep_alive_and_profile_options(monkeypatch):
     captured = {}
     monkeypatch.setattr(ollama, "get_settings", lambda: {
