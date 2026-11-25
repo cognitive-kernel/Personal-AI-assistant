@@ -221,7 +221,7 @@ def test_cleanup_defaults_to_audit_only_for_legacy_aliases():
     api = FakeOllama(
         ["base:7b", alias],
         modelfiles={
-            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+            alias: "FROM /blob/base\nPARAMETER num_ctx 8192\n",
         },
     )
 
@@ -243,7 +243,7 @@ def test_legacy_cli_requires_explicit_delete_confirmation(monkeypatch, capsys):
     api = FakeOllama(
         ["base:7b", alias],
         modelfiles={
-            alias: "FROM /blob/base\\nPARAMETER num_ctx 8192\\n",
+            alias: "FROM /blob/base\nPARAMETER num_ctx 8192\n",
         },
     )
     monkeypatch.setattr(cleanup, "_request_json", api.request)
