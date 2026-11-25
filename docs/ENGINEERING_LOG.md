@@ -2737,3 +2737,19 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
 - This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
 - Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
+
+
+## 2026-11-25 — یکپارچه‌سازی ماژول مهندسی و CI دقیق
+
+- شاخهٔ integration: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ head کد `583f482af18b2921225ce91ae1d3ebdc5d765aec`؛ مبنای `main` برابر `8b7c20c50ef4fd9346e924d212a35f36ff646515` است. مقایسهٔ زندهٔ GitHub وضعیت `ahead` با `behind=0` و 69 فایل تغییرکرده را نشان می‌دهد.
+- PR اصلی: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، همچنان Draft و باز؛ هیچ merge انجام نشده است.
+- چهار workflow روی exact head موفق‌اند:
+  - Tests شامل Linux/Windows، Windows storage/Broker integration و managed Python bootstrap: [run 45595886385](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886385).
+  - Browser E2E: [run 45595886850](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886850).
+  - CodeQL: [run 45595886382](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886382).
+  - Dependency audit: [run 45595886307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886307).
+- در Windows storage job، build/attestation بستهٔ Broker، LocalService و Named Pipe، ACL، PowerShell Desktop/Core، identity portability، checkpoint/recovery، process lock و SQLite restore موفق شدند.
+- اصلاحات اصلی: `--raw-field` برای workflow inputs؛ durable cross-process dispatch admission؛ Resume یک‌باره با live Pause/Mode gate؛ exact-run Cancel؛ Broker setup صریح و startup فقط‌خواندنی؛ Broker package قابل‌راستی‌آزمایی؛ Codex report/retry diagnostics؛ UI state/polling hardening.
+- بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
+- گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
+- نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
