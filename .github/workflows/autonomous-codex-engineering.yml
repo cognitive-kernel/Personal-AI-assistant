@@ -893,7 +893,28 @@ jobs:
                   $statusCode = [int]$requestError.Exception.Response.StatusCode
                 }
               } catch {}
-              if ($statusCode -eq 404) { return $DefaultValue }
+              if ($statusCode -eq 404) {
+                # The named GET can return 404 both for an absent variable
+                # and for a token without Variables: read. The collection GET
+                # distinguishes those cases before applying a default.
+                try {
+                  $inventoryUri = "https://api.github.com/repos/$env:GITHUB_REPOSITORY/actions/variables?per_page=1"
+                  $inventory = Invoke-RestMethod -Method Get -Uri $inventoryUri -Headers $headers -TimeoutSec 15
+                } catch {
+                  throw "Could not verify repository Variables read permission. Failing closed; no new task will start."
+                }
+                $inventoryCount = 0
+                if (
+                  $null -eq $inventory -or
+                  -not [int]::TryParse([string]$inventory.total_count, [ref]$inventoryCount) -or
+                  $inventoryCount -lt 0 -or
+                  $null -eq $inventory.PSObject.Properties["variables"]
+                ) {
+                  throw "GitHub returned an invalid repository Variables inventory. Failing closed; no new task will start."
+                }
+                $inventory = $null
+                return $DefaultValue
+              }
               throw "Could not verify repository variable $Name (HTTP $statusCode). Failing closed; no new task will start."
             }
             $value = ([string]$variable.value).Trim().ToLowerInvariant()
