@@ -220,7 +220,7 @@ if ($VerifyOnly) {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
         throw "Model name contains unsupported characters; refusing to construct a temporary Codex model variant."
     }
-    if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?
+    if ($Model -match "(?i)-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$") {
         throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
     }
 
