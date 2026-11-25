@@ -17,6 +17,11 @@ if (-not $securityModule) {
 if (-not $securityModule) {
     throw "Microsoft.PowerShell.Security is unavailable in the active PowerShell host."
 }
+$securityRoot = [IO.Path]::GetFullPath((Join-Path $PSHOME "Modules")).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
+$securityPath = [IO.Path]::GetFullPath([string]$securityModule.Path)
+if (-not $securityPath.StartsWith($securityRoot, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Microsoft.PowerShell.Security is already loaded from outside the active host module directory."
+}
 $requiredSecurityCommands = @("Get-Acl", "Set-Acl")
 foreach ($commandName in $requiredSecurityCommands) {
     if (-not (Get-Command -Name $commandName -ErrorAction SilentlyContinue)) {
