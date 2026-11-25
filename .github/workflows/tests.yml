@@ -248,11 +248,328 @@ jobs:
             }
             $expectedHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim().ToLowerInvariant()
             $committedHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
-            if ($expectedHash -notmatch '^[0-9a-f]{64}$' -or $committedHash -ne $expectedHash) {
+            if ($expectedHash -notmatch '^[0-9a-f]{64}
+          $finalHash = (Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256 -ErrorAction Stop).Hash.ToLowerInvariant()
+          $manifestHash = (Get-Content -LiteralPath $hashFile -Raw -ErrorAction Stop).Trim().ToLowerInvariant()
+          if ($finalHash -ne $manifestHash -or $finalHash -ne $freshHash) {
+            throw "The staged broker package failed final deterministic SHA-256 verification."
+          }
+          Write-Host "Broker package verified: $finalHash"
+
+      - name: Upload the prebuilt Windows state broker package
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-state-broker-package
+          path: |
+            scripts/bin/PersonalAIAssistant.StateBroker.exe
+            scripts/bin/PersonalAIAssistant.StateBroker.exe.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Attest the Windows state broker package
+        uses: actions/attest-build-provenance@v3
+        with:
+          subject-path: scripts/bin/PersonalAIAssistant.StateBroker.exe
+
+      - name: Exercise recursive protected state ACLs on Windows
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsIdentity.psm1" -Force
+          $root = Join-Path $env:RUNNER_TEMP ("autonomous-state-acl-" + [guid]::NewGuid().ToString("N"))
+          $nested = Join-Path $root "nested"
+          New-Item -ItemType Directory -Path $nested -Force | Out-Null
+          $file = Join-Path $nested "existing-state.json"
+          [System.IO.File]::WriteAllText($file, '{"preserve":true}')
+          $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $brokerSid = "S-1-5-19"
+          try {
+            $acl = Get-Acl -LiteralPath $root
+            $legacy = [Security.AccessControl.FileSystemAccessRule]::new(
+              "BUILTIN\Users",
+              [Security.AccessControl.FileSystemRights]::FullControl,
+              [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit,
+              [Security.AccessControl.PropagationFlags]::None,
+              [Security.AccessControl.AccessControlType]::Allow
+            )
+            $acl.AddAccessRule($legacy)
+            Set-Acl -LiteralPath $root -AclObject $acl
+            Set-AutonomousDirectoryTreeAcl -Path $root -ModifySids @($currentSid, $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+
+            foreach ($itemPath in @($root, $nested, $file)) {
+              $verified = Get-Acl -LiteralPath $itemPath
+              $ownerSid = ([Security.Principal.NTAccount]$verified.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+              if ($ownerSid -ne $brokerSid) { throw "State owner mismatch on $($itemPath): $ownerSid" }
+              foreach ($rule in $verified.Access) {
+                $sid = $rule.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value
+                if ($sid -notin @($currentSid, $brokerSid)) { throw "Unexpected state ACL principal on $($itemPath): $sid" }
+              }
+            }
+            if ([System.IO.File]::ReadAllText($file) -ne '{"preserve":true}') {
+              throw "Existing state file contents changed during ACL provisioning."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $root) {
+              & icacls.exe $root /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+              Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "Recursive state ACL reset, owner transfer, and existing-data preservation passed."
+
+          $unsafeRoot = Join-Path $env:RUNNER_TEMP ("autonomous-state-reparse-" + [guid]::NewGuid().ToString("N"))
+          $outside = Join-Path $env:RUNNER_TEMP ("autonomous-state-outside-" + [guid]::NewGuid().ToString("N"))
+          $junction = Join-Path $unsafeRoot "outside-link"
+          New-Item -ItemType Directory -Path $unsafeRoot, $outside -Force | Out-Null
+          try {
+            $rootAclBefore = Get-Acl -LiteralPath $unsafeRoot
+            $outsideAclBefore = Get-Acl -LiteralPath $outside
+            $rootOwnerBefore = ([Security.Principal.NTAccount]$rootAclBefore.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $outsideOwnerBefore = ([Security.Principal.NTAccount]$outsideAclBefore.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            New-Item -ItemType Junction -Path $junction -Target $outside -ErrorAction Stop | Out-Null
+            $reparseRejected = $false
+            try {
+              Set-AutonomousDirectoryTreeAcl -Path $unsafeRoot -ModifySids @($currentSid, $brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid
+            } catch {
+              if ($_.Exception.Message -like "*reparse point*") { $reparseRejected = $true } else { throw }
+            }
+            if (-not $reparseRejected) { throw "A state tree containing a junction was not rejected." }
+            $rootAclAfter = Get-Acl -LiteralPath $unsafeRoot
+            $outsideAclAfter = Get-Acl -LiteralPath $outside
+            $rootOwnerAfter = ([Security.Principal.NTAccount]$rootAclAfter.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            $outsideOwnerAfter = ([Security.Principal.NTAccount]$outsideAclAfter.Owner).Translate([Security.Principal.SecurityIdentifier]).Value
+            if ($rootOwnerAfter -ne $rootOwnerBefore -or $outsideOwnerAfter -ne $outsideOwnerBefore) {
+              throw "ACL preflight changed ownership before rejecting the reparse point."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $junction) { Remove-Item -LiteralPath $junction -Force -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $unsafeRoot) { Remove-Item -LiteralPath $unsafeRoot -Recurse -Force -ErrorAction SilentlyContinue }
+            if (Test-Path -LiteralPath $outside) { Remove-Item -LiteralPath $outside -Recurse -Force -ErrorAction SilentlyContinue }
+          }
+          Write-Host "Reparse-point rejection completed before any ownership or ACL changes."
+
+          $rollbackRoot = Join-Path $env:RUNNER_TEMP ("autonomous-state-acl-rollback-" + [guid]::NewGuid().ToString("N"))
+          $rollbackNested = Join-Path $rollbackRoot "nested"
+          New-Item -ItemType Directory -Path $rollbackNested -Force | Out-Null
+          $rollbackFile = Join-Path $rollbackNested "preserved.json"
+          [System.IO.File]::WriteAllText($rollbackFile, '{"rollback":true}')
+          $rollbackPaths = @($rollbackRoot, $rollbackNested, $rollbackFile)
+          $originalDescriptors = @{}
+          foreach ($path in $rollbackPaths) {
+            $originalDescriptors[$path] = (Get-Acl -LiteralPath $path).Sddl
+          }
+          try {
+            $aclSnapshot = Set-AutonomousDirectoryTreeAcl -Path $rollbackRoot -ModifySids @($brokerSid) -OwnerSid $brokerSid -InstallerSid $currentSid -PassThru
+            if ($null -eq $aclSnapshot -or @($aclSnapshot.Entries).Count -ne 3) {
+              throw "The ACL transaction did not return a complete rollback journal."
+            }
+            Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot
+            foreach ($path in $rollbackPaths) {
+              $restoredDescriptor = (Get-Acl -LiteralPath $path).Sddl
+              # Windows may set the DACL auto-inherited control bit when the
+              # original descriptor is restored. Compare owner/group/ACE data
+              # exactly while normalizing only that OS-maintained control bit.
+              $expectedComparable = [string]$originalDescriptors[$path] -replace 'D:AI(?=\()', 'D:'
+              $restoredComparable = [string]$restoredDescriptor -replace 'D:AI(?=\()', 'D:'
+              if ($restoredComparable -ne $expectedComparable) {
+                throw "The original ACL owner/group/ACE entries were not restored for $path. Expected=[$($originalDescriptors[$path])] Actual=[$restoredDescriptor]"
+              }
+            }
+            if ([System.IO.File]::ReadAllText($rollbackFile) -ne '{"rollback":true}') {
+              throw "ACL rollback changed existing file contents."
+            }
+          } finally {
+            if (Test-Path -LiteralPath $rollbackRoot) {
+              & takeown.exe /F $rollbackRoot /R /D Y | Out-Null
+              & icacls.exe $rollbackRoot /grant:r "*$($currentSid):(OI)(CI)F" /T /C /Q | Out-Null
+              Remove-Item -LiteralPath $rollbackRoot -Recurse -Force -ErrorAction SilentlyContinue
+            }
+          }
+          Write-Host "Transactional ACL snapshot and exact rollback passed."
+
+      - name: Exercise the live LocalService broker and Python named-pipe client
+        shell: pwsh
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/test_autonomous_state_broker_service.ps1")
+
+      - name: Exercise the packaged broker under Windows PowerShell Desktop
+        shell: powershell
+        run: |
+          $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
+          if (-not (Test-Path -LiteralPath $activeHost -PathType Leaf)) {
+            throw "Windows PowerShell Desktop did not expose its active executable path."
+          }
+          $childEdition = & $activeHost -NoLogo -NoProfile -NonInteractive -Command '$PSVersionTable.PSEdition'
+          if ($LASTEXITCODE -ne 0 -or $childEdition -notmatch "Desktop") {
+            throw "Windows PowerShell Desktop could not relaunch its own executable."
+          }
+          & (Join-Path $env:GITHUB_WORKSPACE "scripts/test_autonomous_state_broker_service.ps1")
+
+      - name: Test shared Ollama runtime API contract
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousOllamaRuntime.psm1" -Force
+          $catalog = @(ConvertFrom-AutonomousOllamaTagsResponse -Response ([pscustomobject]@{
+            models = @(
+              [pscustomobject]@{ name = "gpt-oss:20b" },
+              [pscustomobject]@{ name = "qwen2.5:7b" }
+            )
+          }))
+          if ($catalog.Count -ne 2) { throw "Ollama model catalog normalization failed." }
+          if (-not (Test-AutonomousOllamaModelInstalled -Model "gpt-oss:20b" -Catalog $catalog)) {
+            throw "Installed model lookup failed."
+          }
+          foreach ($invalid in @(
+            [pscustomobject]@{},
+            [pscustomobject]@{ models = @([pscustomobject]@{ name = "" }) }
+          )) {
+            $rejected = $false
+            try { $null = ConvertFrom-AutonomousOllamaTagsResponse -Response $invalid } catch { $rejected = $true }
+            if (-not $rejected) { throw "Malformed Ollama catalog was accepted." }
+          }
+          Write-Host "Ollama API catalog contract passed."
+
+      - name: Verify Windows account identity portability
+        shell: pwsh
+        run: |
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsIdentity.psm1" -Force
+          Import-Module "$env:GITHUB_WORKSPACE\scripts\AutonomousWindowsPaths.psm1" -Force
+          $local = ConvertTo-AutonomousWindowsAccountName -AccountName "runner-example"
+          $dotLocal = ConvertTo-AutonomousWindowsAccountName -AccountName ".\app-example"
+          $domain = ConvertTo-AutonomousWindowsAccountName -AccountName "CONTOSO\runner-example"
+          $upn = ConvertTo-AutonomousWindowsAccountName -AccountName "runner@example.invalid"
+          $spacedLocal = ConvertTo-AutonomousWindowsAccountName -AccountName "runner service"
+          $unicodeLocal = ConvertTo-AutonomousWindowsAccountName -AccountName "runner-é"
+
+          $currentIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+          $currentIdentityName = $currentIdentity.Name
+          $currentLocalName = Get-AutonomousLocalAccountName -AccountName $currentIdentityName
+          if ($null -ne $currentLocalName) {
+            $dotLocalSid = Get-AutonomousWindowsAccountSid -AccountName (".\\" + $currentLocalName)
+            if ($dotLocalSid -ne $currentIdentity.User.Value) {
+              throw "Dot-local service account SID resolution did not match the current local identity."
+            }
+          }
+
+          if ($local -ne "$env:COMPUTERNAME\runner-example") { throw "Unqualified accounts must resolve to the current machine." }
+          if ($dotLocal -ne "$env:COMPUTERNAME\app-example") { throw "Dot-local accounts must resolve to the current machine." }
+          if ($domain -ne "CONTOSO\runner-example") { throw "Domain-qualified account names must be preserved." }
+          if ($upn -ne "runner@example.invalid") { throw "UPN account names must be preserved." }
+          if ($spacedLocal -ne "$env:COMPUTERNAME\runner service") { throw "Valid local names with spaces must be preserved." }
+          if ($unicodeLocal -ne "$env:COMPUTERNAME\runner-é") { throw "Valid Unicode local names must be preserved." }
+          if ((Get-AutonomousLocalAccountName -AccountName $local) -ne "runner-example") { throw "Local account detection failed." }
+          if ($null -ne (Get-AutonomousLocalAccountName -AccountName $domain)) { throw "Domain accounts must not be classified as local." }
+          Write-Host "Local, dot-local, domain-qualified, and UPN account identity normalization passed."
+          $defaultState = Resolve-AutonomousStateDirectory -ConfiguredPath $null -ProgramDataPath $env:ProgramData
+          $expectedDefault = [System.IO.Path]::GetFullPath((Join-Path $env:ProgramData "PersonalAIAssistant\autonomous-engineering"))
+          if ($defaultState -ne $expectedDefault) { throw "Default state directory does not match the shared ProgramData contract." }
+          $customState = Resolve-AutonomousStateDirectory -ConfiguredPath "%TEMP%\autonomous-state-probe" -ProgramDataPath $env:ProgramData
+          if ($customState -ne [System.IO.Path]::GetFullPath((Join-Path $env:TEMP "autonomous-state-probe"))) { throw "Configured shared state directory was not expanded consistently." }
+          $relativePathRejected = $false
+          try { $null = Resolve-AutonomousStateDirectory -ConfiguredPath "relative-state" -ProgramDataPath $env:ProgramData } catch { $relativePathRejected = $true }
+          if (-not $relativePathRejected) { throw "Relative shared state paths must fail closed." }
+          Write-Host "Default, configured, environment-expanded, and relative state path contracts passed."
+          $aclProbe = Join-Path $env:TEMP ("autonomous-acl-" + [guid]::NewGuid().ToString("N"))
+          New-Item -ItemType Directory -Path $aclProbe | Out-Null
+          try {
+            $runnerSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+            Set-AutonomousDirectoryAcl -Path $aclProbe -RunnerSid $runnerSid -AdditionalModifySid "S-1-5-19"
+            $allowedSids = @($runnerSid, "S-1-5-19")
+            $actualSids = @((Get-Acl -LiteralPath $aclProbe).Access | ForEach-Object { $_.IdentityReference.Translate([Security.Principal.SecurityIdentifier]).Value } | Select-Object -Unique)
+            if ($actualSids.Count -ne $allowedSids.Count -or @($actualSids | Where-Object { $_ -notin $allowedSids }).Count -gt 0) {
+              throw "The generated ACL contains missing or unexpected principals: $($actualSids -join ', ')."
+            }
+            Write-Host "SID-scoped directory ACL grants passed without fixed user/group names."
+          } finally {
+            Remove-Item -LiteralPath $aclProbe -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          python -m pytest -q tests/test_autonomous_engineering_windows_portability.py
+
+      - name: Test SQLite migration, restore, and staging cleanup on Windows
+        run: >-
+          python -m pytest -q
+          tests/test_schema_registry.py::test_observed_legacy_learning_schema_migrates_with_backup_and_row_preservation
+          tests/test_schema_registry.py::test_legacy_learning_migration_failure_preserves_original_database_bytes
+          tests/test_schema_registry.py::test_application_database_initializer_migrates_observed_legacy_learning_store
+          tests/test_schema_registry.py::test_restore_backup_requires_opt_in_to_replace_and_restores_verified_file
+          tests/test_storage_routes.py::test_restore_staging_cleanup_previews_and_deletes_only_old_verified_snapshots
+
+  commit-broker-package:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    needs: windows-storage-regressions
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-state-broker-package
+          path: ${{ runner.temp }}/state-broker-package
+      - name: Commit the reproducible broker package to this PR branch
+        shell: bash
+        env:
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          artifact_root="${{ runner.temp }}/state-broker-package"
+          exe="PersonalAIAssistant.StateBroker.exe"
+          manifest="${exe}.sha256"
+          expected="$(tr -d '\r\n' < "$artifact_root/$manifest")"
+          actual="$(sha256sum "$artifact_root/$exe" | awk '{print $1}')"
+          if [[ "$expected" != "$actual" ]]; then
+            echo "Downloaded broker artifact does not match its SHA-256 manifest." >&2
+            exit 1
+          fi
+          mkdir -p scripts/bin
+          if [[ -f "scripts/bin/$exe" && -f "scripts/bin/$manifest" ]] &&
+             cmp -s "$artifact_root/$exe" "scripts/bin/$exe" &&
+             cmp -s "$artifact_root/$manifest" "scripts/bin/$manifest"; then
+            echo "The reproducible broker package is already committed; no branch update is needed."
+            exit 0
+          fi
+          install -m 0644 "$artifact_root/$exe" "scripts/bin/$exe"
+          install -m 0644 "$artifact_root/$manifest" "scripts/bin/$manifest"
+          git add "scripts/bin/$exe" "scripts/bin/$manifest"
+          if git diff --cached --quiet; then
+            echo "No broker package changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Add reproducible Windows state broker package"
+          git push origin "HEAD:refs/heads/$PR_HEAD_REF"
+
+  runtime-bootstrap:
+    name: Managed Python bootstrap (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Bootstrap and validate managed Python on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: .\bootstrap.ps1 -RuntimeOnly
+      - name: Bootstrap and validate managed Python on POSIX
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          chmod +x ./bootstrap.sh
+          ./bootstrap.sh --runtime-only
+ -or $committedHash -ne $expectedHash) {
               throw "The committed broker executable does not match its SHA-256 manifest."
             }
             if ($freshHash -ne $committedHash) {
-              throw "The fresh deterministic broker build differs from the committed executable."
+              Copy-Item -LiteralPath $freshExe -Destination $packagedExe -Force -ErrorAction Stop
+              [System.IO.File]::WriteAllText($hashFile, $freshHash, [Text.Encoding]::ASCII)
+              Write-Host "Broker source changed; regenerated the packaged executable and SHA-256 manifest from the deterministic CI build."
             }
           } else {
             Copy-Item -LiteralPath $freshExe -Destination $packagedExe -ErrorAction Stop
