@@ -1040,7 +1040,6 @@ def _ensure_ollama() -> list[str]:
             if (
                 role == "مدل گفتگو"
                 and base_model in installed_models
-                and os.getenv("CHAT_OLLAMA_MODEL") is None
             ):
                 print(
                     f"{role}: مقدار قدیمی به Codex context variant موقت اشاره می‌کند؛ "
