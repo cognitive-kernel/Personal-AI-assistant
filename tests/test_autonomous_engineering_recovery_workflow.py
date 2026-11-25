@@ -107,3 +107,22 @@ def test_recovery_verifies_repository_access_before_defaulting_missing_variables
     with pytest.raises(RuntimeError, match="verify the configured repository"):
         recovery._verify_repository_access(inaccessible, "owner/repo")
     assert inaccessible.calls == [("GET", "/")]
+
+
+def test_manual_settings_probe_is_main_only_and_read_only():
+    probe = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "verify-autonomous-engineering-settings.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "workflow_dispatch:" in probe
+    assert "if: github.ref == 'refs/heads/main'" in probe
+    assert "permissions: {}" in probe
+    assert "VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in probe
+    assert 'method="GET"' in probe
+    assert "/actions/variables?per_page=1" in probe
+    assert "AUTONOMOUS_ENGINEERING_PAUSED" in probe
+    assert "AUTONOMOUS_ENGINEERING_MODE" in probe
+    assert "no task was dispatched" in probe
+    assert "POST " not in probe
+    assert "workflow_dispatch" in probe
