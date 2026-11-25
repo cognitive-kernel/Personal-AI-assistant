@@ -56,6 +56,7 @@ $scriptRoot = Split-Path -Parent $PSCommandPath
 Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -Force
 
 $setupMutexState = $null
+$preserveSetupMutex = $false
 try {
     $setupMarkerRegistrySubKey = "SOFTWARE\PersonalAIAssistant\StateBroker"
     $setupMutexState = Enter-AutonomousStateBrokerSetupMutex -Name "Global\PersonalAIAssistant.StateBrokerSetup" -MarkerRegistrySubKey $setupMarkerRegistrySubKey -AcknowledgeAbandoned:$AcknowledgeAbandonedSetup
@@ -248,6 +249,22 @@ try {
             )
         }
     }
+
+    $requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0
+    if ($requiresRecoveryAcknowledgement) {
+        $recoveryReason = if ($setupCommitted) { "post_commit_verification_failed" } else { "acl_rollback_failed" }
+        try {
+            Set-AutonomousStateBrokerSetupRecoveryMarker -RegistrySubKey $setupMarkerRegistrySubKey -Reason $recoveryReason
+        } catch {
+            # If HKLM cannot persist recovery state, retain the mutex until this
+            # elevated process exits and the OS marks it abandoned.
+            $preserveSetupMutex = $true
+            $env:AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED = "true"
+            $setupFailure = [System.Exception]::new(
+                $setupFailure.Exception.Message + "; recovery marker persistence failed; setup mutex retained until process exit."
+            )
+        }
+    }
 } finally {
     $restartFailures = @()
     foreach ($serviceNameToRestart in $stoppedRunnerServices) {
@@ -296,7 +313,7 @@ if ($resolvedRunnerServices.Count -gt 0) {
 Write-Host "Shared state root: $stateRoot"
 
 } finally {
-    if ($null -ne $setupMutexState) {
+    if ($null -ne $setupMutexState -and -not $preserveSetupMutex) {
         Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState
     }
 }
