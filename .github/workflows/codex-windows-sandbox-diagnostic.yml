@@ -326,9 +326,18 @@ jobs:
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
 
-      - name: Verify persistent Ollama context after Codex smoke
-        if: always() && steps.context_preflight.outcome == 'success'
-        timeout-minutes: 2
+      - name: Unload and remove this diagnostic run's temporary Ollama context model
+        if: always() && steps.context_preflight.outcome != 'skipped'
+        timeout-minutes: 3
         shell: powershell
         run: |
-          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL" -VerifyOnly
+          $ErrorActionPreference = "Stop"
+          $model = [string]$env:AUTONOMOUS_ENGINEERING_TEMP_MODEL
+          if ([string]::IsNullOrWhiteSpace($model)) {
+            Write-Host "No run-scoped temporary Ollama context model was created; cleanup is a no-op."
+            exit 0
+          }
+          python "$env:GITHUB_WORKSPACE\scripts\ollama_temporary_context.py" --model "$model" --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --context "$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The diagnostic run's temporary Ollama context model could not be safely unloaded and removed."
+          }
