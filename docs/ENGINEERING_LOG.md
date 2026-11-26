@@ -2,7 +2,7 @@
 
 - A wheel built from PR #882 omitted the main static directory, which FastAPI requires at import time. The wheel now packages the console and its shared dashboard assets. An isolated wheel installation returned HTTP 200 for the local console, JavaScript and CSS.
 - A status refresh previously replaced unsaved model, execution mode and interval values after those fields lost focus. The console now preserves outstanding edits across refreshes and clears only edits acknowledged by a successful settings save. The Chromium regression refreshes status before saving and checks the values sent to the API. All 22 Engineering browser cases passed on the Linux workspace with disposable application databases.
-- The POSIX installer now prepares the owned socket directory before starting systemd with a writable path constraint. The directory grants group traversal and the installer rejects a symlink or unsafe existing permissions. Package directory access also uses traversal without group enumeration.
+- The POSIX installer now prepares the owned socket directory before starting systemd with a writable path constraint. The directory grants group traversal and the installer rejects a symlink or unsafe existing permissions. The installed Python package retains group read access for module discovery.
 - Browser coverage uses controlled integration responses for mutations. The live Linux status endpoint responded, with Ollama, Runner and durable state unavailable in this workspace. Actual target-host Runner/Codex/Ollama execution, crash recovery and exact-head CI acceptance remain open.
 
 ## 2026-11-26 — PR #882 consolidated engineering remediation (in progress)

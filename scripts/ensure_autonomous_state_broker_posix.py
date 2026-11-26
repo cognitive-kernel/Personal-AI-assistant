@@ -551,11 +551,12 @@ def _elevated_setup(
     client_gid = pwd.getpwuid(installer_uid).pw_gid
     service_group = grp.getgrgid(client_gid).gr_name
     package_dir = config_dir / "app"
-    package_dir.mkdir(mode=0o710, exist_ok=True)
+    package_dir.mkdir(mode=0o750, exist_ok=True)
     if package_dir.is_symlink() or not package_dir.is_dir():
         raise RuntimeError("Protected broker package directory is unsafe.")
     os.chown(package_dir, 0, client_gid)
-    os.chmod(package_dir, 0o710)
+    # Python needs to enumerate the package directory when discovering modules.
+    os.chmod(package_dir, 0o750)
     _write_atomic(package_dir / "__init__.py", b"", 0o640, owner_gid=client_gid)
     for module in (
         "autonomous_engineering_state.py",
