@@ -23,7 +23,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field, StrictInt, StrictStr
+from .autonomous_engineering_contracts import (
+    CancelRequest,
+    CODEX_CONTEXT_VARIANT_PATTERN as _CODEX_CONTEXT_VARIANT_PATTERN,
+    CORRELATION_ID_PATTERN as _CORRELATION_ID_PATTERN,
+    EngineeringSettings,
+    HTTP_ERROR_CODES as _HTTP_ERROR_CODES,
+    ManualTaskRequest,
+    MODEL_PATTERN as _MODEL_PATTERN,
+    ModelPullRequest,
+    RETRYABLE_HTTP_STATUSES as _RETRYABLE_HTTP_STATUSES,
+)
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import (
@@ -59,22 +69,6 @@ _STATUS_LOGGER = logging.getLogger(__name__)
 # cross-process, restart-durable dispatch reservation and grace window.
 _DISPATCH_REQUEST_LOCK = threading.Lock()
 
-_HTTP_ERROR_CODES = {
-    400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
-    401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
-    403: "AUTONOMOUS_ENGINEERING_FORBIDDEN",
-    404: "AUTONOMOUS_ENGINEERING_NOT_FOUND",
-    408: "AUTONOMOUS_ENGINEERING_TIMEOUT",
-    409: "AUTONOMOUS_ENGINEERING_CONFLICT",
-    422: "AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
-    429: "AUTONOMOUS_ENGINEERING_RATE_LIMITED",
-    500: "AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
-    502: "AUTONOMOUS_ENGINEERING_UPSTREAM_ERROR",
-    503: "AUTONOMOUS_ENGINEERING_UNAVAILABLE",
-    504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
-}
-_RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
-_CORRELATION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 
 def _structured_error_response(
@@ -212,30 +206,8 @@ _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
-_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
-_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$", re.IGNORECASE)
-
-
 def _is_codex_context_variant(model: str) -> bool:
     return bool(_CODEX_CONTEXT_VARIANT_PATTERN.search(model.strip()))
-
-
-class EngineeringSettings(BaseModel):
-    model: StrictStr
-    interval_hours: StrictInt
-    execution_mode: StrictStr = "continuous"
-
-
-class ManualTaskRequest(BaseModel):
-    task: StrictStr = Field(default="", max_length=2000)
-
-
-class ModelPullRequest(BaseModel):
-    model: StrictStr = Field(min_length=1, max_length=120)
-
-
-class CancelRequest(BaseModel):
-    run_id: StrictInt = Field(gt=0)
 
 
 def _repository() -> str:
