@@ -449,6 +449,8 @@ try {
 
     $current = @{
         schema_version = 1
+        run_id = "12345"
+        run_attempt = "1"
         status = "running"
         phase_label = "CI live broker pipe test"
         activity = "Verifying the real Windows named-pipe client"
@@ -762,15 +764,20 @@ assert checkpoint["run_id"] == "12345" and checkpoint["task"] == 1
 assert checkpoint["patch_bytes"] > 0
 assert "private checkpoint payload" not in repr(pending)
 assert "ProgramData" not in repr(pending)
-try:
-    broker.cleanup()
-except StateBrokerConflict:
-    pass
-else:
-    raise SystemExit("Cleanup was not blocked by the active checkpoint.")
+result = broker.cleanup()
+assert result["conflict"] is False
+assert result["recovered_run_id"] is None
 '@
+    # A verified checkpoint is retained recovery material, not proof of a live
+    # process. Cleanup may remove temporary telemetry but must preserve it.
+    $current.status = "completed"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $current -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
     $checkpointProbe | & python -
-    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not expose and protect the active checkpoint summary." }
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker incorrectly treated a verified checkpoint as a live execution." }
     if (-not (Test-Path -LiteralPath $checkpointPatch -PathType Leaf) -or
         -not (Test-Path -LiteralPath $checkpointMetadataPath -PathType Leaf)) {
         throw "Checkpoint bytes or metadata were modified during status/cleanup preflight."
@@ -781,6 +788,12 @@ else:
     [System.IO.File]::WriteAllText(
         $checkpointIndexPath,
         (ConvertTo-Json -InputObject $checkpointIndex -Depth 5 -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $current.status = "running"
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $current -Compress),
         [System.Text.UTF8Encoding]::new($false)
     )
     $inactiveProbe = @'
@@ -823,6 +836,56 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
 '@
     $completedProgressProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not clear the active-progress blocker for a terminal run." }
+
+    # A non-terminal progress record whose exact owner PID has exited is
+    # reconciled under all three locks. The progress record and checkpoint data
+    # remain; only the progress projection changes to interrupted.
+    $staleRunId = "stale-run-ci"
+    $staleOwner = [ordered]@{
+        schema_version = 2
+        pid = 2147483647
+        process_started_at = 1.0
+        run_id = $staleRunId
+        run_attempt = "1"
+        host = $env:COMPUTERNAME
+        acquired_at = 1.0
+    }
+    $ownerBytes = [System.Text.UTF8Encoding]::new($false).GetBytes(
+        (ConvertTo-Json -InputObject $staleOwner -Compress)
+    )
+    $lockBytes = [byte[]]::new($ownerBytes.Length + 1)
+    $lockBytes[0] = [byte][char]"0"
+    [Array]::Copy($ownerBytes, 0, $lockBytes, 1, $ownerBytes.Length)
+    [System.IO.File]::WriteAllBytes((Join-Path $stateRoot "repository-execution.lock"), $lockBytes)
+    $staleCurrent = [ordered]@{
+        schema_version = 1
+        run_id = $staleRunId
+        run_attempt = "1"
+        status = "running"
+        phase_label = "Stopped CI run"
+        activity = "The original owner process has exited"
+    }
+    [System.IO.File]::WriteAllText(
+        (Join-Path $stateRoot "current.json"),
+        (ConvertTo-Json -InputObject $staleCurrent -Compress),
+        [System.Text.UTF8Encoding]::new($false)
+    )
+    $staleRecoveryProbe = @'
+from app import autonomous_engineering_state_broker as broker
+result = broker.cleanup()
+assert result["conflict"] is False, result
+assert result["recovered_run_id"] == "stale-run-ci"
+assert result["recovery_state"] == "interrupted"
+import json
+from pathlib import Path
+state = Path(broker.execution_state_directory())
+current = json.loads((state / "current.json").read_text(encoding="utf-8"))
+assert current["run_id"] == "stale-run-ci"
+assert current["status"] == "interrupted"
+assert (state / "events.jsonl").is_file()
+'@
+    $staleRecoveryProbe | & python -
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not recover a stopped non-terminal run." }
 
     # The broker must interoperate with the exact Python byte-range lock used
     # by the Runner, including direct pipe clients that bypass the dashboard.
@@ -1026,15 +1089,12 @@ assert pending["blocked"] is True
 assert pending["checkpoint"]["available"] is True
 assert pending["checkpoint"]["verified"] is True
 assert pending["checkpoint"]["run_id"] == "12345"
-try:
-    broker.cleanup()
-except StateBrokerConflict:
-    pass
-else:
-    raise SystemExit("Legacy checkpoint was not protected.")
+result = broker.cleanup()
+assert result["conflict"] is False
+assert result["recovered_run_id"] is None
 '@
     $legacyProbe | & python -
-    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not resolve a legacy checkpoint from the current run identity." }
+    if ($LASTEXITCODE -ne 0) { throw "The Windows Broker did not preserve a verified legacy checkpoint during cleanup." }
 
     [System.IO.File]::WriteAllText(
         $checkpointIndexPath,
@@ -1066,16 +1126,15 @@ from app import autonomous_engineering_state_broker as broker
 result = broker.cleanup()
 assert result["conflict"] is False
 assert result["cleaned"] is True
-assert result["files_removed"] >= 2
+assert result["files_removed"] >= 1
 '@
     $cleanupProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The broker cleanup endpoint failed its live Windows integration test." }
-    if (Test-Path -LiteralPath (Join-Path $stateRoot "current.json")) {
-        throw "The broker cleanup endpoint did not remove the disposable current progress snapshot."
-    }
-    if (-not (Test-Path -LiteralPath (Join-Path $stateRoot "history.jsonl")) -or
+    if (-not (Test-Path -LiteralPath (Join-Path $stateRoot "current.json")) -or
+        -not (Test-Path -LiteralPath (Join-Path $stateRoot "events.jsonl")) -or
+        -not (Test-Path -LiteralPath (Join-Path $stateRoot "history.jsonl")) -or
         -not (Test-Path -LiteralPath (Join-Path $stateRoot "scorecard-baseline.json"))) {
-        throw "The broker cleanup endpoint did not preserve durable history and baseline data."
+        throw "The broker cleanup endpoint did not preserve progress, event, history, and baseline records."
     }
     if (-not (Test-Path -LiteralPath $checkpointPatch -PathType Leaf) -or
         -not (Test-Path -LiteralPath $checkpointMetadataPath -PathType Leaf) -or
