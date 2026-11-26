@@ -1099,12 +1099,13 @@ def cancel_autonomous_engineering(payload: CancelRequest) -> dict[str, Any]:
 def _cancel_autonomous_engineering_locked(payload: CancelRequest) -> dict[str, Any]:
     gh = _authenticated_gh()
     run = _verified_workflow_run(gh, payload.run_id)
+    trusted_run_id = run["id"]
     status = run.get("status")
     if status not in _ACTIVE_RUN_STATES:
         raise HTTPException(status_code=409, detail="اجرای انتخاب‌شده دیگر فعال نیست؛ وضعیت را بازخوانی کنید.")
     if status == "in_progress":
         details = _run(
-            [gh, "run", "view", str(payload.run_id), "--repo", _repository(), "--json", "jobs"],
+            [gh, "run", "view", str(trusted_run_id), "--repo", _repository(), "--json", "jobs"],
             timeout=5,
         )
         if not details or details.returncode != 0:
@@ -1124,7 +1125,6 @@ def _cancel_autonomous_engineering_locked(payload: CancelRequest) -> dict[str, A
             raise HTTPException(status_code=502, detail="بیش از یک job با مالکیت Codex در اجرای انتخاب‌شده گزارش شد؛ لغو ایمن ممکن نیست.")
         if not codex_jobs or str(codex_jobs[0].get("status") or "").strip().casefold().replace("-", "_") not in _ACTIVE_RUN_STATES:
             raise HTTPException(status_code=409, detail="در اجرای انتخاب‌شده job فعال Codex وجود ندارد؛ برای جلوگیری از لغو gate یا مرحلهٔ نامرتبط، عملیات متوقف شد.")
-    trusted_run_id = run["id"]
     cancelled = _run([gh, "run", "cancel", str(trusted_run_id), "--repo", _repository()], timeout=12)
     if not cancelled or cancelled.returncode != 0:
         raise HTTPException(status_code=502, detail="لغو اجرای انتخاب‌شده توسط GitHub تأیید نشد.")
@@ -1254,10 +1254,17 @@ def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
     run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
     expected_path = f".github/workflows/{_WORKFLOW}"
     workflow_path = str(run.get("path") or "").split("@", 1)[0]
-    if run.get("id") != run_id or workflow_path != expected_path:
+    verified_run_id = run.get("id")
+    if (
+        isinstance(verified_run_id, bool)
+        or not isinstance(verified_run_id, int)
+        or verified_run_id <= 0
+        or verified_run_id != run_id
+        or workflow_path != expected_path
+    ):
         raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
     return {
-        "id": run_id,
+        "id": verified_run_id,
         "status": str(run.get("status") or "unknown"),
         "conclusion": run.get("conclusion"),
         "workflow_path": workflow_path,
