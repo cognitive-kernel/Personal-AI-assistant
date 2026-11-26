@@ -999,21 +999,21 @@ def _dispatch_autonomous_engineering_locked(
         command.extend(["--raw-field", f"correlation_id={correlation_id}", "--raw-field", "manual_task="])
         if resume_once:
             command.extend(["--raw-field", "resume_once=true"])
-        if not _set_autonomous_engineering_pause(gh, False):
-            restored = _set_autonomous_engineering_pause(gh, True)
-            raise HTTPException(
-                status_code=502,
-                detail=(
-                    "برداشتن توقف تأیید نشد؛ Workflow ارسال نشد و توقف دوباره ثبت شد."
-                    if restored
-                    else "برداشتن توقف تأیید نشد و بازگردانی آن نیز نامشخص است؛ Workflow ارسال نشد، وضعیت را فوراً بازخوانی کنید."
-                ),
-                headers={
-                    "X-Correlation-ID": correlation_id,
-                    "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED" if restored else "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED",
-                    "X-Retryable": "false",
-                },
-            )
+            if not _set_autonomous_engineering_pause(gh, False):
+                restored = _set_autonomous_engineering_pause(gh, True)
+                raise HTTPException(
+                    status_code=502,
+                    detail=(
+                        "برداشتن توقف تأیید نشد؛ Workflow ارسال نشد و توقف دوباره ثبت شد."
+                        if restored
+                        else "برداشتن توقف تأیید نشد و بازگردانی آن نیز نامشخص است؛ Workflow ارسال نشد، وضعیت را فوراً بازخوانی کنید."
+                    ),
+                    headers={
+                        "X-Correlation-ID": correlation_id,
+                        "X-Error-Code": "WORKFLOW_RESUME_STATE_UPDATE_FAILED" if restored else "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED",
+                        "X-Retryable": "false",
+                    },
+                )
     try:
         if workflow_input is not None:
             result = _run(command, timeout=20, raise_os_error=True, input_text=workflow_input)
