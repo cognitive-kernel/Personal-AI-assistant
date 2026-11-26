@@ -1,3 +1,10 @@
+## 2026-11-26 — Engineering readiness, Broker permissions and Windows CI
+
+- An incomplete status probe could display a setup instruction or reset saved form values using fallback data. The dashboard now marks the affected checks as unverified, preserves confirmed settings and run controls, blocks dispatch while required checks are unknown, and shows the correlation ID. The stylesheet honors hidden controls. Chromium checks the incomplete response and the recovery to a healthy response.
+- GitHub run snapshots now retain suspended runs outside the five visible history rows. Readiness, dispatch, cancellation and recovery share the active-state list and the regression covers a suspended run at the end of the fetched results.
+- The legacy POSIX broker publishes a root-owned, versioned Python ZIP application atomically. The service creates an owner-only socket for same-UID installs and grants group connect permission only when another configured UID needs it. Kernel peer authorization remains enforced. The Linux test starts the isolated bundle from outside the checkout and verifies socket modes and health. macOS cross-user service acceptance and exact-head CodeQL remain open.
+- The preceding Windows CI run passed the live LocalService and named-pipe exercise in both PowerShell hosts, then failed because a workflow test passed the Python admission step to the PowerShell parser. Each workflow step is now validated with its declared interpreter. The mutex integration test precompiles its owner-thread helper and identifies the failing child phase if readiness times out.
+
 ## 2026-11-26 — Local Engineering console installation and settings
 
 - A wheel built from PR #882 omitted the main static directory, which FastAPI requires at import time. The wheel now packages the console and its shared dashboard assets. An isolated wheel installation returned HTTP 200 for the local console, JavaScript and CSS.

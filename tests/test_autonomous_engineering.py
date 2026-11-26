@@ -1663,7 +1663,8 @@ def test_dispatch_rejects_safe_paused_state(monkeypatch):
     assert "توقف ایمن" in error.value.detail
 
 
-def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
+@pytest.mark.parametrize("active_status", ["queued", "suspended"])
+def test_github_snapshot_preserves_active_runs_outside_visible_history(monkeypatch, active_status):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
@@ -1680,7 +1681,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
     ]
     runs.append({
         "databaseId": 999,
-        "status": "queued",
+        "status": active_status,
         "conclusion": None,
         "createdAt": "2026-11-05T00:00:00Z",
         "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/999",
@@ -1703,7 +1704,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
     run_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert run_command[run_command.index("--limit") + 1] == "30"
     assert len(result["recent_runs"]) == 6
-    assert result["recent_runs"][-1]["status"] == "queued"
+    assert result["recent_runs"][-1]["status"] == active_status
 
 
 def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch):
@@ -2396,7 +2397,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "dispatchButton.disabled = false" not in controls
     assert 'await response.text()' in core
     assert 'try { payload = await response.json(); } catch (_) {}' not in core
-    assert 'setStatusMessage(data.paused ?' in status
+    assert 'setStatusMessage(paused ?' in status
     assert 'setMessage(data.paused ?' not in status
     assert 'addEventListener("click", () => refresh())' in status
     assert "cancelButton.disabled = true" not in status

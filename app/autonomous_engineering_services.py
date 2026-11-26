@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from .autonomous_engineering_contracts import ACTIVE_RUN_STATES
 from .ollama_context import OllamaModelMetadataError, resolve_model_architecture
 
 
@@ -331,10 +332,9 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     ]
                     recent_runs = mapped_runs[:5]
                     visible_ids = {item["id"] for item in recent_runs}
-                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
                     recent_runs.extend(
                         item for item in mapped_runs[5:]
-                        if item.get("status") in active_states and item.get("id") not in visible_ids
+                        if item.get("status") in ACTIVE_RUN_STATES and item.get("id") not in visible_ids
                     )
                     runs_available = True
             except ValueError:

@@ -1,7 +1,9 @@
+import base64
 import os
 import shutil
 import subprocess
 from pathlib import Path
+from textwrap import dedent
 
 import pytest
 
@@ -547,25 +549,34 @@ def test_security_module_import_is_isolated_to_the_active_powershell_host():
     )
 
 
-def test_live_pause_workflow_powershell_parses_on_windows():
-    import base64
-    import os
-    import shutil
-    import subprocess
-    import pytest
+def _engineering_workflow_step(step_name: str) -> tuple[str, str]:
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    step = workflow.split(f"      - name: {step_name}\n", 1)[1].split("\n      - name:", 1)[0]
+    options, body = step.split("        run: |\n", 1)
+    return options, dedent(body)
 
+
+def test_live_pause_workflow_python_admission_parses():
+    step_name = "Recheck live Pause and execution mode after concurrency admission"
+    options, script = _engineering_workflow_step(step_name)
+    assert "        shell: python {0}\n" in options
+    compile(script, step_name, "exec")
+
+
+@pytest.mark.parametrize("step_name", [
+    "Persist manual task under the controller's runner and concurrency ownership",
+    "Prepare Runner virtual environment and install runtime dependencies",
+])
+def test_pause_admitted_workflow_powershell_parses_on_windows(step_name):
     if os.name != "nt":
         pytest.skip("PowerShell parser validation runs on Windows.")
     powershell = shutil.which("powershell") or shutil.which("pwsh")
     if not powershell:
         pytest.skip("A supported PowerShell host is unavailable.")
 
-    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
-    start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
-    run_marker = workflow.index("        run: |", start)
-    step_end = workflow.index("\n      - name:", run_marker)
-    script_lines = workflow[run_marker:step_end].splitlines()[1:]
-    script = "\n".join(line[10:] for line in script_lines if line.strip())
+    options, script = _engineering_workflow_step(step_name)
+    assert "        shell: powershell\n" in options
+    assert "steps.pause.outputs.skip != 'true'" in options
     encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
     command = (
         "$source = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"

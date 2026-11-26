@@ -23,18 +23,22 @@ from typing import Any
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_WORKERS = 8
-# Under -I -S the installed service has no implicit script-directory import.
-# Both the protected installed package and the source checkout use this core.
-_here = Path(__file__).resolve().parent
-_package_root = _here if (_here / "app" / "autonomous_engineering_state_store.py").is_file() else _here.parent
-sys.path.insert(0, str(_package_root))
+# Python adds the installed ZIP application's path under -I -S. Direct source
+# execution instead needs the checkout root for the same app imports.
+_source = Path(__file__).resolve()
+if _source.is_file():
+    sys.path.insert(0, str(_source.parents[1]))
 from app.autonomous_engineering_state_store import BrokerFailure, RestrictedStateBroker
 
 class UnixSocketBroker:
     def __init__(self, broker: RestrictedStateBroker, socket_path: Path, *, client_uid: int | None = None):
         self.broker = broker
         self.socket_path = socket_path
-        self.allowed_uids = {os.geteuid(), 0, os.geteuid() if client_uid is None else client_uid}
+        service_uid = os.geteuid()
+        self.allowed_uids = {0, service_uid}
+        self.cross_user = client_uid is not None and client_uid not in self.allowed_uids
+        if client_uid is not None:
+            self.allowed_uids.add(client_uid)
         self.stopping = threading.Event()
         self.slots = threading.BoundedSemaphore(MAX_WORKERS)
 
@@ -132,11 +136,24 @@ class UnixSocketBroker:
     def serve_forever(self) -> None:
         self._prepare_socket_path()
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        listener.bind(str(self.socket_path))
-        os.chmod(self.socket_path, 0o660)
-        listener.listen(MAX_WORKERS)
-        listener.settimeout(1.0)
+        # Pathname sockets start at 0777 masked by umask. A different client UID
+        # needs group write for connect(), with no group access for same-UID
+        # installations. Set the mode at bind before starting any worker threads.
+        socket_mode = 0o620 if self.cross_user else 0o600
+        previous_umask = os.umask(0o777 & ~socket_mode)
         try:
+            listener.bind(str(self.socket_path))
+        except OSError:
+            listener.close()
+            raise
+        finally:
+            os.umask(previous_umask)
+        try:
+            # A default directory ACL can change the mode inherited at bind.
+            if stat.S_IMODE(self.socket_path.lstat().st_mode) != socket_mode:
+                raise RuntimeError("Broker socket access is wider than the configured identities allow.")
+            listener.listen(MAX_WORKERS)
+            listener.settimeout(1.0)
             while not self.stopping.is_set():
                 try:
                     client, _ = listener.accept()

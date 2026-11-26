@@ -25,6 +25,7 @@ HTTP_ERROR_CODES = {
     504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
 }
 RETRYABLE_HTTP_STATUSES = frozenset({408, 425, 429, 500, 502, 503, 504})
+ACTIVE_RUN_STATES = ("queued", "in_progress", "waiting", "requested", "pending", "suspended")
 CORRELATION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
 CODEX_CONTEXT_VARIANT_PATTERN = re.compile(

@@ -6522,3 +6522,70 @@ def test_autonomous_engineering_broker_setup_requires_explicit_ui_action_and_ref
         assert "Broker ready" in page.locator("#agent-message").inner_text()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
+
+
+def test_autonomous_engineering_incomplete_probe_preserves_confirmed_configuration():
+    base_url = os.environ["E2E_BASE_URL"]
+    healthy = {
+        "ready": True,
+        "can_dispatch": False,
+        "checks": {"progress_storage_accessible": True, "ollama_online": True},
+        "pending_work": {"available": True, "blocked": False},
+        "model": "qwen:latest",
+        "selectable_models": ["qwen:latest"],
+        "execution_mode": "scheduled",
+        "interval_hours": 6,
+        "paused": True,
+        "github": {"recent_runs": [{"id": 123, "status": "in_progress"}]},
+    }
+    incomplete = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {},
+        "pending_work": {"available": False, "blocked": True},
+        "model": "",
+        "selectable_models": [],
+        "execution_mode": "continuous",
+        "interval_hours": 24,
+        "paused": False,
+        "github": {"recent_runs": []},
+        "status_probe_unavailable": ["storage"],
+        "status_probe_timeouts": ["github"],
+        "status_probe_errors": ["ollama"],
+        "correlation_id": "f" * 32,
+    }
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        responses = iter([healthy, incomplete])
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(
+            json=next(responses, {**healthy, "can_dispatch": True, "paused": False, "github": {"recent_runs": []}}),
+        ))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(json={"history": []}))
+        page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        cancel = page.locator("#cancel-agent")
+        resume = page.locator("#resume-agent")
+        cancel.wait_for()
+        page.wait_for_function("() => !document.querySelector('#cancel-agent').disabled")
+
+        refresh = page.locator("#refresh-agent")
+        refresh.click()
+        page.get_by_text("آمادگی اجرا تأیید نشده", exact=True).wait_for()
+        assert page.locator("#agent-status-message").inner_text().endswith("f" * 32)
+        assert page.locator("#storage-detail").inner_text() == "ظرفیت بررسی وضعیت موقتاً پر است."
+        assert page.locator("#github-detail").inner_text() == "بررسی وضعیت در مهلت مقرر پاسخ نداد."
+        assert page.locator("#ollama-detail").inner_text() == "بررسی وضعیت با خطا مواجه شد."
+        assert page.locator("#execution-mode").input_value() == "scheduled"
+        assert page.locator("#interval-hours").input_value() == "6"
+        assert page.locator("#ollama-model").input_value() == "qwen:latest"
+        assert page.locator("#setup-state-broker").is_hidden()
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert cancel.is_enabled()
+        assert resume.is_enabled()
+
+        refresh.click()
+        page.wait_for_function("() => !document.querySelector('#dispatch-agent').disabled")
+        assert cancel.is_disabled()
+        assert resume.is_disabled()
+        browser.close()

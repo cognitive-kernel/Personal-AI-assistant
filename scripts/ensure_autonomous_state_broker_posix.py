@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import plistlib
@@ -19,11 +20,21 @@ import socket
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 
 SERVICE_NAME = "personal-ai-assistant-state-broker"
 LAUNCHD_LABEL = "com.personal-ai-assistant.state-broker"
+_BROKER_MODULES = (
+    "autonomous_engineering_state.py",
+    "autonomous_engineering_native_config.py",
+    "autonomous_engineering_state_broker_config.py",
+    "autonomous_engineering_state_store.py",
+    "autonomous_engineering_state_broker_contract.py",
+    "autonomous_engineering_task_lifecycle.py",
+    "autonomous_engineering_task_owner.py",
+)
 
 
 def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -210,6 +221,22 @@ def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0, own
         os.chown(path, owner_uid, owner_gid)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _build_broker_archive(source: Path) -> bytes:
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
+    app_source = source.parents[1] / "app"
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("__main__.py"), source.read_bytes())
+        archive.writestr(zipfile.ZipInfo("app/__init__.py"), b"")
+        for module in _BROKER_MODULES:
+            module_source = app_source / module
+            if module_source.is_symlink() or not module_source.is_file():
+                raise RuntimeError("Broker state implementation is missing or unsafe.")
+            archive.writestr(zipfile.ZipInfo(f"app/{module}"), module_source.read_bytes())
+    return payload.getvalue()
 
 
 def _acquire_lock(path: Path, *, owner_uid: int | None = None, owner_gid: int | None = None):
@@ -545,35 +572,12 @@ def _elevated_setup(
     os.chown(config_dir, 0, -1)
     os.chmod(config_dir, 0o755)
     source = Path(__file__).resolve().parent / "autonomous_state_broker_service_posix.py"
-    if source.is_symlink() or not source.is_file():
-        raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
-    service_script = config_dir / "state_broker_service.py"
-    # Install the single shared Python state implementation with the isolated
-    # service, rather than relying on PYTHONPATH or the installer checkout.
+    archive = _build_broker_archive(source)
+    # Keep a running broker's imports tied to the exact archive it started with.
+    service_script = config_dir / f"state_broker-{hashlib.sha256(archive).hexdigest()}.pyz"
     client_gid = pwd.getpwuid(installer_uid).pw_gid
     service_group = grp.getgrgid(client_gid).gr_name
-    package_dir = config_dir / "app"
-    package_dir.mkdir(mode=0o750, exist_ok=True)
-    if package_dir.is_symlink() or not package_dir.is_dir():
-        raise RuntimeError("Protected broker package directory is unsafe.")
-    os.chown(package_dir, 0, client_gid)
-    # Python needs to enumerate the package directory when discovering modules.
-    os.chmod(package_dir, 0o750)
-    _write_atomic(package_dir / "__init__.py", b"", 0o640, owner_gid=client_gid)
-    for module in (
-        "autonomous_engineering_state.py",
-        "autonomous_engineering_native_config.py",
-        "autonomous_engineering_state_broker_config.py",
-        "autonomous_engineering_state_store.py",
-        "autonomous_engineering_state_broker_contract.py",
-        "autonomous_engineering_task_lifecycle.py",
-        "autonomous_engineering_task_owner.py",
-    ):
-        module_source = source.parent.parent / "app" / module
-        if module_source.is_symlink() or not module_source.is_file():
-            raise RuntimeError("Broker state implementation is missing or unsafe.")
-        _write_atomic(package_dir / module, module_source.read_bytes(), 0o640, owner_gid=client_gid)
-    _write_atomic(service_script, source.read_bytes(), 0o640, owner_gid=client_gid)
+    _write_atomic(service_script, archive, 0o640, owner_gid=client_gid)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
     socket_name = f"paa-state-broker-{socket_hash}"
     system = sys.platform

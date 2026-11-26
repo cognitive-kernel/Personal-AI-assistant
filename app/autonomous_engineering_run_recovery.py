@@ -13,12 +13,11 @@ from typing import Any, Literal
 
 import psutil
 
+from .autonomous_engineering_contracts import ACTIVE_RUN_STATES
+
 ProcessState = Literal["alive", "missing", "reused", "unknown"]
 RecoveryState = Literal["active", "stale", "unknown", "terminal"]
 
-_ACTIVE_REMOTE_STATES = frozenset({
-    "queued", "requested", "waiting", "pending", "in_progress", "suspended",
-})
 _TERMINAL_REMOTE_STATES = frozenset({"completed"})
 
 
@@ -132,7 +131,7 @@ def classify_run_recovery(
         return RunRecoveryDecision("unknown", "owner_process_identity_unverifiable", run_id, attempt)
 
     remote = str(remote_status or "").strip().lower()
-    if remote in _ACTIVE_REMOTE_STATES:
+    if remote in ACTIVE_RUN_STATES:
         return RunRecoveryDecision("active", "remote_workflow_still_active", run_id, attempt)
     if remote not in _TERMINAL_REMOTE_STATES and not (local_run and remote_status is None):
         return RunRecoveryDecision("unknown", "remote_workflow_state_unverifiable", run_id, attempt)

@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from .autonomous_engineering_contracts import ACTIVE_RUN_STATES
+
 
 def authenticated_gh(*, run_command, which) -> str:
     gh = which("gh")
@@ -25,7 +27,7 @@ def github_api_json(gh: str, path: str, *, timeout: int = 15, run_command, repos
     # than forwarding request-derived text to the command line.
     active_inventory = {
         f"actions/workflows/autonomous-codex-engineering.yml/runs?status={status}&per_page=1"
-        for status in ("queued", "in_progress", "waiting", "requested", "pending", "suspended")
+        for status in ACTIVE_RUN_STATES
     }
     if path in active_inventory:
         endpoint = next(value for value in active_inventory if value == path)
@@ -54,7 +56,7 @@ def github_api_json(gh: str, path: str, *, timeout: int = 15, run_command, repos
  
 def require_all_remote_runs_idle(gh: str, *, github_api_json) -> None:
     """Query each active status independently, not a truncated recent-run list."""
-    for status in ("queued", "in_progress", "waiting", "requested", "pending", "suspended"):
+    for status in ACTIVE_RUN_STATES:
         data = github_api_json(
             gh, f"actions/workflows/autonomous-codex-engineering.yml/runs?status={status}&per_page=1", timeout=12,
         )

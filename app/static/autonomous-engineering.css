@@ -23,3 +23,5 @@
 .run-log-panel h4{margin:10px 0 4px;color:#526071;font-size:.88rem}
 
 a:focus-visible,button:focus-visible,select:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:3px solid #3156d3;outline-offset:2px}
+
+[hidden] { display: none; }

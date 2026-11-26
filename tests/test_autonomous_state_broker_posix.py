@@ -7,6 +7,7 @@ import stat
 import subprocess
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,47 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVICE = ROOT / "scripts" / "autonomous_state_broker_service_posix.py"
+
+
+@contextmanager
+def _run_posix_broker(state_dir, socket_path, *, service=SERVICE, client_uid=None, cwd=ROOT):
+    command = [
+        sys.executable,
+        "-I",
+        "-S",
+        str(service),
+        "--state-dir",
+        str(state_dir),
+        "--socket-path",
+        str(socket_path),
+    ]
+    if client_uid is not None:
+        command.extend(("--client-uid", str(client_uid)))
+    process = subprocess.Popen(command, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        deadline = time.monotonic() + 8
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                stdout, stderr = process.communicate(timeout=2)
+                pytest.fail(f"POSIX state broker exited during startup: {stdout}\n{stderr}")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as probe:
+                try:
+                    probe.connect(str(socket_path))
+                except (FileNotFoundError, ConnectionRefusedError):
+                    time.sleep(0.025)
+                    continue
+            break
+        else:
+            pytest.fail("POSIX state broker did not start listening before the deadline.")
+
+        yield
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=5)
 
 
 @pytest.fixture
@@ -42,44 +84,8 @@ def posix_broker(monkeypatch, tmp_path):
     # configuration reader; production config ownership checks stay strict.
     monkeypatch.setattr(config, "load_config", lambda missing_ok=True: config_value)
 
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            str(SERVICE),
-            "--state-dir",
-            str(state_dir),
-            "--socket-path",
-            str(socket_path),
-        ],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    deadline = time.monotonic() + 8
-    while time.monotonic() < deadline:
-        if process.poll() is not None:
-            stdout, stderr = process.communicate(timeout=2)
-            pytest.fail(f"POSIX state broker exited during startup: {stdout}\n{stderr}")
-        if socket_path.exists() and stat.S_ISSOCK(socket_path.lstat().st_mode):
-            break
-        time.sleep(0.025)
-    else:
-        process.terminate()
-        stdout, stderr = process.communicate(timeout=3)
-        pytest.fail(f"POSIX state broker did not create its socket: {stdout}\n{stderr}")
-
-    try:
+    with _run_posix_broker(state_dir, socket_path):
         yield state_dir, socket_path, broker
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
-        if socket_path.exists():
-            socket_path.unlink()
 
 
 def test_posix_broker_health_and_progress_use_one_shared_socket(posix_broker):
@@ -534,4 +540,43 @@ def test_posix_broker_recovers_expired_dispatch_reservation_with_fresh_grace(pos
 
 def test_socket_is_not_world_accessible(posix_broker):
     _, socket_path, _ = posix_broker
-    assert stat.S_IMODE(socket_path.stat().st_mode) == 0o660
+    assert stat.S_IMODE(socket_path.stat().st_mode) == 0o600
+
+
+@pytest.mark.skipif(sys.platform not in {"linux", "darwin"}, reason="Requires the installed POSIX broker")
+def test_posix_broker_archive_serves_health_outside_the_checkout(tmp_path):
+    from scripts.ensure_autonomous_state_broker_posix import _build_broker_archive
+
+    archive = tmp_path / "broker.pyz"
+    payload = _build_broker_archive(SERVICE)
+    assert payload == _build_broker_archive(SERVICE)
+    archive.write_bytes(payload)
+    state_dir = tmp_path / "state"
+    state_dir.mkdir(mode=0o700)
+    socket_path = tmp_path / "socket" / "broker.sock"
+    with _run_posix_broker(state_dir, socket_path, service=archive, client_uid=os.geteuid() + 1, cwd=tmp_path):
+        assert stat.S_IMODE(socket_path.stat().st_mode) == 0o620
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+            client.settimeout(2)
+            client.connect(str(socket_path))
+            client.sendall(b'{"version":1,"method":"GET","path":"/v1/health"}\n')
+            with client.makefile("rb") as stream:
+                response = json.loads(stream.readline())
+        assert response["status"] == 200
+        assert response["payload"]["ready"] is True
+
+
+@pytest.mark.skipif(sys.platform not in {"linux", "darwin"}, reason="Requires kernel peer identity")
+def test_posix_broker_denies_a_peer_before_dispatch(tmp_path):
+    from scripts.autonomous_state_broker_service_posix import UnixSocketBroker
+
+    server = UnixSocketBroker(None, tmp_path / "unused.sock", client_uid=os.geteuid() + 1)
+    assert os.geteuid() in server.allowed_uids
+    assert os.geteuid() + 1 in server.allowed_uids
+    server.allowed_uids.remove(os.geteuid())
+    client, peer = socket.socketpair()
+    assert server.slots.acquire(blocking=False)
+    with client, peer:
+        server._serve_one(peer)
+        response = json.loads(client.recv(4096))
+    assert response == {"version": 1, "status": 403, "payload": {"error": "peer_not_authorized"}}

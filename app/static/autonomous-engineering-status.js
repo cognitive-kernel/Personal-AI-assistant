@@ -27,6 +27,22 @@
     runner: $("runner-state"), github: $("github-state"), storage: $("storage-state")
   };
   function stateText(ok) { return ok ? "آماده" : "نیازمند راه‌اندازی"; }
+  function incompleteProbes(data) {
+    const messages = new Map();
+    for (const [field, message] of [
+      ["status_probe_unavailable", "ظرفیت بررسی وضعیت موقتاً پر است."],
+      ["status_probe_timeouts", "بررسی وضعیت در مهلت مقرر پاسخ نداد."],
+      ["status_probe_errors", "بررسی وضعیت با خطا مواجه شد."]
+    ]) {
+      if (!Array.isArray(data[field])) continue;
+      for (const probe of data[field]) {
+        if (typeof probe !== "string") continue;
+        const name = probe === "github_settings" ? "github" : probe === "pending_work" ? "storage" : probe;
+        if (Object.hasOwn(labels, name) && name !== "model") messages.set(name, message);
+      }
+    }
+    return messages;
+  }
   function renderModels(models, selectedModel, selectedModelIsContextVariant) {
     const select = $("ollama-model");
     if (document.activeElement === select) return;
@@ -175,6 +191,10 @@
     try {
       const data = await request("status");
       const checks = data.checks || {};
+      const incomplete = incompleteProbes(data);
+      const githubKnown = !incomplete.has("github");
+      const modelsKnown = githubKnown && !incomplete.has("ollama");
+      const storageKnown = !incomplete.has("storage");
       labels.ollama.textContent = stateText(checks.ollama_online);
       $("ollama-detail").textContent = checks.ollama_online ? "پاسخ از 127.0.0.1:11434 دریافت شد." : "سرویس محلی در دسترس نیست.";
       const modelReady = checks.model_installed && checks.model_selectable && checks.model_context_metadata_available && checks.model_context_supported && checks.model_supports_tools;
@@ -205,15 +225,17 @@
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
-      renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
+      if (modelsKnown) {
+        renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
+      } else {
+        labels.model.textContent = "تأیید نشده";
+        $("model-detail").textContent = incomplete.get("ollama") || incomplete.get("github");
+      }
       const executionMode = data.execution_mode || "continuous";
-      if (!editedSettings.has("execution-mode")) {
+      if (githubKnown && !editedSettings.has("execution-mode")) {
         $("execution-mode").value = executionMode;
       }
-      dispatchButton.textContent = executionMode === "continuous"
-        ? "شروع صف پیوسته"
-        : "اجرای یک چرخهٔ زمان‌بندی‌شده";
-      if (!editedSettings.has("interval-hours")) {
+      if (githubKnown && !editedSettings.has("interval-hours")) {
         $("interval-hours").value = [1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours)) ? String(Number(data.interval_hours)) : "24";
       }
       labels.codex.textContent = checks.codex_installed ? "موجود" : "در حساب برنامه نصب نیست";
@@ -248,11 +270,15 @@
       const setupBrokerButton = $("setup-state-broker");
       setupBrokerButton.dataset.nativeState = nativeState ? "true" : "false";
       setupBrokerButton.textContent = nativeState ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم Broker";
-      setupBrokerButton.hidden = checks.progress_storage_accessible === true;
+      setupBrokerButton.hidden = !storageKnown || checks.progress_storage_accessible === true;
       const migrationButton = $("stage-native-migration");
-      migrationButton.hidden = !nativeState || checks.progress_storage_accessible === true;
-      migrationButton.disabled = !nativeState || data.paused !== true || checks.progress_storage_accessible === true;
-      setupBrokerButton.disabled = checks.progress_storage_accessible === true;
+      migrationButton.hidden = !storageKnown || !nativeState || checks.progress_storage_accessible === true;
+      migrationButton.disabled = migrationButton.hidden || !githubKnown || data.paused !== true;
+      setupBrokerButton.disabled = setupBrokerButton.hidden;
+      for (const [name, message] of incomplete) {
+        labels[name].textContent = "تأیید نشده";
+        $(name + "-detail").textContent = message;
+      }
       const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
         ? lastPendingWork.checkpoint
         : null;
@@ -260,7 +286,7 @@
       const checkpointDetail = $("checkpoint-detail");
       if (!lastPendingWork.available) {
         checkpointState.textContent = "قابل بررسی نیست";
-        checkpointDetail.textContent = brokerDiagnostic || "سرویس وضعیت پایدار پاسخ معتبر نداد؛ شروع هر چرخه تا بازیابی اتصال متوقف است.";
+        checkpointDetail.textContent = incomplete.get("storage") || brokerDiagnostic || "سرویس وضعیت پایدار پاسخ معتبر نداد؛ شروع هر چرخه تا بازیابی اتصال متوقف است.";
       } else if (checkpoint && checkpoint.available === true && checkpoint.verified === true) {
         checkpointState.textContent = "ذخیره‌شده و قابل بازیابی";
         checkpointDetail.textContent = "وظیفهٔ " + String(checkpoint.task || 1) +
@@ -313,32 +339,40 @@
           ? "شروع صف پیوسته"
           : "اجرای یک چرخهٔ زمان‌بندی‌شده";
       }
-      const ready = data.ready === true;
-      const paused = data.paused === true;
+      const requiredProbesKnown = modelsKnown && storageKnown && !incomplete.has("runner");
+      const ready = requiredProbesKnown && data.ready === true;
+      const paused = githubKnown && data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
       const pill = $("agent-readiness");
-      pill.textContent = paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
+      pill.textContent = !requiredProbesKnown ? "آمادگی اجرا تأیید نشده" : paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const activeRun = (data.github && data.github.recent_runs || []).find(run =>
         ["queued", "in_progress", "waiting", "requested", "pending", "suspended"].includes(run.status));
       const active = Boolean(activeRun);
-      lastActiveRunId = activeRun && Number.isSafeInteger(Number(activeRun.id)) && Number(activeRun.id) > 0
-        ? Number(activeRun.id)
-        : null;
-      if (active) dispatchPendingUntil = 0;
-      lastCanDispatch = canDispatch;
-      lastActiveRun = active;
+      if (githubKnown) {
+        lastActiveRunId = activeRun && Number.isSafeInteger(Number(activeRun.id)) && Number(activeRun.id) > 0
+          ? Number(activeRun.id)
+          : null;
+        if (active) dispatchPendingUntil = 0;
+        lastActiveRun = active;
+        cancelButton.disabled = !active;
+        pauseButton.disabled = paused;
+        resumeButton.disabled = !paused || checks.native_runner_workflow_compatible === false;
+      }
+      lastCanDispatch = requiredProbesKnown && canDispatch;
       statusKnown = true;
       syncDispatchControls();
-      cancelButton.disabled = !active;
-      pauseButton.disabled = Boolean(data.paused);
-      resumeButton.disabled = !data.paused || checks.native_runner_workflow_compatible === false;
       // Run history refreshes independently and after committed mutations.
       // Rendering this status snapshot here bypasses its request sequence and
       // can overwrite a newer, explicitly refreshed run list with stale data.
 
-      setStatusMessage(data.paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), data.paused || ready ? "success" : "");
-      return true;
+      if (incomplete.size) {
+        setStatusMessage("بخشی از وضعیت تأیید نشد؛ برای بررسی دوباره، تازه‌سازی کنید." +
+          (data.correlation_id ? " · شناسهٔ پیگیری: " + data.correlation_id : ""), "error");
+      } else {
+        setStatusMessage(paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), paused || ready ? "success" : "");
+      }
+      return incomplete.size === 0;
     } catch (error) {
       statusKnown = false;
       lastPendingWork = null;

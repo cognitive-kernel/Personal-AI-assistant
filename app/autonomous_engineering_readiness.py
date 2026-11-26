@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from .autonomous_engineering_contracts import ACTIVE_RUN_STATES
+
 
 def build_status_payload(
     *,
@@ -53,7 +55,7 @@ def build_status_payload(
     active_runs = github.get("recent_runs", [])
     active = any(
         isinstance(item, dict)
-        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending", "suspended"}
+        and item.get("status") in ACTIVE_RUN_STATES
         for item in active_runs
     )
     return {

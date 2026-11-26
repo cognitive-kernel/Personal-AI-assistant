@@ -10,12 +10,16 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from .autonomous_engineering_contracts import CancelRequest, ManualTaskRequest, CORRELATION_ID_PATTERN as _CORRELATION_ID_PATTERN
+from .autonomous_engineering_contracts import (
+    ACTIVE_RUN_STATES,
+    CORRELATION_ID_PATTERN as _CORRELATION_ID_PATTERN,
+    CancelRequest,
+    ManualTaskRequest,
+)
 from .autonomous_engineering_dispatch_lock import DispatchAdmissionError
 from .autonomous_engineering_state_broker import StateBrokerConflict, StateBrokerError
 
 CONTROL_LOCK = threading.Lock()
-ACTIVE_RUN_STATES = frozenset({"queued", "in_progress", "waiting", "requested", "pending", "suspended"})
 _STATUS_LOGGER = logging.getLogger(__name__)
 
 def dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_id: str, resume_once: bool = False, _DISPATCH_REQUEST_LOCK, dispatch_admission_lock, _dispatch_autonomous_engineering_locked) -> dict[str, Any]:
