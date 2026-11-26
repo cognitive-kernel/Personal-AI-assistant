@@ -78,7 +78,9 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert "sys.path.insert(0, str(project_root))" in installer
     assert "def _prepare_socket_path" in service
     assert "AccessControl" not in service
-    assert "MARKERS" in service and "CLEANUP_NAMES" in service
+    store = (ROOT / "app" / "autonomous_engineering_state_store.py").read_text(encoding="utf-8")
+    assert "RestrictedStateBroker" in service
+    assert "MARKERS" in store and "CLEANUP_NAMES" in store
     assert "/v1/progress" in client
     assert "configured_socket_path" in client
     assert 'Path("/etc/xdg")' in config

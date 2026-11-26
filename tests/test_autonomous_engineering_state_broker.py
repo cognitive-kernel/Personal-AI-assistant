@@ -117,7 +117,7 @@ def test_broker_dispatch_admission_is_allowlisted_in_both_service_transports():
     client = (ROOT / "app" / "autonomous_engineering_state_broker.py").read_text(encoding="utf-8")
     unix = (ROOT / "app" / "autonomous_engineering_state_broker_unix.py").read_text(encoding="utf-8")
     windows = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
-    posix = (ROOT / "scripts" / "autonomous_state_broker_service_posix.py").read_text(encoding="utf-8")
+    posix = (ROOT / "app" / "autonomous_engineering_state_store.py").read_text(encoding="utf-8")
 
     for source in (client, unix):
         assert '"/v1/dispatch-admission/acquire"' in source

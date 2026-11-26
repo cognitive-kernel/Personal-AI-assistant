@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import stat
 import tempfile
 import time
 from contextlib import ExitStack, contextmanager
@@ -290,7 +291,13 @@ def exclusive_file_lock(
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
 
-    with path.open("a+b") as handle:
+    if path.is_symlink():
+        raise OSError("State lock cannot be a symbolic link.")
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(descriptor, "r+b") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
+            raise OSError("State lock must be a regular file.")
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
             handle.write(b"\\0")

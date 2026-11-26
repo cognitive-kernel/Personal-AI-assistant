@@ -519,6 +519,27 @@ def _elevated_setup(
     if source.is_symlink() or not source.is_file():
         raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
     service_script = config_dir / "state_broker_service.py"
+    # Install the single shared Python state implementation with the isolated
+    # service, rather than relying on PYTHONPATH or the installer checkout.
+    package_dir = config_dir / "app"
+    package_dir.mkdir(mode=0o755, exist_ok=True)
+    if package_dir.is_symlink() or not package_dir.is_dir():
+        raise RuntimeError("Protected broker package directory is unsafe.")
+    os.chown(package_dir, 0, -1)
+    os.chmod(package_dir, 0o755)
+    _write_atomic(package_dir / "__init__.py", b"", 0o644)
+    for module in (
+        "autonomous_engineering_state.py",
+        "autonomous_engineering_state_broker_config.py",
+        "autonomous_engineering_state_store.py",
+        "autonomous_engineering_state_broker_contract.py",
+        "autonomous_engineering_task_lifecycle.py",
+        "autonomous_engineering_task_owner.py",
+    ):
+        module_source = source.parent.parent / "app" / module
+        if module_source.is_symlink() or not module_source.is_file():
+            raise RuntimeError("Broker state implementation is missing or unsafe.")
+        _write_atomic(package_dir / module, module_source.read_bytes(), 0o644)
     _write_atomic(service_script, source.read_bytes(), 0o644)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
     socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
