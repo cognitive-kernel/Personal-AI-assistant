@@ -21,9 +21,11 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     monkeypatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", raising=False)
     with repository_execution_lock("run-1", "attempt-2"):
-        pass
+        assert len(os.environ["AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN"]) == 64
 
+    assert "AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN" not in os.environ
     # Windows byte-range locks also prevent a second handle from reading the
     # locked file; inspect its diagnostic metadata after ownership is released.
     import json
