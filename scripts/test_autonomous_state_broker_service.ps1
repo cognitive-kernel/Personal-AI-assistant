@@ -845,6 +845,7 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
         schema_version = 2
         pid = 2147483647
         process_started_at = 1.0
+        owner_token = ("a" * 64)
         run_id = $staleRunId
         run_attempt = "1"
         host = $env:COMPUTERNAME
@@ -861,6 +862,7 @@ assert pending["checkpoint"] == {"available": False, "verified": True}
         schema_version = 1
         run_id = $staleRunId
         run_attempt = "1"
+        execution_owner_token = ("a" * 64)
         status = "running"
         phase_label = "Stopped CI run"
         activity = "The original owner process has exited"
