@@ -15,6 +15,7 @@ def _owner(run_id="run-42", attempt="2", *, pid=1234, started_at=100.0):
         "schema_version": 2,
         "pid": pid,
         "process_started_at": started_at,
+        "owner_token": "a" * 64,
         "run_id": run_id,
         "run_attempt": attempt,
         "host": socket.gethostname(),
@@ -22,7 +23,10 @@ def _owner(run_id="run-42", attempt="2", *, pid=1234, started_at=100.0):
 
 
 def _current(run_id="run-42", attempt="2", status="running"):
-    return {"run_id": run_id, "run_attempt": attempt, "status": status}
+    return {
+        "run_id": run_id, "run_attempt": attempt, "status": status,
+        "execution_owner_token": "a" * 64,
+    }
 
 
 def test_stopped_nonterminal_run_is_recoverable_when_remote_run_is_terminal():
@@ -117,6 +121,22 @@ def test_lock_owner_from_another_run_cannot_reconcile_current_progress():
     assert decision.state == "unknown"
     assert decision.reason == "lock_owner_run_mismatch"
 
+
+
+def test_owner_token_mismatch_cannot_reconcile_a_run():
+    current = _current()
+    current["execution_owner_token"] = "b" * 64
+    decision = classify_run_recovery(
+        current,
+        _owner(),
+        repository_lock_held=False,
+        checkpoint_lock_held=False,
+        process_state="missing",
+        remote_status="completed",
+    )
+
+    assert decision.state == "unknown"
+    assert decision.reason == "lock_owner_token_mismatch"
 
 def test_pid_reuse_is_detected_by_process_creation_time():
     class FakeProcess:
