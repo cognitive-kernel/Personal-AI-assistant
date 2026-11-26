@@ -1724,10 +1724,7 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 if (eventsInfo.Length <= 4 * 1024 * 1024)
                 {
                     string existingEvents = File.ReadAllText(eventsPath, Encoding.UTF8);
-                    eventAlreadyRecorded = existingEvents.IndexOf(
-                        "\\"event_id\\":\\"" + eventId + "\\"",
-                        StringComparison.Ordinal
-                    ) >= 0;
+                    eventAlreadyRecorded = existingEvents.IndexOf(eventId, StringComparison.Ordinal) >= 0;
                 }
             }
             if (!eventAlreadyRecorded)
