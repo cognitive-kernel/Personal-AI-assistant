@@ -139,3 +139,25 @@ def test_autonomous_engineering_run_log_safety_has_a_single_backend_owner():
     assert "def _workflow_failure_summary(" in facade
     assert "_run_log_safety.sanitize_workflow_log(" in facade
     assert "_run_log_safety.workflow_failure_summary(" in facade
+
+
+def test_autonomous_engineering_run_history_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_run_history.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    for function in (
+        "def cached_run_diagnostics(",
+        "def workflow_runs(",
+        "def verified_workflow_run(",
+        "def read_run_diagnostics(",
+    ):
+        assert function in backend
+    for function in (
+        "def _cached_run_diagnostics(",
+        "def _workflow_runs(",
+        "def _verified_workflow_run(",
+        "def _read_run_diagnostics(",
+    ):
+        assert function in facade
+    assert "_run_history.workflow_runs(" in facade
+    assert "_run_history.verified_workflow_run(" in facade
