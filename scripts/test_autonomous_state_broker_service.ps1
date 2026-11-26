@@ -1123,6 +1123,11 @@ else:
     }
 
     Remove-Item -LiteralPath $pendingMarker -Force
+    # The earlier successful legacy-checkpoint cleanup may already have removed
+    # current.json.tmp. Create a fresh, explicit expendable fixture so this
+    # assertion proves that this cleanup call removes a non-empty temp file.
+    $cleanupFixturePath = Join-Path $stateRoot "scorecard-state.json.tmp"
+    [System.IO.File]::WriteAllText($cleanupFixturePath, "cleanup-fixture")
     $cleanupProbe = @'
 from app import autonomous_engineering_state_broker as broker
 result = broker.cleanup()
@@ -1132,6 +1137,9 @@ assert result["files_removed"] >= 1
 '@
     $cleanupProbe | & python -
     if ($LASTEXITCODE -ne 0) { throw "The broker cleanup endpoint failed its live Windows integration test." }
+    if (Test-Path -LiteralPath $cleanupFixturePath) {
+        throw "The broker cleanup endpoint left the expendable temporary fixture behind."
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $stateRoot "current.json")) -or
         -not (Test-Path -LiteralPath (Join-Path $stateRoot "events.jsonl")) -or
         -not (Test-Path -LiteralPath (Join-Path $stateRoot "history.jsonl")) -or
