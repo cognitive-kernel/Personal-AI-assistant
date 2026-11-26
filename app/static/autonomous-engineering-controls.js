@@ -138,8 +138,9 @@
     if (brokerSetupActive || setupBrokerButton.disabled) return;
     brokerSetupActive = true;
     setupBrokerButton.disabled = true;
-    setupBrokerButton.textContent = "در حال راه‌اندازی سرویس محلی…";
-    setMessage("درخواست نصب/ترمیم Broker ارسال شد؛ در صورت نیاز، پنجرهٔ تأیید مدیر سیستم را تأیید کنید.");
+    const nativeState = setupBrokerButton.dataset.nativeState === "true";
+    setupBrokerButton.textContent = nativeState ? "در حال بررسی فضای بومی…" : "در حال راه‌اندازی سرویس محلی…";
+    setMessage(nativeState ? "فضای بومی با حساب فعلی بررسی می‌شود؛ نیازی به نصب سرویس یا مجوز مدیر نیست." : "درخواست نصب/ترمیم Broker ارسال شد؛ در صورت نیاز، پنجرهٔ تأیید مدیر سیستم را تأیید کنید.");
     try {
       const result = await request("broker/setup", {
         method: "POST",
@@ -157,7 +158,7 @@
       }
     } finally {
       brokerSetupActive = false;
-      setupBrokerButton.textContent = "راه‌اندازی یا ترمیم فضای ثبت پیشرفت";
+      setupBrokerButton.textContent = setupBrokerButton.dataset.nativeState === "true" ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم فضای ثبت پیشرفت";
     }
   });
 

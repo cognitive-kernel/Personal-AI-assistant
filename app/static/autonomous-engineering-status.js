@@ -227,6 +227,7 @@
         : "سرویس Broker آماده نیست. نصب یا ترمیم آن فقط پس از فشردن دکمهٔ زیر و تأیید مجوز مدیر انجام می‌شود. Runner برای نصب Broker لازم نیست؛ Runner فقط قابلیت اجرای Workflow را فراهم می‌کند." +
           (brokerDiagnostic ? " تشخیص فعلی: " + brokerDiagnostic : "");
       const setupBrokerButton = $("setup-state-broker");
+      setupBrokerButton.dataset.nativeState = nativeState ? "true" : "false";
       setupBrokerButton.textContent = nativeState ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم Broker";
       setupBrokerButton.hidden = checks.progress_storage_accessible === true;
       const migrationButton = $("stage-native-migration");

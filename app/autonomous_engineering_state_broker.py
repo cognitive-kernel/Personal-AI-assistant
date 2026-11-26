@@ -213,10 +213,12 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         raise ValueError("Unsupported state-broker method.")
     if not isinstance(path, str):
         raise ValueError("Unsupported state-broker endpoint.")
+    from .autonomous_engineering_native_config import native_state_enabled
+    native = native_state_enabled()
     allowed = (
         method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}
     ) or (
-        _WINDOWS and method == "GET" and path == "/v1/health/verify"
+        (_WINDOWS or native) and method == "GET" and path == "/v1/health/verify"
     ) or (
         method == "GET" and re.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path) is not None
     ) or (
@@ -236,8 +238,7 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         raise ValueError("This state-broker endpoint does not accept a request body.")
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
-    from .autonomous_engineering_native_config import native_state_enabled
-    if native_state_enabled():
+    if native:
         from .autonomous_engineering_native_transport import request_native
         return request_native(method, path, body, error_type=StateBrokerError, conflict_type=StateBrokerConflict)
     if os.name != "nt":
@@ -315,7 +316,8 @@ def health(*, timeout_ms: int = 3500, verify: bool = False) -> bool:
         # The application bootstrap requests a fresh Windows ACL scan once per
         # process start. Runtime UI polling uses the broker's short-lived cache.
         # POSIX uses its native health endpoint for both modes.
-        path = "/v1/health/verify" if verify and _WINDOWS else "/v1/health"
+        from .autonomous_engineering_native_config import native_state_enabled
+        path = "/v1/health/verify" if verify and (_WINDOWS or native_state_enabled()) else "/v1/health"
         value = request("GET", path, timeout_ms=timeout_ms)
         if not isinstance(value, dict) or value.get("ready") is not True:
             return False

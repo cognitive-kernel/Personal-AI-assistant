@@ -38,6 +38,11 @@ def _machine_configured_state_directory() -> str:
         return ""
 
 
+def machine_configured_state_directory() -> str:
+    """Public read-only machine configuration discovery for migration."""
+    return _machine_configured_state_directory()
+
+
 def _is_path_within(path: Path, parent: Path) -> bool:
     try:
         Path(path).resolve().relative_to(Path(parent).resolve())

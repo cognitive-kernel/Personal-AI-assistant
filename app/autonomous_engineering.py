@@ -284,7 +284,7 @@ def autonomous_engineering_setup_broker() -> dict[str, Any]:
 @router.post("/state/migration/stage")
 def stage_autonomous_engineering_migration() -> dict[str, Any]:
     from .autonomous_engineering_native_config import native_state_enabled, discover_migration_paths
-    from .autonomous_engineering_state import _machine_configured_state_directory
+    from .autonomous_engineering_state import machine_configured_state_directory
     from .autonomous_engineering_native_migration import stage_native_migration
 
     if not native_state_enabled():
@@ -302,7 +302,7 @@ def stage_autonomous_engineering_migration() -> dict[str, Any]:
         _github_adapter.require_all_remote_runs_idle(gh, github_api_json=_github_api_json)
 
     try:
-        source, target = discover_migration_paths(is_windows=_is_windows(), machine_state=_machine_configured_state_directory)
+        source, target = discover_migration_paths(is_windows=_is_windows(), machine_state=machine_configured_state_directory)
         return stage_native_migration(source, target, require_idle=require_paused_and_idle)
     except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
         raise HTTPException(

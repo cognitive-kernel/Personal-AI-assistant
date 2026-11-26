@@ -40,9 +40,15 @@ def test_autonomous_workflow_bootstraps_python_and_node_before_using_them():
     assert "Use preinstalled system Python" not in workflow
     assert "Node.js must be installed system-wide" not in workflow
     assert "Install Node.js LTS system-wide" not in workflow
-    assert '$requiredGhVersion = "2.104.0"' in workflow
-    assert "Get-FileHash -LiteralPath $archivePath -Algorithm SHA256" in workflow
-    assert "official GitHub CLI checksum file" in workflow
+    gh_step = workflow[gh_setup:codex_install]
+    assert "shell: python {0}" in gh_step
+    assert "scripts/autonomous_engineering_prerequisites.py" in gh_step
+    assert python_venv < gh_setup
+    # Integrity and version/capability checks belong to the native helper;
+    # behavioral tests cover wrong checksums, denied installation and archive traversal.
+    from scripts import autonomous_engineering_prerequisites as prerequisites
+    assert prerequisites.GH_VERSION == "2.104.0"
+    assert prerequisites.RELEASE_BASE.startswith("https://github.com/cli/cli/releases/download/")
 
 
 def test_autonomous_workflow_keeps_codex_installation_pinned():

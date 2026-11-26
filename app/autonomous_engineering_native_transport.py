@@ -8,9 +8,11 @@ from .autonomous_engineering_state import execution_state_directory
 from .autonomous_engineering_state_store import BrokerFailure, RestrictedStateBroker
 
 
-def native_health() -> dict[str, Any]:
+def native_health(*, verify: bool = False) -> dict[str, Any]:
     root = execution_state_directory()
     validate_native_state_root(root)
+    if verify:
+        RestrictedStateBroker(root).health()
     return {"ok": True, "ready": True, "storage_ready": True, "service": "native", "schema_version": 1}
 
 
@@ -31,7 +33,7 @@ def setup_native_state() -> dict[str, Any]:
 def request_native(method: str, path: str, body: dict[str, Any] | None, *, error_type, conflict_type) -> Any:
     try:
         if method == "GET" and path in {"/v1/health", "/v1/health/verify"}:
-            return native_health()
+            return native_health(verify=path == "/v1/health/verify")
         root = execution_state_directory()
         validate_native_state_root(root)
         store = RestrictedStateBroker(root)

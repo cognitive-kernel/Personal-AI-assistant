@@ -66,3 +66,12 @@ def test_native_config_refuses_to_abandon_legacy_state(monkeypatch, tmp_path):
         config.resolve_native_state_directory(is_windows=True, machine_state=lambda: "")
     assert not user_data.exists()
     assert (legacy / "pending-manual-task.txt").read_text(encoding="utf-8") == "preserve"
+
+
+def test_native_verify_checks_actual_write_access(native_root, monkeypatch):
+    native.setup_native_state()
+    def fail(_self):
+        raise PermissionError("write denied")
+    monkeypatch.setattr(native.RestrictedStateBroker, "health", fail)
+    assert broker.health() is True
+    assert broker.health(verify=True) is False
