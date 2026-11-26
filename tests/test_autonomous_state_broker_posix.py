@@ -153,8 +153,9 @@ def test_posix_broker_pending_work_and_cleanup_preserve_durable_state(posix_brok
     cleaned = broker.cleanup()
     assert cleaned["conflict"] is False
     assert cleaned["cleaned"] is True
-    assert not (state_dir / "current.json").exists()
-    assert not (state_dir / "events.jsonl").exists()
+    assert (state_dir / "current.json").read_text(encoding="utf-8") == '{"status":"running"}'
+    assert (state_dir / "events.jsonl").read_text(encoding="utf-8") == '{"type":"progress_event"}\n'
+    assert {"current.json", "events.jsonl"} <= set(cleaned["preserved"])
     assert (state_dir / "history.jsonl").exists()
     assert (state_dir / "scorecard-baseline.json").exists()
 

@@ -846,8 +846,6 @@ def _cancel_autonomous_engineering_locked(payload: CancelRequest) -> dict[str, A
 # Operational administration -------------------------------------------------
 _ACTIVE_RUN_STATES = {"queued", "in_progress", "waiting", "requested", "pending"}
 _PROGRESS_CLEANUP_FILES = (
-    "events.jsonl",
-    "current.json",
     "events.jsonl.tmp",
     "current.json.tmp",
     "history.jsonl.tmp",
@@ -1085,6 +1083,8 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     failed_files = sorted({Path(str(item).replace(chr(92), "/")).name for item in failed_files if str(item).strip()})
 
     preserved = [
+        "current.json",
+        "events.jsonl",
         "history.jsonl",
         "scorecard-baseline.json",
         "checkpoint files",

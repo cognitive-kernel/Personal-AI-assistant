@@ -31,8 +31,6 @@ MARKERS = {
     "cleanup_in_progress": "pending-state-cleanup.json",
 }
 CLEANUP_NAMES = (
-    "events.jsonl",
-    "current.json",
     "events.jsonl.tmp",
     "current.json.tmp",
     "history.jsonl.tmp",
@@ -522,6 +520,8 @@ class RestrictedStateBroker:
                     "bytes_removed": removed_bytes,
                     "failed_files": failed,
                     "preserved": [
+                        "current.json",
+                        "events.jsonl",
                         "history.jsonl",
                         "scorecard-baseline.json",
                         "checkpoint files",

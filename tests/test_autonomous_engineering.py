@@ -2644,9 +2644,10 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     result = agent.cleanup_autonomous_engineering_temporary_data()
 
     assert result["cleaned"] is True
-    assert result["files_removed"] == 5
-    assert not (tmp_path / "events.jsonl").exists()
-    assert not (tmp_path / "current.json").exists()
+    assert result["files_removed"] == 3
+    assert (tmp_path / "events.jsonl").is_file()
+    assert (tmp_path / "current.json").is_file()
+    assert {"current.json", "events.jsonl"} <= set(result["preserved"])
     assert not (runtime_dir / ".agent-request.json").exists()
     assert not (runtime_dir / ".agent-github-state.json").exists()
     assert not (runtime_dir / ".agent-progress.json").exists()
