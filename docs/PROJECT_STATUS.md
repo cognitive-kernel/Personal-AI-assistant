@@ -1,3 +1,13 @@
+## 2026-11-26 — dependency policy made mandatory
+
+- Both master prompts now require application/native implementations first and treat external tools/shells/services/package managers as capability-scoped exceptions only.
+- PowerShell is prohibited in ordinary startup, Broker, state/lock, and process-inspection paths when application/native alternatives exist. Any exception requires proof or explicit owner approval for that exact capability.
+- Approved missing/incompatible prerequisites must be fetched from official sources, integrity-checked, installed in app/job scope, verified, cached, and retried automatically when authorized. No silent system-wide mutation or privilege escalation is allowed.
+- Mandatory tests now include native/no-tool operation, clean/missing/incompatible prerequisites, supply-chain verification failures, partial installs, offline/permission failures, cache/concurrency/retry, and feature isolation.
+- Source prompt commits: UI bdddae3cb55398ea72d4e60c09a739660b7dc5c2, master fe21ebb45ef0eaae120e907ba0a208a50f0af234. Active PR branch prompt commits: UI 2b72ec46b678d40bf274eb69953a28ddb92ff4e4, master 5ad5b5575631fb04614fe589e15bea78f0ca1505.
+- Implementation gap remains: current Broker/service and PowerShell provisioning code has not yet been removed. Treat it as non-conforming until replaced or covered by a narrow, documented, explicitly approved exception. No local host state was changed.
+
+---
 ## 2026-11-26 — stale-run recovery integrated; native Runner architecture pending
 
 - The Windows Broker cleanup path now distinguishes stale progress from a live execution using the exact run ID/attempt, host, owner token, PID, process creation time, and independent repository/checkpoint locks.
