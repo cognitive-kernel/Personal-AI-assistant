@@ -80,6 +80,7 @@ from . import autonomous_engineering_run_log_safety as _run_log_safety
 from . import autonomous_engineering_run_history as _run_history
 from . import autonomous_engineering_settings as _settings_backend
 from . import autonomous_engineering_readiness as _readiness_backend
+from . import autonomous_engineering_run_logs as _run_logs_backend
 
 # Backward-compatible cache seam used by existing tests and integrations.
 _RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
@@ -1033,23 +1034,6 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
     jobs = jobs_data.get("jobs")
     if not isinstance(jobs, list):
         jobs = []
-    failures = []
-    for job in jobs:
-        if not isinstance(job, dict):
-            continue
-        steps = job.get("steps") if isinstance(job.get("steps"), list) else []
-        failed_steps = [
-            {"name": str(step.get("name") or ""), "conclusion": str(step.get("conclusion") or "")}
-            for step in steps
-            if isinstance(step, dict) and step.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
-        ]
-        if job.get("conclusion") not in {"success", "skipped", "neutral"} or failed_steps:
-            failures.append({
-                "name": str(job.get("name") or "Job"),
-                "status": str(job.get("status") or "unknown"),
-                "conclusion": job.get("conclusion"),
-                "failed_steps": failed_steps,
-            })
     logs_result = _run(
         [gh, "run", "view", str(trusted_run_id), "--log", "--repo", _repository()],
         timeout=45,
@@ -1059,35 +1043,16 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
         raw_log = logs_result.stdout or ""
     elif logs_result:
         raw_log = logs_result.stdout or logs_result.stderr or ""
-    if not raw_log and run.get("status") != "completed":
-        raw_log = "گزارش کامل تا پایان اجرای Workflow در دسترس نیست."
-    elif not raw_log and run.get("status") == "completed":
-        raw_log = "GitHub گزارشی برای این اجرا برنگرداند؛ جزئیات مرحله‌های ناموفق در بالا آمده است."
     diagnostic = _read_run_diagnostics(trusted_run_id)
-    diagnostic_entries = diagnostic.get("diagnostics", []) if diagnostic else []
-    latest_diagnostic = diagnostic_entries[-1] if diagnostic_entries else None
-    error_summary = (
-        latest_diagnostic.get("summary")
-        if latest_diagnostic else _workflow_failure_summary(raw_log, failures)
+    return _run_logs_backend.build_run_logs_payload(
+        run=run,
+        jobs=jobs,
+        raw_log=raw_log,
+        diagnostic=diagnostic,
+        max_log_chars=_MAX_DASHBOARD_LOG_CHARS,
+        sanitize_log=_sanitize_workflow_log,
+        failure_summary=_workflow_failure_summary,
     )
-    return {
-        "run": {
-            "id": trusted_run_id,
-            "status": run.get("status"),
-            "conclusion": run.get("conclusion"),
-            "url": run.get("url"),
-        },
-        "failures": failures,
-        "error_summary": error_summary,
-        "failure_stage": latest_diagnostic.get("stage") if latest_diagnostic else (
-            failures[0].get("name") if failures else None
-        ),
-        "diagnostic": diagnostic,
-        "diagnostics_available": bool(diagnostic_entries),
-        "logs": _sanitize_workflow_log(raw_log),
-        "truncated": len(raw_log) > _MAX_DASHBOARD_LOG_CHARS,
-    }
-
 
 @router.delete("/runs/{run_id}")
 def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
