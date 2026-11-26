@@ -12,6 +12,7 @@ import json
 import os
 import plistlib
 import pwd
+import grp
 import shutil
 import stat
 import socket
@@ -191,7 +192,7 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
     )
 
 
-def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> None:
+def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0, owner_gid: int = -1) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.parent.is_symlink():
         raise RuntimeError(f"Refusing a symlinked machine configuration directory: {path.parent}")
@@ -203,10 +204,10 @@ def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> 
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temporary, mode)
-        os.chown(temporary, owner_uid, -1)
+        os.chown(temporary, owner_uid, owner_gid)
         os.replace(temporary, path)
         os.chmod(path, mode)
-        os.chown(path, owner_uid, -1)
+        os.chown(path, owner_uid, owner_gid)
     finally:
         temporary.unlink(missing_ok=True)
 
@@ -349,6 +350,7 @@ def _systemd_unit(
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> str:
     def quote(value: str) -> str:
         return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -356,6 +358,7 @@ def _systemd_unit(
     args = " ".join(quote(value) for value in (
         str(python), "-I", "-S", str(service_script),
         "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+        "--client-uid", str(client_uid),
     ))
     user_line = "" if service_user == "root" else f"User={service_user}\n"
     return (
@@ -366,6 +369,7 @@ def _systemd_unit(
         "[Service]\n"
         "Type=simple\n"
         f"{user_line}"
+        f"Group={service_group}\n"
         f"ExecStart={args}\n"
         "Restart=on-failure\n"
         "RestartSec=2\n"
@@ -380,7 +384,7 @@ def _systemd_unit(
         "MemoryDenyWriteExecute=true\n"
         "CapabilityBoundingSet=\n"
         "AmbientCapabilities=\n"
-        "UMask=000\n"
+        "UMask=027\n"
         f"ReadWritePaths={quote(str(state_dir))} {quote(str(socket_path.parent))}\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
@@ -393,12 +397,13 @@ def _install_systemd(
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> None:
     systemctl = shutil.which("systemctl")
     if not systemctl or not Path("/run/systemd/system").is_dir():
         raise RuntimeError("This Linux host is not running systemd; automatic POSIX broker service setup is not supported here.")
     unit_path = Path("/etc/systemd/system") / f"{SERVICE_NAME}.service"
-    unit_data = _systemd_unit(service_user, python, service_script, state_dir, socket_path).encode("utf-8")
+    unit_data = _systemd_unit(service_user, python, service_script, state_dir, socket_path, client_uid=client_uid, service_group=service_group).encode("utf-8")
     _write_atomic(unit_path, unit_data, 0o644)
     for command in (
         [systemctl, "daemon-reload"],
@@ -417,6 +422,7 @@ def _install_launchd(
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> None:
     launchctl = shutil.which("launchctl")
     if not launchctl:
@@ -425,6 +431,7 @@ def _install_launchd(
     arguments = [
         str(python), "-I", "-S", str(service_script),
         "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+        "--client-uid", str(client_uid),
     ]
     plist: dict[str, object] = {
         "Label": LAUNCHD_LABEL,
@@ -432,7 +439,8 @@ def _install_launchd(
         "RunAtLoad": True,
         "KeepAlive": True,
         "ProcessType": "Background",
-        "Umask": 0,
+        "Umask": 0o027,
+        "GroupName": service_group,
     }
     if service_user != "root":
         plist["UserName"] = service_user
@@ -521,15 +529,18 @@ def _elevated_setup(
     service_script = config_dir / "state_broker_service.py"
     # Install the single shared Python state implementation with the isolated
     # service, rather than relying on PYTHONPATH or the installer checkout.
+    client_gid = pwd.getpwuid(installer_uid).pw_gid
+    service_group = grp.getgrgid(client_gid).gr_name
     package_dir = config_dir / "app"
-    package_dir.mkdir(mode=0o755, exist_ok=True)
+    package_dir.mkdir(mode=0o750, exist_ok=True)
     if package_dir.is_symlink() or not package_dir.is_dir():
         raise RuntimeError("Protected broker package directory is unsafe.")
-    os.chown(package_dir, 0, -1)
-    os.chmod(package_dir, 0o755)
-    _write_atomic(package_dir / "__init__.py", b"", 0o644)
+    os.chown(package_dir, 0, client_gid)
+    os.chmod(package_dir, 0o750)
+    _write_atomic(package_dir / "__init__.py", b"", 0o640, owner_gid=client_gid)
     for module in (
         "autonomous_engineering_state.py",
+        "autonomous_engineering_native_config.py",
         "autonomous_engineering_state_broker_config.py",
         "autonomous_engineering_state_store.py",
         "autonomous_engineering_state_broker_contract.py",
@@ -539,17 +550,17 @@ def _elevated_setup(
         module_source = source.parent.parent / "app" / module
         if module_source.is_symlink() or not module_source.is_file():
             raise RuntimeError("Broker state implementation is missing or unsafe.")
-        _write_atomic(package_dir / module, module_source.read_bytes(), 0o644)
-    _write_atomic(service_script, source.read_bytes(), 0o644)
+        _write_atomic(package_dir / module, module_source.read_bytes(), 0o640, owner_gid=client_gid)
+    _write_atomic(service_script, source.read_bytes(), 0o640, owner_gid=client_gid)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
     socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
     socket_path = socket_dir / "broker.sock"
 
     system = sys.platform
     if system.startswith("linux"):
-        _install_systemd(service_user, python, service_script, state_dir, socket_path)
+        _install_systemd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     elif system == "darwin":
-        _install_launchd(service_user, python, service_script, state_dir, socket_path)
+        _install_launchd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     else:
         raise RuntimeError(f"Automatic broker service setup is not implemented for {system}.")
 

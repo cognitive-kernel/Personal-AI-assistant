@@ -530,3 +530,8 @@ def test_posix_broker_recovers_expired_dispatch_reservation_with_fresh_grace(pos
     recovered = json.loads((state_dir / "workflow-dispatch-admission.json").read_text(encoding="utf-8"))
     assert recovered["pending"] is None
     assert recovered["last_accepted_at"] >= now - 1.0
+
+
+def test_socket_is_not_world_accessible(posix_broker):
+    _, socket_path, _ = posix_broker
+    assert stat.S_IMODE(socket_path.stat().st_mode) == 0o660

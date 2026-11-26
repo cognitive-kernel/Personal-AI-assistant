@@ -8,6 +8,8 @@ state directory (discovered by the installer).
 from __future__ import annotations
 
 import argparse
+import struct
+import ctypes
 import json
 import os
 import signal
@@ -29,9 +31,10 @@ sys.path.insert(0, str(_package_root))
 from app.autonomous_engineering_state_store import BrokerFailure, RestrictedStateBroker
 
 class UnixSocketBroker:
-    def __init__(self, broker: RestrictedStateBroker, socket_path: Path):
+    def __init__(self, broker: RestrictedStateBroker, socket_path: Path, *, client_uid: int | None = None):
         self.broker = broker
         self.socket_path = socket_path
+        self.allowed_uids = {os.geteuid(), 0, os.geteuid() if client_uid is None else client_uid}
         self.stopping = threading.Event()
         self.slots = threading.BoundedSemaphore(MAX_WORKERS)
 
@@ -85,9 +88,30 @@ class UnixSocketBroker:
             ).encode("utf-8") + b"\n"
         client.sendall(data)
 
+    @staticmethod
+    def _peer_uid(client: socket.socket) -> int:
+        """Use kernel-authenticated peer identity, never request metadata."""
+        if hasattr(socket, "SO_PEERCRED"):
+            size = struct.calcsize("3i")
+            _, uid, _ = struct.unpack("3i", client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, size))
+            return uid
+        if sys.platform == "darwin":
+            libc = ctypes.CDLL(None, use_errno=True)
+            uid, gid = ctypes.c_uint(), ctypes.c_uint()
+            fn = libc.getpeereid
+            fn.argtypes = [ctypes.c_int, ctypes.POINTER(ctypes.c_uint), ctypes.POINTER(ctypes.c_uint)]
+            fn.restype = ctypes.c_int
+            if fn(client.fileno(), ctypes.byref(uid), ctypes.byref(gid)) != 0:
+                raise OSError(ctypes.get_errno(), "Cannot authenticate broker peer.")
+            return uid.value
+        raise OSError("Peer authentication unavailable.")
+
     def _serve_one(self, client: socket.socket) -> None:
         try:
             client.settimeout(3.0)
+            if self._peer_uid(client) not in self.allowed_uids:
+                self._write(client, 403, {"error": "peer_not_authorized"})
+                return
             raw = self._read_line(client)
             try:
                 request = json.loads(raw.decode("utf-8"))
@@ -109,7 +133,7 @@ class UnixSocketBroker:
         self._prepare_socket_path()
         listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         listener.bind(str(self.socket_path))
-        os.chmod(self.socket_path, 0o666)
+        os.chmod(self.socket_path, 0o660)
         listener.listen(MAX_WORKERS)
         listener.settimeout(1.0)
         try:
@@ -138,9 +162,10 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--state-dir", required=True)
     parser.add_argument("--socket-path", required=True)
+    parser.add_argument("--client-uid", type=int)
     args = parser.parse_args()
     broker = RestrictedStateBroker(Path(args.state_dir))
-    server = UnixSocketBroker(broker, Path(args.socket_path))
+    server = UnixSocketBroker(broker, Path(args.socket_path), client_uid=args.client_uid)
     for signum in (signal.SIGTERM, signal.SIGINT):
         signal.signal(signum, lambda _signum, _frame: server.stopping.set())
     server.serve_forever()
