@@ -876,9 +876,9 @@ result = broker.cleanup()
 assert result["conflict"] is False, result
 assert result["recovered_run_id"] == "stale-run-ci"
 assert result["recovery_state"] == "interrupted"
-import json
+import json, os
 from pathlib import Path
-state = Path(broker.execution_state_directory())
+state = Path(os.environ["AUTONOMOUS_ENGINEERING_PROGRESS_DIR"])
 current = json.loads((state / "current.json").read_text(encoding="utf-8"))
 assert current["run_id"] == "stale-run-ci"
 assert current["status"] == "interrupted"
