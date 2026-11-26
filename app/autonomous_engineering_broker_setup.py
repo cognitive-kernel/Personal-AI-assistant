@@ -193,6 +193,17 @@ def setup_state_broker() -> dict[str, Any]:
                 code="STATE_BROKER_SETUP_IN_PROGRESS",
                 status_code=409,
             )
+        from .autonomous_engineering_native_config import native_state_enabled
+        if native_state_enabled():
+            from .autonomous_engineering_native_transport import setup_native_state
+            try:
+                return setup_native_state()
+            except (OSError, RuntimeError, ValueError) as exc:
+                raise BrokerSetupError(
+                    "راه‌اندازی فضای وضعیت بومی ممکن نیست؛ هیچ سرویس یا مجوز سیستمی تغییر نکرد.",
+                    code="NATIVE_STATE_SETUP_UNAVAILABLE",
+                    safe_details={"exception_type": type(exc).__name__},
+                ) from exc
         if _broker_is_healthy():
             return {
                 "ready": True,

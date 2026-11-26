@@ -90,6 +90,11 @@ from . import autonomous_engineering_progress_projection as _progress_projection
 _RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
 
 
+def _broker_owns_cleanup() -> bool:
+    from .autonomous_engineering_native_config import native_state_enabled
+    return native_state_enabled() or _is_windows()
+
+
 def _is_windows() -> bool:
     """Expose the platform boundary so cleanup behavior can be tested portably."""
     return os.name == "nt"
@@ -407,7 +412,7 @@ def collect_status() -> dict[str, Any]:
         ollama = _status_ollama_fallback(model)
     progress_storage = progress_storage is True
 
-    return _readiness_backend.build_status_payload(
+    status = _readiness_backend.build_status_payload(
         github=github,
         github_settings=github_settings,
         codex=codex,
@@ -425,6 +430,16 @@ def collect_status() -> dict[str, Any]:
         default_interval_hours=_DEFAULT_INTERVAL_HOURS,
         is_codex_context_variant=_is_codex_context_variant,
     )
+    from .autonomous_engineering_native_config import native_state_enabled
+    if native_state_enabled():
+        status["state_backend"] = "native"
+        status["checks"]["native_runner_workflow_compatible"] = False
+        status["ready"] = False
+        status["can_dispatch"] = False
+    else:
+        status["state_backend"] = "legacy_broker"
+    return status
+
 
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
@@ -750,7 +765,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
-    if _is_windows():
+    if _broker_owns_cleanup():
         try:
             result = cleanup_shared_progress_data()
             removed = int(result.get("files_removed", 0))
@@ -813,7 +828,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     # deleted after the broker releases its lock. POSIX cleanup runs under the
     # caller's repository lock and may remove these files safely.
     runtime_files_preserved: list[str] = []
-    if _is_windows():
+    if _broker_owns_cleanup():
         runtime_files_preserved = list(_RUNTIME_CLEANUP_FILES)
     else:
         runtime_directory = _agent_runtime_directory()
@@ -851,7 +866,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
         "preserved": preserved,
         "message": (
             "پاک‌سازی داده‌های امن انجام شد؛ تاریخچه، checkpointها و وضعیت پایدار عامل حفظ شدند."
-            + (" فایل‌های runtime داخل worktree در Windows برای جلوگیری از race حفظ شدند." if runtime_files_preserved else "")
+            + (" فایل‌های runtime داخل worktree برای جلوگیری از race حفظ شدند." if runtime_files_preserved else "")
             if not failed_files
             else "پاک‌سازی ناقص بود؛ بعضی فایل‌های موقت به‌دلیل خطای دسترسی حذف نشدند."
         ),
@@ -869,7 +884,7 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             )
 
     try:
-        if _is_windows():
+        if _broker_owns_cleanup():
             # The Broker owns local repository/state/checkpoint locks, but it
             # cannot independently authenticate the remote GitHub workflow
             # state. Check remote admission before asking it to reconcile local

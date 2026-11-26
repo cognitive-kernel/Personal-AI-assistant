@@ -236,6 +236,10 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         raise ValueError("This state-broker endpoint does not accept a request body.")
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
+    from .autonomous_engineering_native_config import native_state_enabled
+    if native_state_enabled():
+        from .autonomous_engineering_native_transport import request_native
+        return request_native(method, path, body, error_type=StateBrokerError, conflict_type=StateBrokerConflict)
     if os.name != "nt":
         from .autonomous_engineering_state_broker_unix import request_unix
         return request_unix(
@@ -315,6 +319,9 @@ def health(*, timeout_ms: int = 3500, verify: bool = False) -> bool:
         value = request("GET", path, timeout_ms=timeout_ms)
         if not isinstance(value, dict) or value.get("ready") is not True:
             return False
+        from .autonomous_engineering_native_config import native_state_enabled
+        if native_state_enabled():
+            return value.get("storage_ready") is True and value.get("service") == "native"
         if _WINDOWS:
             return value.get("storage_ready") is True and value.get("acl_ready") is True
         return True

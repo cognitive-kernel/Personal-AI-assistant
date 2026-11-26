@@ -273,7 +273,7 @@ class RestrictedStateBroker:
             directory_info = diagnostics_dir.lstat()
         except FileNotFoundError:
             return None
-        if not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode):
+        if not stat.S_ISDIR(directory_info.st_mode) or stat.S_ISLNK(directory_info.st_mode) or getattr(directory_info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
             raise OSError("Run diagnostics directory is not a real directory.")
         path = diagnostics_dir / f"{int(run_id):d}.json"
         info = self._regular_file(path, 240_000)
