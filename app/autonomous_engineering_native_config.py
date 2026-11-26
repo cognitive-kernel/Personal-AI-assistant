@@ -82,6 +82,8 @@ def resolve_native_state_directory(
             selected.resolve().relative_to(user_root.resolve())
         except ValueError as exc:
             raise RuntimeError("Fresh native state must be within the OS user-data directory.") from exc
+    if _existing(selected / ".native-migration.json"):
+        raise RuntimeError("Staged migration is not activated; refusing to use a snapshot as live state.")
     return selected
 
 
@@ -111,7 +113,10 @@ def discover_migration_paths(*, is_windows: bool, machine_state: Callable[[], st
         from .autonomous_engineering_state_broker_config import configured_state_directory
         authoritative = configured_state_directory()
     program_data = os.getenv("PROGRAMDATA", "").strip()
-    site = (_absolute(program_data) if program_data else Path(site_data_path("PersonalAIAssistant", appauthor=False)).parent) / "PersonalAIAssistant" / "autonomous-engineering"
+    site = (
+        _absolute(program_data) / "PersonalAIAssistant" / "autonomous-engineering"
+        if program_data else Path(site_data_path("PersonalAIAssistant", appauthor=False)) / "autonomous-engineering"
+    )
     legacy_home = Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
     candidates = [p for p in (authoritative, site, legacy_home) if p is not None and _existing(p) and not _same(p, target)]
     distinct = {p.resolve(): p for p in candidates}

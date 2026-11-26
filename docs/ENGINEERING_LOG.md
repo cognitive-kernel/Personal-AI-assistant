@@ -1,3 +1,13 @@
+## 2026-11-26 — PR #882 consolidated engineering remediation (in progress)
+
+- All changes are on `fix/engineering-consolidated-20261126`; PR #882 is draft. No merge, local host operation, service removal, repository variable change, or state activation was performed.
+- Backend façade split into control, readiness, run operations, state store and task owner/lifecycle modules. Compatibility façades remain; complete import/architecture isolation is not yet accepted.
+- Native transport is opt-in. Native remote dispatch is deliberately blocked pending replacement of the service-based Runner lifecycle and remaining PowerShell workflow stages.
+- Native recovery reconciles exact run/attempt and process ownership under shared locks. Migration creates a hash-verified staged copy only; the existing authority is not switched. A staged marker prevents accidental live use. Full crash/restart and real-host recovery acceptance remain open.
+- GitHub CLI acquisition now uses scoped Python download, official release checksum verification, exact archive-member extraction, and executable/capability checks. Windows x64 automatic acquisition is scoped to this capability; Codex, Ollama, Python and Runner end-to-end provisioning and UI coverage remain incomplete.
+- Security: legacy POSIX broker socket restricted to owner/group and authenticated peer UID, installed package restricted to owner/group. CodeQL still reported two new high-severity permission findings on 873a11ec72bf8e350b13b2c012ec25ca98f3190f. Do not dismiss or mark resolved; exact-head analysis and least-privilege legacy design review are required. Intermediate Linux/browser/dependency checks passed, but final Windows/full CI and comprehensive UI scenarios remain open.
+- Prior active-PR descriptions below are historical. Current evidence is PR #882 and its exact-head checks. Do not increase completion score or claim Gate A–J complete. No reliable labor-hour measurement was collected.
+
 ## 2026-11-26 — mandatory minimal-dependency and automatic prerequisite policy
 
 - Both master engineering prompts now explicitly prohibit unnecessary dependencies on external software, shells, services, package managers, exact versions, fixed identities, and fixed paths.

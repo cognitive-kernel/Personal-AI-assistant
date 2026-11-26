@@ -303,7 +303,7 @@ def exclusive_file_lock(
             raise OSError("State lock must be a regular file.")
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
-            handle.write(b"\\0")
+            handle.write(b"\0")
             handle.flush()
 
         if os.name == "nt":

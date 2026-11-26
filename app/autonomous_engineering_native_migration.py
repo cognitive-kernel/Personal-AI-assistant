@@ -110,8 +110,12 @@ def stage_native_migration(source: Path, target: Path, *, require_idle: Callable
                 owner = stream.read(4097)
             if len(owner) > 4096:
                 raise RuntimeError("Repository owner evidence exceeds its limit.")
-            if owner:
-                json.loads(owner)
+            # Earlier shared locks wrote a two-byte literal backslash-zero placeholder.
+            # A staged snapshot is not live authority; do not treat it as owner metadata.
+            if owner == b"0":
+                owner = b""
+            if owner and not isinstance(json.loads(owner), dict):
+                raise RuntimeError("Repository owner evidence must be a JSON object.")
             manifest = _manifest(values)
             marker = {
                 "schema_version": 1, "state": "staged", "activation_permitted": False,

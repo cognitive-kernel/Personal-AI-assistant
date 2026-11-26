@@ -122,3 +122,7 @@ Exact-head hosted CI has passed for the current code heads recorded in `docs/ENG
 ## 2026-11-24 — Autonomous Engineering module hardening
 
 The 14 backend, Codex retry/report, and UI findings are tracked within the existing Autonomous Engineering resilience work package (E-05). This remediation does not change the approved 22-day baseline or contingency allocation. No actual engineering hours are entered because elapsed tool/chat time is not a reliable labor-time measurement. Acceptance remains pending exact-head Linux/Windows CI, broker service build/integration, browser E2E, and target-host Windows operational verification.
+
+## Change-control addendum — 2026-11-26
+
+PR #882 extends the autonomous-engineering remediation with native-state transport, migration staging, recovery, backend decomposition and scoped GitHub CLI provisioning. Remaining work includes service-free Runner lifecycle, PowerShell removal, complete prerequisite acquisition, security and architecture gates, exhaustive UI regression and real Windows acceptance. The original estimate is not an updated forecast: actual effort and a revised delivery date are not established. No additional hours or completion percentage are asserted.
