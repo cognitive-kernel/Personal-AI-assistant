@@ -1654,7 +1654,8 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                 rawStartedAt, System.Globalization.CultureInfo.InvariantCulture);
             double actualStartedAt = (process.StartTime.ToUniversalTime() -
                 new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
-            if (Double.IsNaN(recordedStartedAt) || Double.IsInfinity(recordedStartedAt))
+            if (Double.IsNaN(recordedStartedAt) || Double.IsInfinity(recordedStartedAt) ||
+                recordedStartedAt <= 0 || Double.IsNaN(actualStartedAt) || Double.IsInfinity(actualStartedAt))
                 return "unknown";
             return Math.Abs(actualStartedAt - recordedStartedAt) <= 0.02 ? "alive" : "reused";
         }
@@ -1716,13 +1717,27 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         string eventsPath = Path.Combine(_stateDirectory, "events.jsonl");
         try
         {
-            if (SafeFileExists(eventsPath) && new FileInfo(eventsPath).Length > 8 * 1024 * 1024)
-                return false;
-            byte[] eventBytes = Encoding.UTF8.GetBytes(_json.Serialize(recoveryEvent) + "\n");
-            using (FileStream stream = new FileStream(eventsPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            bool eventAlreadyRecorded = false;
+            if (SafeFileExists(eventsPath))
             {
-                stream.Write(eventBytes, 0, eventBytes.Length);
-                stream.Flush(true);
+                FileInfo eventsInfo = new FileInfo(eventsPath);
+                if (eventsInfo.Length <= 4 * 1024 * 1024)
+                {
+                    string existingEvents = File.ReadAllText(eventsPath, Encoding.UTF8);
+                    eventAlreadyRecorded = existingEvents.IndexOf(
+                        "\\"event_id\\":\\"" + eventId + "\\"",
+                        StringComparison.Ordinal
+                    ) >= 0;
+                }
+            }
+            if (!eventAlreadyRecorded)
+            {
+                byte[] eventBytes = Encoding.UTF8.GetBytes(_json.Serialize(recoveryEvent) + "\n");
+                using (FileStream stream = new FileStream(eventsPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    stream.Write(eventBytes, 0, eventBytes.Length);
+                    stream.Flush(true);
+                }
             }
             current["status"] = "interrupted";
             current["phase"] = "recovery";
