@@ -127,3 +127,96 @@ def test_autonomous_engineering_selector_contract_matches_the_page():
         source = _read(name)
         used.update(re.findall(r'\$\("([^"]+)"\)', source))
     assert not used - ids, f"UI module selectors missing from HTML: {sorted(used - ids)}"
+
+ 
+def test_autonomous_engineering_run_log_safety_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_run_log_safety.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def sanitize_workflow_log(" in backend
+    assert "def workflow_failure_summary(" in backend
+    assert "def _sanitize_workflow_log(" in facade
+    assert "def _workflow_failure_summary(" in facade
+    assert "_run_log_safety.sanitize_workflow_log(" in facade
+    assert "_run_log_safety.workflow_failure_summary(" in facade
+
+
+def test_autonomous_engineering_run_history_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_run_history.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    for function in (
+        "def cached_run_diagnostics(",
+        "def workflow_runs(",
+        "def verified_workflow_run(",
+        "def read_run_diagnostics(",
+    ):
+        assert function in backend
+    for function in (
+        "def _cached_run_diagnostics(",
+        "def _workflow_runs(",
+        "def _verified_workflow_run(",
+        "def _read_run_diagnostics(",
+    ):
+        assert function in facade
+    assert "_run_history.workflow_runs(" in facade
+    assert "_run_history.verified_workflow_run(" in facade
+
+
+
+def test_autonomous_engineering_settings_have_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_settings.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def save_settings(" in backend
+    assert "def save_autonomous_engineering_settings(" in facade
+    assert "_settings_backend.save_settings(" in facade
+    assert "save_repository_variables=_save_repository_variables" in facade
+    assert "ollama_status=_ollama_status" in facade
+
+
+
+def test_autonomous_engineering_readiness_payload_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_readiness.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def build_status_payload(" in backend
+    assert "def collect_status(" in facade
+    assert "_readiness_backend.build_status_payload(" in facade
+    assert "ThreadPoolExecutor(" not in backend
+    assert "BoundedSemaphore(" not in backend
+
+
+
+def test_autonomous_engineering_run_log_payload_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_run_logs.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def build_run_logs_payload(" in backend
+    assert "def autonomous_engineering_run_logs(" in facade
+    assert "_run_logs_backend.build_run_logs_payload(" in facade
+    assert "_github_api_json(gh," in facade
+    assert "_verified_workflow_run(gh, run_id)" in facade
+
+
+
+def test_autonomous_engineering_pr_preflight_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_pr_preflight.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def has_open_autonomous_pr(" in backend
+    assert "def _has_open_autonomous_pr(" in facade
+    assert "_pr_preflight.has_open_autonomous_pr(" in facade
+    assert "run_command=_run" in facade
+
+
+
+def test_autonomous_engineering_progress_projection_is_a_pure_backend():
+    backend = (ROOT / "app" / "autonomous_engineering_progress_projection.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def enrich_progress_payload(" in backend
+    assert "def _enrich_progress_from_github(" in facade
+    assert "_progress_projection.enrich_progress_payload(current, jobs)" in facade
+    assert "subprocess" not in backend
+    assert "import requests" not in backend

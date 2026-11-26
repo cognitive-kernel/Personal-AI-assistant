@@ -23,7 +23,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
-from pydantic import BaseModel, Field, StrictInt, StrictStr
+from .autonomous_engineering_contracts import (
+    CancelRequest,
+    CODEX_CONTEXT_VARIANT_PATTERN as _CODEX_CONTEXT_VARIANT_PATTERN,
+    CORRELATION_ID_PATTERN as _CORRELATION_ID_PATTERN,
+    EngineeringSettings,
+    HTTP_ERROR_CODES as _HTTP_ERROR_CODES,
+    ManualTaskRequest,
+    MODEL_PATTERN as _MODEL_PATTERN,
+    ModelPullRequest,
+    RETRYABLE_HTTP_STATUSES as _RETRYABLE_HTTP_STATUSES,
+)
 
 from .task_routes import require_loopback_client
 from .autonomous_engineering_progress import (
@@ -59,133 +69,23 @@ _STATUS_LOGGER = logging.getLogger(__name__)
 # cross-process, restart-durable dispatch reservation and grace window.
 _DISPATCH_REQUEST_LOCK = threading.Lock()
 
-_HTTP_ERROR_CODES = {
-    400: "AUTONOMOUS_ENGINEERING_BAD_REQUEST",
-    401: "AUTONOMOUS_ENGINEERING_UNAUTHORIZED",
-    403: "AUTONOMOUS_ENGINEERING_FORBIDDEN",
-    404: "AUTONOMOUS_ENGINEERING_NOT_FOUND",
-    408: "AUTONOMOUS_ENGINEERING_TIMEOUT",
-    409: "AUTONOMOUS_ENGINEERING_CONFLICT",
-    422: "AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
-    429: "AUTONOMOUS_ENGINEERING_RATE_LIMITED",
-    500: "AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
-    502: "AUTONOMOUS_ENGINEERING_UPSTREAM_ERROR",
-    503: "AUTONOMOUS_ENGINEERING_UNAVAILABLE",
-    504: "AUTONOMOUS_ENGINEERING_TIMEOUT",
-}
-_RETRYABLE_HTTP_STATUSES = {408, 425, 429, 500, 502, 503, 504}
-_CORRELATION_ID_PATTERN = re.compile(r"^[a-f0-9]{32}$")
 
 
-def _structured_error_response(
-    *, status_code: int, message: str, detail: Any, headers: dict[str, str] | None = None,
-    code: str | None = None, retryable: bool | None = None, safe_details: dict[str, Any] | None = None,
-) -> JSONResponse:
-    response_headers = dict(headers or {})
-    correlation_id = response_headers.get("X-Correlation-ID") or uuid.uuid4().hex
-    error_code = response_headers.get("X-Error-Code") or code or _HTTP_ERROR_CODES.get(
-        status_code, "AUTONOMOUS_ENGINEERING_HTTP_ERROR"
-    )
-    retry_header = response_headers.get("X-Retryable")
-    can_retry = (
-        retry_header.casefold() == "true" if retry_header is not None
-        else (status_code in _RETRYABLE_HTTP_STATUSES if retryable is None else retryable)
-    )
-    response_headers.update({
-        "X-Correlation-ID": correlation_id,
-        "X-Error-Code": error_code,
-        "X-Retryable": "true" if can_retry else "false",
-    })
-    _STATUS_LOGGER.warning(
-        "Autonomous Engineering API error; status_code=%s code=%s retryable=%s correlation_id=%s",
-        status_code,
-        error_code,
-        can_retry,
-        correlation_id,
-    )
-    return JSONResponse(
-        status_code=status_code,
-        content={
-            "detail": detail,
-            "code": error_code,
-            "message": message,
-            "correlation_id": correlation_id,
-            "retryable": can_retry,
-            "safe_details": safe_details if isinstance(safe_details, dict) else {},
-        },
-        headers=response_headers,
-    )
+from .autonomous_engineering_errors import (
+    AutonomousEngineeringAPIRoute,
+    _structured_error_response,
+)
+from . import autonomous_engineering_github as _github_adapter
+from . import autonomous_engineering_run_log_safety as _run_log_safety
+from . import autonomous_engineering_run_history as _run_history
+from . import autonomous_engineering_settings as _settings_backend
+from . import autonomous_engineering_readiness as _readiness_backend
+from . import autonomous_engineering_run_logs as _run_logs_backend
+from . import autonomous_engineering_pr_preflight as _pr_preflight
+from . import autonomous_engineering_progress_projection as _progress_projection
 
-
-class AutonomousEngineeringAPIRoute(APIRoute):
-    """Keep all Autonomous Engineering API failures on one safe diagnostic contract."""
-
-    def get_route_handler(self):
-        original_handler = super().get_route_handler()
-
-        async def structured_handler(request):
-            supplied_id = str(request.headers.get("X-Correlation-ID") or "").strip().lower()
-            correlation_id = supplied_id if _CORRELATION_ID_PATTERN.fullmatch(supplied_id) else uuid.uuid4().hex
-            request.state.correlation_id = correlation_id
-            try:
-                response = await original_handler(request)
-            except HTTPException as exc:
-                message = exc.detail if isinstance(exc.detail, str) else "درخواست ناموفق بود."
-                headers = dict(exc.headers or {})
-                headers.setdefault("X-Correlation-ID", correlation_id)
-                safe_diagnostics = getattr(exc, "safe_details", None)
-                if isinstance(safe_diagnostics, dict) and safe_diagnostics:
-                    _STATUS_LOGGER.error(
-                        "Autonomous Engineering operation diagnostic; status_code=%s code=%s correlation_id=%s safe_details=%s",
-                        exc.status_code,
-                        headers.get("X-Error-Code") or _HTTP_ERROR_CODES.get(exc.status_code, "unknown"),
-                        correlation_id,
-                        json.dumps(safe_diagnostics, ensure_ascii=False, sort_keys=True)[:700],
-                    )
-                return _structured_error_response(
-                    status_code=exc.status_code,
-                    message=message,
-                    detail=message,
-                    headers=headers,
-                    safe_details=getattr(exc, "safe_details", None),
-                )
-            except RequestValidationError as exc:
-                errors = []
-                for error in exc.errors():
-                    location = error.get("loc", ())
-                    errors.append({
-                        "loc": [str(part) for part in location if isinstance(part, (str, int))],
-                        "msg": str(error.get("msg") or "Invalid value"),
-                        "type": str(error.get("type") or "validation_error"),
-                    })
-                return _structured_error_response(
-                    status_code=422,
-                    message="ورودی درخواست معتبر نیست.",
-                    detail=errors,
-                    headers={"X-Correlation-ID": correlation_id},
-                    code="AUTONOMOUS_ENGINEERING_VALIDATION_FAILED",
-                    retryable=False,
-                    safe_details={"validation_errors": errors},
-                )
-            except Exception as exc:
-                _STATUS_LOGGER.error(
-                    "Autonomous Engineering API failed; exception_type=%s correlation_id=%s",
-                    type(exc).__name__,
-                    correlation_id,
-                )
-                return _structured_error_response(
-                    status_code=500,
-                    message="خطای داخلی سرویس رخ داد؛ شناسهٔ پیگیری را برای بررسی ارائه کنید.",
-                    detail="خطای داخلی سرویس رخ داد.",
-                    headers={"X-Correlation-ID": correlation_id},
-                    code="AUTONOMOUS_ENGINEERING_INTERNAL_ERROR",
-                    retryable=False,
-                    safe_details={"exception_type": type(exc).__name__},
-                )
-            response.headers.setdefault("X-Correlation-ID", correlation_id)
-            return response
-
-        return structured_handler
+# Backward-compatible cache seam used by existing tests and integrations.
+_RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
 
 
 def _is_windows() -> bool:
@@ -212,30 +112,8 @@ _DEFAULT_REPOSITORY = "cognitive-kernel/Personal-AI-assistant"
 _WORKFLOW = "autonomous-codex-engineering.yml"
 _DEFAULT_INTERVAL_HOURS = 24
 _ALLOWED_INTERVAL_HOURS = {1, 2, 4, 6, 12, 24}
-_MODEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,119}$")
-_CODEX_CONTEXT_VARIANT_PATTERN = re.compile(r"-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$", re.IGNORECASE)
-
-
 def _is_codex_context_variant(model: str) -> bool:
     return bool(_CODEX_CONTEXT_VARIANT_PATTERN.search(model.strip()))
-
-
-class EngineeringSettings(BaseModel):
-    model: StrictStr
-    interval_hours: StrictInt
-    execution_mode: StrictStr = "continuous"
-
-
-class ManualTaskRequest(BaseModel):
-    task: StrictStr = Field(default="", max_length=2000)
-
-
-class ModelPullRequest(BaseModel):
-    model: StrictStr = Field(min_length=1, max_length=120)
-
-
-class CancelRequest(BaseModel):
-    run_id: StrictInt = Field(gt=0)
 
 
 def _repository() -> str:
@@ -527,72 +405,24 @@ def collect_status() -> dict[str, Any]:
         ollama = _status_ollama_fallback(model)
     progress_storage = progress_storage is True
 
-    settings = github_settings
-    interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
-    execution_mode = settings.get("execution_mode", "continuous")
-    paused = bool(settings.get("paused", False))
-    checks = {
-        "ollama_online": ollama["online"],
-        "model_installed": ollama["model_installed"],
-        "model_selectable": ollama.get("model_selectable", ollama["model_installed"] and not _is_codex_context_variant(model)) is True,
-        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant") is True,
-        "model_context_metadata_available": ollama.get("model_metadata_available") is True,
-        "model_context_supported": ollama.get("model_context_supported") is True,
-        "model_tools_metadata_available": ollama.get("model_tools_metadata_available") is True,
-        "model_supports_tools": ollama.get("model_supports_tools") is True,
-        "codex_installed": codex["installed"],
-        "runner_running": runner["running"],
-        "github_cli_authenticated": github["authenticated"],
-        "github_runs_available": github.get("runs_available", False),
-        "progress_storage_accessible": progress_storage,
-        "durable_state_available": pending_work.get("available") is True,
-    }
-    ready = all(
-        value
-        for key, value in checks.items()
-        if key not in {"codex_installed", "model_is_codex_context_variant", "model_tools_metadata_available"}
+    return _readiness_backend.build_status_payload(
+        github=github,
+        github_settings=github_settings,
+        codex=codex,
+        runner=runner,
+        ollama=ollama,
+        pending_work=pending_work,
+        progress_storage=progress_storage,
+        model=model,
+        repository=_repository(),
+        workflow=_WORKFLOW,
+        platform_name=platform.platform(),
+        timed_out=timed_out,
+        errors=errors,
+        unavailable=unavailable,
+        default_interval_hours=_DEFAULT_INTERVAL_HOURS,
+        is_codex_context_variant=_is_codex_context_variant,
     )
-    active_runs = github.get("recent_runs", [])
-    active = any(
-        isinstance(item, dict)
-        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-        for item in active_runs
-    )
-    can_dispatch = ready and not paused and not active
-    return {
-        "ready": ready,
-        "can_dispatch": can_dispatch,
-        "checks": checks,
-        "pending_work": pending_work,
-        "ollama": ollama,
-        "codex": codex,
-        "runner": runner,
-        "github": github,
-        "repository": _repository(),
-        "workflow": _WORKFLOW,
-        "model": model,
-        "models": ollama.get("models", []),
-        "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
-        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
-        "model_context_length": ollama.get("model_context_length"),
-        "model_recommended_context_length": ollama.get("model_recommended_context_length"),
-        "model_context_supported": ollama.get("model_context_supported", False),
-        "model_context_error": ollama.get("model_context_error"),
-        "model_capabilities": ollama.get("model_capabilities", []),
-        "model_tools_metadata_available": ollama.get("model_tools_metadata_available", False),
-        "model_tools_verification_method": ollama.get("model_tools_verification_method", "unverified"),
-        "model_supports_tools": ollama.get("model_supports_tools", False),
-        "model_metadata_error": ollama.get("model_metadata_error"),
-        "interval_hours": interval_hours,
-        "execution_mode": execution_mode,
-        "paused": paused,
-        "progress_storage_accessible": progress_storage,
-        "platform": platform.platform(),
-        "local_only_inference": True,
-        "status_probe_timeouts": timed_out,
-        "status_probe_errors": errors,
-        "status_probe_unavailable": unavailable,
-    }
 
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
@@ -662,56 +492,7 @@ def _enrich_progress_from_github(current: dict[str, Any] | None) -> dict[str, An
         return current
     if not isinstance(jobs, list) or not jobs:
         return current
-    updated = dict(current)
-    active_job = next(
-        (job for job in jobs if isinstance(job, dict) and job.get("status") == "in_progress"),
-        None,
-    )
-    failed_job = next(
-        (job for job in jobs if isinstance(job, dict) and job.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}),
-        None,
-    )
-    queued_job = next(
-        (job for job in jobs if isinstance(job, dict) and job.get("status") == "queued" and job.get("name") == "codex"),
-        None,
-    )
-    if active_job:
-        name = str(active_job.get("name", ""))
-        steps = active_job.get("steps", [])
-        steps = steps if isinstance(steps, list) else []
-        active_step = next(
-            (step for step in steps if isinstance(step, dict) and step.get("status") == "in_progress"),
-            None,
-        )
-        step_name = str(active_step.get("name", "در حال اجرای مرحله")) if active_step else "در انتظار مرحلهٔ بعد"
-        updated["activity"] = step_name[:180]
-        updated["status"] = "running"
-        if name == "codex":
-            updated.setdefault("phase", "coding")
-            updated.setdefault("phase_label", "اجرای چرخهٔ مهندسی")
-    elif failed_job:
-        updated.update({
-            "status": "failed",
-            "phase_label": "چرخه با خطا پایان یافت",
-            "activity": str(failed_job.get("name", "مرحلهٔ ناموفق")) + ": " + str(failed_job.get("conclusion", "failed")),
-        })
-    elif queued_job and queued_job.get("name") == "codex":
-        updated.update({
-            "phase": "queued", "phase_label": "در انتظار Runner خودمیزبان",
-            "activity": "چرخه در صف اجرا قرار دارد", "status": "queued",
-        })
-    elif all(
-        isinstance(job, dict) and job.get("status") == "completed"
-        for job in jobs
-    ):
-        conclusions = {job.get("conclusion") for job in jobs if isinstance(job, dict)}
-        if conclusions.issubset({"success", "skipped", "neutral"}):
-            updated.update({
-                "status": "completed", "phase": "complete",
-                "phase_label": "چرخهٔ مهندسی کامل شد",
-                "activity": "تمام مراحل Workflow با موفقیت پایان یافتند",
-                "percent": 100,
-            })
+    updated = _progress_projection.enrich_progress_payload(current, jobs)
     _RUN_PROGRESS_CACHE.update({"run_id": run_id, "at": now, "value": dict(updated)})
     return updated
 
@@ -733,90 +514,21 @@ def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) ->
 
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
-    model = payload.model.strip()
-    if not _MODEL_PATTERN.fullmatch(model):
-        raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
-    if _is_codex_context_variant(model):
-        raise HTTPException(status_code=422, detail="این مدل نسخهٔ داخلی Context است؛ مدل اصلی Ollama را انتخاب کنید.")
-    if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
-        raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
-    if payload.execution_mode not in {"scheduled", "continuous"}:
-        raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
-    local_model = _ollama_status(model)
-    if not local_model.get("online"):
-        raise HTTPException(status_code=503, detail="سرویس Ollama محلی در دسترس نیست؛ مدل ذخیره نشد.")
-    if not local_model.get("model_installed"):
-        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
-    if not local_model.get("model_metadata_available"):
-        raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
-    if not local_model.get("model_context_supported"):
-        raise HTTPException(
-            status_code=422,
-            detail="با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن Context قابل محاسبه نیست؛ تنظیمات ذخیره نشد.",
-        )
-    if not local_model.get("model_supports_tools"):
-        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
-    gh = shutil.which("gh")
-    if not gh:
-        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    if not auth or auth.returncode != 0:
-        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
-    updates = (
-        ("AUTONOMOUS_ENGINEERING_MODEL", model),
-        ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
-        ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
+    return _settings_backend.save_settings(
+        payload,
+        model_pattern=_MODEL_PATTERN,
+        allowed_interval_hours=_ALLOWED_INTERVAL_HOURS,
+        is_codex_context_variant=_is_codex_context_variant,
+        ollama_status=_ollama_status,
+        which=shutil.which,
+        run_command=_run,
+        save_repository_variables=_save_repository_variables,
     )
-    _save_repository_variables(gh, updates)
-    return {
-        "saved": True,
-        "model": model,
-        "interval_hours": payload.interval_hours,
-        "execution_mode": payload.execution_mode,
-        "message": "تنظیمات عامل در متغیرهای مخزن GitHub ذخیره شد.",
-    }
-
 
 def _has_open_autonomous_pr(gh: str) -> bool:
-    """Fail closed unless GitHub confirms there is no controller-owned open PR."""
-    result = _run(
-        [gh, "api", f"repos/{_repository()}/pulls?state=open&per_page=100"],
-        timeout=12,
+    return _pr_preflight.has_open_autonomous_pr(
+        gh, repository=_repository(), run_command=_run
     )
-    if not result or result.returncode != 0:
-        raise HTTPException(
-            status_code=503,
-            detail="وضعیت PRهای باز مخزن قابل تأیید نیست؛ وظیفهٔ جدید ارسال نشد.",
-        )
-    try:
-        pulls = json.loads(result.stdout)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="پاسخ GitHub برای PRهای باز معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
-        ) from exc
-    if not isinstance(pulls, list) or any(not isinstance(item, dict) for item in pulls):
-        raise HTTPException(
-            status_code=502,
-            detail="ساختار فهرست PRهای GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
-        )
-    for item in pulls:
-        user = item.get("user") if isinstance(item.get("user"), dict) else {}
-        head = item.get("head") if isinstance(item.get("head"), dict) else {}
-        base = item.get("base") if isinstance(item.get("base"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
-        branch = head.get("ref")
-        if (
-            user.get("login") == "github-actions[bot]"
-            and head_repo.get("full_name") == _repository()
-            and isinstance(branch, str)
-            and branch.startswith("codex/local-engineering-")
-            and base.get("ref") == "main"
-            and item.get("state", "open") == "open"
-        ):
-            return True
-    return False
-
 
 def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_id: str, resume_once: bool = False) -> dict[str, Any]:
     if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
@@ -1179,198 +891,49 @@ def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]
     return value
 
 
-_RUN_DIAGNOSTICS_CACHE: dict[int, tuple[float, dict[str, Any] | None]] = {}
-_RUN_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
-_RUN_DIAGNOSTICS_CACHE_TTL_SECONDS = 60.0
-_RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES = 256
-
-
 def _cached_run_diagnostics(run_id: int) -> dict[str, Any] | None:
-    """Avoid repeating broker reads while the dashboard polls the same failed runs."""
-    now = time.monotonic()
-    with _RUN_DIAGNOSTICS_CACHE_LOCK:
-        cached = _RUN_DIAGNOSTICS_CACHE.get(run_id)
-        if cached is not None and now - cached[0] < _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS:
-            return cached[1]
-    diagnostic = _read_run_diagnostics(run_id)
-    now = time.monotonic()
-    with _RUN_DIAGNOSTICS_CACHE_LOCK:
-        _RUN_DIAGNOSTICS_CACHE[run_id] = (now, diagnostic)
-        expired = [
-            key for key, (cached_at, _value) in _RUN_DIAGNOSTICS_CACHE.items()
-            if now - cached_at >= _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS
-        ]
-        for key in expired:
-            _RUN_DIAGNOSTICS_CACHE.pop(key, None)
-        while len(_RUN_DIAGNOSTICS_CACHE) > _RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES:
-            _RUN_DIAGNOSTICS_CACHE.pop(next(iter(_RUN_DIAGNOSTICS_CACHE)))
-    return diagnostic
+    # Preserve the legacy monkeypatch seam while keeping cache ownership in
+    # the run-history module.
+    _run_history._DIAGNOSTICS_CACHE = _RUN_DIAGNOSTICS_CACHE
+    return _run_history.cached_run_diagnostics(
+        run_id, read_diagnostics=_read_run_diagnostics
+    )
 
 
 def _workflow_runs(gh: str) -> list[dict[str, Any]]:
-    # Keep the CLI/API command shape fixed. HTTP query parameters must never
-    # become command-line arguments through the GitHub CLI wrapper.
-    data = _github_api_json(
+    return _run_history.workflow_runs(
         gh,
-        f"actions/workflows/{_WORKFLOW}/runs?per_page=100",
-        timeout=20,
+        workflow=_WORKFLOW,
+        github_api_json=_github_api_json,
+        cached_diagnostics=_cached_run_diagnostics,
     )
-    runs = data.get("workflow_runs")
-    if not isinstance(runs, list):
-        raise HTTPException(status_code=502, detail="فهرست اجراهای Workflow در پاسخ GitHub وجود ندارد.")
-    normalized: list[dict[str, Any]] = []
-    for item in runs:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
-            continue
-        diagnostic = (
-            _cached_run_diagnostics(item["id"])
-            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
-            else None
-        )
-        latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
-        normalized.append({
-            "id": item["id"],
-            "status": str(item.get("status") or "unknown"),
-            "conclusion": item.get("conclusion"),
-            "name": str(item.get("name") or "Autonomous local Ollama engineering"),
-            "display_title": str(item.get("display_title") or item.get("displayTitle") or ""),
-            "created_at": item.get("created_at"),
-            "updated_at": item.get("updated_at"),
-            "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
-            "head_branch": item.get("head_branch"),
-            "workflow_path": str(item.get("path") or "").split("@", 1)[0],
-            "failure_summary": (
-                latest_diagnostic.get("summary")
-                if latest_diagnostic and item.get("conclusion") not in {"success", "neutral", "skipped"}
-                else None
-            ),
-        })
-    return normalized
 
 
 def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
-    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
-        raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
-    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
-    expected_path = f".github/workflows/{_WORKFLOW}"
-    workflow_path = str(run.get("path") or "").split("@", 1)[0]
-    verified_run_id = run.get("id")
-    if (
-        isinstance(verified_run_id, bool)
-        or not isinstance(verified_run_id, int)
-        or verified_run_id <= 0
-        or verified_run_id != run_id
-        or workflow_path != expected_path
-    ):
-        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
-    return {
-        "id": verified_run_id,
-        "status": str(run.get("status") or "unknown"),
-        "conclusion": run.get("conclusion"),
-        "workflow_path": workflow_path,
-        "url": run.get("html_url") if isinstance(run.get("html_url"), str) else None,
-    }
+    return _run_history.verified_workflow_run(
+        gh, run_id, workflow=_WORKFLOW, github_api_json=_github_api_json
+    )
 
 
 def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
-    """Read the runner-persisted, redacted report for one verified run ID."""
-    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
-        return None
-    try:
-        payload = read_run_diagnostics(run_id)
-        if not isinstance(payload, dict):
-            return None
-    except (OSError, RuntimeError, ValueError, TypeError):
-        return None
-    if (
-        not isinstance(payload, dict)
-        or payload.get("schema_version") != 1
-        or str(payload.get("run_id")) != str(run_id)
-        or not isinstance(payload.get("diagnostics"), list)
-    ):
-        return None
-    entries = []
-    for item in payload["diagnostics"][-_MAX_RUN_DIAGNOSTIC_ENTRIES:]:
-        if not isinstance(item, dict):
-            continue
-        entries.append({
-            "run_attempt": str(item.get("run_attempt") or "")[:12],
-            "task": item.get("task") if isinstance(item.get("task"), int) else None,
-            "attempt": item.get("attempt") if isinstance(item.get("attempt"), int) else None,
-            "stage": _sanitize_workflow_log(str(item.get("stage") or ""))[:80],
-            "category": _sanitize_workflow_log(str(item.get("category") or ""))[:80],
-            "summary": _sanitize_workflow_log(str(item.get("summary") or ""))[:800],
-            "detail": _sanitize_workflow_log(str(item.get("detail") or ""))[-12_000:],
-            "recorded_at": str(item.get("recorded_at") or "")[:64],
-        })
-    if not entries:
-        return None
-    return {
-        "run_id": run_id,
-        "updated_at": str(payload.get("updated_at") or "")[:64],
-        "diagnostics": entries,
-    }
+    return _run_history.read_run_diagnostics(
+        run_id,
+        read_payload=read_run_diagnostics,
+        sanitize_log=_sanitize_workflow_log,
+        max_entries=_MAX_RUN_DIAGNOSTIC_ENTRIES,
+    )
 
 
 def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str | None:
-    """Prefer the controller's root-cause line over generic shell exit messages."""
-    lines = [line.strip() for line in _sanitize_workflow_log(value).splitlines() if line.strip()]
-    if any("Warning: no last agent message" in line for line in lines):
-        return (
-            "Codex did not emit a final agent message; the output-last-message report was empty, "
-            "so the controller could not validate a completion marker. Preserve the durable "
-            "task/checkpoint and inspect the Codex turn's terminal events before retrying."
-        )
-    preferred = []
-    for line in lines:
-        marker = "Autonomous engineering cycle failed:"
-        if marker in line:
-            preferred.append(line.split(marker, 1)[1].strip())
-        elif "Codex reported task " in line and " as blocked" in line:
-            preferred.append(line)
-    if preferred:
-        return preferred[-1][:800]
-    actionable = [
-        line for line in lines
-        if (
-            ("##[error]" in line or re.search(r"(?i)\b(error|exception|traceback):", line))
-            and "Process completed with exit code" not in line
-        )
-    ]
-    if actionable:
-        return actionable[-1][:800]
-    if failures:
-        first = failures[0]
-        failed_steps = first.get("failed_steps") if isinstance(first.get("failed_steps"), list) else []
-        step = failed_steps[0].get("name") if failed_steps and isinstance(failed_steps[0], dict) else None
-        return (f"{first.get('name', 'Job')} failed" + (f" at {step}" if step else ""))[:800]
-    return None
+    return _run_log_safety.workflow_failure_summary(
+        value, failures, sanitize_log=_sanitize_workflow_log
+    )
 
 
 def _sanitize_workflow_log(value: str) -> str:
-    value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", value)
-    value = re.sub(
-        r"(?i)(authorization\s*:\s*bearer\s+)\S+",
-        r"\1[REDACTED]",
-        value,
+    return _run_log_safety.sanitize_workflow_log(
+        value, max_chars=_MAX_DASHBOARD_LOG_CHARS
     )
-    value = re.sub(r"(?i)(authorization\s*:\s*basic\s+)\S+", r"\1[REDACTED]", value)
-    value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
-    value = re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", value)
-    value = re.sub(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
-    value = re.sub(
-        r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
-        "[REDACTED]",
-        value,
-    )
-    value = re.sub(
-        r"""(?i)\b[\w-]*(?:password|passwd|secret|api[_-]?key|access[_-]?token|gh[_-]?token)[\w-]*(\s*[=:]\s*)("[^"]*"|'[^']*'|[^\s]+)""",
-        r"[REDACTED]\1[REDACTED]",
-        value,
-    )
-    if len(value) > _MAX_DASHBOARD_LOG_CHARS:
-        value = "[ابتدای گزارش به‌دلیل محدودیت حجم حذف شده است.]\n" + value[-_MAX_DASHBOARD_LOG_CHARS:]
-    return value
 
 
 @router.get("/runs")
@@ -1388,23 +951,6 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
     jobs = jobs_data.get("jobs")
     if not isinstance(jobs, list):
         jobs = []
-    failures = []
-    for job in jobs:
-        if not isinstance(job, dict):
-            continue
-        steps = job.get("steps") if isinstance(job.get("steps"), list) else []
-        failed_steps = [
-            {"name": str(step.get("name") or ""), "conclusion": str(step.get("conclusion") or "")}
-            for step in steps
-            if isinstance(step, dict) and step.get("conclusion") in {"failure", "timed_out", "cancelled", "action_required"}
-        ]
-        if job.get("conclusion") not in {"success", "skipped", "neutral"} or failed_steps:
-            failures.append({
-                "name": str(job.get("name") or "Job"),
-                "status": str(job.get("status") or "unknown"),
-                "conclusion": job.get("conclusion"),
-                "failed_steps": failed_steps,
-            })
     logs_result = _run(
         [gh, "run", "view", str(trusted_run_id), "--log", "--repo", _repository()],
         timeout=45,
@@ -1414,35 +960,16 @@ def autonomous_engineering_run_logs(run_id: int) -> dict[str, Any]:
         raw_log = logs_result.stdout or ""
     elif logs_result:
         raw_log = logs_result.stdout or logs_result.stderr or ""
-    if not raw_log and run.get("status") != "completed":
-        raw_log = "گزارش کامل تا پایان اجرای Workflow در دسترس نیست."
-    elif not raw_log and run.get("status") == "completed":
-        raw_log = "GitHub گزارشی برای این اجرا برنگرداند؛ جزئیات مرحله‌های ناموفق در بالا آمده است."
     diagnostic = _read_run_diagnostics(trusted_run_id)
-    diagnostic_entries = diagnostic.get("diagnostics", []) if diagnostic else []
-    latest_diagnostic = diagnostic_entries[-1] if diagnostic_entries else None
-    error_summary = (
-        latest_diagnostic.get("summary")
-        if latest_diagnostic else _workflow_failure_summary(raw_log, failures)
+    return _run_logs_backend.build_run_logs_payload(
+        run=run,
+        jobs=jobs,
+        raw_log=raw_log,
+        diagnostic=diagnostic,
+        max_log_chars=_MAX_DASHBOARD_LOG_CHARS,
+        sanitize_log=_sanitize_workflow_log,
+        failure_summary=_workflow_failure_summary,
     )
-    return {
-        "run": {
-            "id": trusted_run_id,
-            "status": run.get("status"),
-            "conclusion": run.get("conclusion"),
-            "url": run.get("url"),
-        },
-        "failures": failures,
-        "error_summary": error_summary,
-        "failure_stage": latest_diagnostic.get("stage") if latest_diagnostic else (
-            failures[0].get("name") if failures else None
-        ),
-        "diagnostic": diagnostic,
-        "diagnostics_available": bool(diagnostic_entries),
-        "logs": _sanitize_workflow_log(raw_log),
-        "truncated": len(raw_log) > _MAX_DASHBOARD_LOG_CHARS,
-    }
-
 
 @router.delete("/runs/{run_id}")
 def delete_autonomous_engineering_run(run_id: int) -> dict[str, Any]:
