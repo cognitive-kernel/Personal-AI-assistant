@@ -16,6 +16,7 @@ def test_progress_persist_uses_shared_durable_state_lock(monkeypatch, tmp_path: 
 
     monkeypatch.setattr(progress, "store_dir", lambda: tmp_path)
     monkeypatch.setattr(progress, "durable_state_lock", fake_lock)
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", "a" * 64)
 
     assert progress.persist({
         "run_id": "progress-lock-test",
@@ -27,6 +28,11 @@ def test_progress_persist_uses_shared_durable_state_lock(monkeypatch, tmp_path: 
     assert calls == [(tmp_path, 5)]
     assert (tmp_path / "current.json").is_file()
     assert (tmp_path / "events.jsonl").is_file()
+    import json
+    current = json.loads((tmp_path / "current.json").read_text(encoding="utf-8"))
+    event = json.loads((tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert current["execution_owner_token"] == "a" * 64
+    assert event["execution_owner_token"] == "a" * 64
 
 def test_dashboard_progress_projection_never_exposes_execution_owner_token(monkeypatch):
     from app import autonomous_engineering_progress as dashboard_progress
