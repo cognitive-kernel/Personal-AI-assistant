@@ -77,6 +77,7 @@ from .autonomous_engineering_errors import (
 )
 from . import autonomous_engineering_github as _github_adapter
 from . import autonomous_engineering_run_log_safety as _run_log_safety
+from . import autonomous_engineering_run_history as _run_history
 
 
 def _is_windows() -> bool:
@@ -1048,137 +1049,34 @@ def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]
     return value
 
 
-_RUN_DIAGNOSTICS_CACHE: dict[int, tuple[float, dict[str, Any] | None]] = {}
-_RUN_DIAGNOSTICS_CACHE_LOCK = threading.Lock()
-_RUN_DIAGNOSTICS_CACHE_TTL_SECONDS = 60.0
-_RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES = 256
-
-
 def _cached_run_diagnostics(run_id: int) -> dict[str, Any] | None:
-    """Avoid repeating broker reads while the dashboard polls the same failed runs."""
-    now = time.monotonic()
-    with _RUN_DIAGNOSTICS_CACHE_LOCK:
-        cached = _RUN_DIAGNOSTICS_CACHE.get(run_id)
-        if cached is not None and now - cached[0] < _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS:
-            return cached[1]
-    diagnostic = _read_run_diagnostics(run_id)
-    now = time.monotonic()
-    with _RUN_DIAGNOSTICS_CACHE_LOCK:
-        _RUN_DIAGNOSTICS_CACHE[run_id] = (now, diagnostic)
-        expired = [
-            key for key, (cached_at, _value) in _RUN_DIAGNOSTICS_CACHE.items()
-            if now - cached_at >= _RUN_DIAGNOSTICS_CACHE_TTL_SECONDS
-        ]
-        for key in expired:
-            _RUN_DIAGNOSTICS_CACHE.pop(key, None)
-        while len(_RUN_DIAGNOSTICS_CACHE) > _RUN_DIAGNOSTICS_CACHE_MAX_ENTRIES:
-            _RUN_DIAGNOSTICS_CACHE.pop(next(iter(_RUN_DIAGNOSTICS_CACHE)))
-    return diagnostic
+    return _run_history.cached_run_diagnostics(
+        run_id, read_diagnostics=_read_run_diagnostics
+    )
 
 
 def _workflow_runs(gh: str) -> list[dict[str, Any]]:
-    # Keep the CLI/API command shape fixed. HTTP query parameters must never
-    # become command-line arguments through the GitHub CLI wrapper.
-    data = _github_api_json(
+    return _run_history.workflow_runs(
         gh,
-        f"actions/workflows/{_WORKFLOW}/runs?per_page=100",
-        timeout=20,
+        workflow=_WORKFLOW,
+        github_api_json=_github_api_json,
+        cached_diagnostics=_cached_run_diagnostics,
     )
-    runs = data.get("workflow_runs")
-    if not isinstance(runs, list):
-        raise HTTPException(status_code=502, detail="فهرست اجراهای Workflow در پاسخ GitHub وجود ندارد.")
-    normalized: list[dict[str, Any]] = []
-    for item in runs:
-        if not isinstance(item, dict) or not isinstance(item.get("id"), int):
-            continue
-        diagnostic = (
-            _cached_run_diagnostics(item["id"])
-            if item.get("status") == "completed" and item.get("conclusion") in {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
-            else None
-        )
-        latest_diagnostic = diagnostic["diagnostics"][-1] if diagnostic else None
-        normalized.append({
-            "id": item["id"],
-            "status": str(item.get("status") or "unknown"),
-            "conclusion": item.get("conclusion"),
-            "name": str(item.get("name") or "Autonomous local Ollama engineering"),
-            "display_title": str(item.get("display_title") or item.get("displayTitle") or ""),
-            "created_at": item.get("created_at"),
-            "updated_at": item.get("updated_at"),
-            "url": item.get("html_url") if isinstance(item.get("html_url"), str) else None,
-            "head_branch": item.get("head_branch"),
-            "workflow_path": str(item.get("path") or "").split("@", 1)[0],
-            "failure_summary": (
-                latest_diagnostic.get("summary")
-                if latest_diagnostic and item.get("conclusion") not in {"success", "neutral", "skipped"}
-                else None
-            ),
-        })
-    return normalized
 
 
 def _verified_workflow_run(gh: str, run_id: int) -> dict[str, Any]:
-    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
-        raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
-    run = _github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
-    expected_path = f".github/workflows/{_WORKFLOW}"
-    workflow_path = str(run.get("path") or "").split("@", 1)[0]
-    verified_run_id = run.get("id")
-    if (
-        isinstance(verified_run_id, bool)
-        or not isinstance(verified_run_id, int)
-        or verified_run_id <= 0
-        or verified_run_id != run_id
-        or workflow_path != expected_path
-    ):
-        raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
-    return {
-        "id": verified_run_id,
-        "status": str(run.get("status") or "unknown"),
-        "conclusion": run.get("conclusion"),
-        "workflow_path": workflow_path,
-        "url": run.get("html_url") if isinstance(run.get("html_url"), str) else None,
-    }
+    return _run_history.verified_workflow_run(
+        gh, run_id, workflow=_WORKFLOW, github_api_json=_github_api_json
+    )
 
 
 def _read_run_diagnostics(run_id: int) -> dict[str, Any] | None:
-    """Read the runner-persisted, redacted report for one verified run ID."""
-    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
-        return None
-    try:
-        payload = read_run_diagnostics(run_id)
-        if not isinstance(payload, dict):
-            return None
-    except (OSError, RuntimeError, ValueError, TypeError):
-        return None
-    if (
-        not isinstance(payload, dict)
-        or payload.get("schema_version") != 1
-        or str(payload.get("run_id")) != str(run_id)
-        or not isinstance(payload.get("diagnostics"), list)
-    ):
-        return None
-    entries = []
-    for item in payload["diagnostics"][-_MAX_RUN_DIAGNOSTIC_ENTRIES:]:
-        if not isinstance(item, dict):
-            continue
-        entries.append({
-            "run_attempt": str(item.get("run_attempt") or "")[:12],
-            "task": item.get("task") if isinstance(item.get("task"), int) else None,
-            "attempt": item.get("attempt") if isinstance(item.get("attempt"), int) else None,
-            "stage": _sanitize_workflow_log(str(item.get("stage") or ""))[:80],
-            "category": _sanitize_workflow_log(str(item.get("category") or ""))[:80],
-            "summary": _sanitize_workflow_log(str(item.get("summary") or ""))[:800],
-            "detail": _sanitize_workflow_log(str(item.get("detail") or ""))[-12_000:],
-            "recorded_at": str(item.get("recorded_at") or "")[:64],
-        })
-    if not entries:
-        return None
-    return {
-        "run_id": run_id,
-        "updated_at": str(payload.get("updated_at") or "")[:64],
-        "diagnostics": entries,
-    }
+    return _run_history.read_run_diagnostics(
+        run_id,
+        read_payload=read_run_diagnostics,
+        sanitize_log=_sanitize_workflow_log,
+        max_entries=_MAX_RUN_DIAGNOSTIC_ENTRIES,
+    )
 
 
 def _workflow_failure_summary(value: str, failures: list[dict[str, Any]]) -> str | None:
