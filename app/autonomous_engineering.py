@@ -81,6 +81,7 @@ from . import autonomous_engineering_run_history as _run_history
 from . import autonomous_engineering_settings as _settings_backend
 from . import autonomous_engineering_readiness as _readiness_backend
 from . import autonomous_engineering_run_logs as _run_logs_backend
+from . import autonomous_engineering_pr_preflight as _pr_preflight
 
 # Backward-compatible cache seam used by existing tests and integrations.
 _RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
@@ -573,45 +574,9 @@ def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[s
     )
 
 def _has_open_autonomous_pr(gh: str) -> bool:
-    """Fail closed unless GitHub confirms there is no controller-owned open PR."""
-    result = _run(
-        [gh, "api", f"repos/{_repository()}/pulls?state=open&per_page=100"],
-        timeout=12,
+    return _pr_preflight.has_open_autonomous_pr(
+        gh, repository=_repository(), run_command=_run
     )
-    if not result or result.returncode != 0:
-        raise HTTPException(
-            status_code=503,
-            detail="وضعیت PRهای باز مخزن قابل تأیید نیست؛ وظیفهٔ جدید ارسال نشد.",
-        )
-    try:
-        pulls = json.loads(result.stdout)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="پاسخ GitHub برای PRهای باز معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
-        ) from exc
-    if not isinstance(pulls, list) or any(not isinstance(item, dict) for item in pulls):
-        raise HTTPException(
-            status_code=502,
-            detail="ساختار فهرست PRهای GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
-        )
-    for item in pulls:
-        user = item.get("user") if isinstance(item.get("user"), dict) else {}
-        head = item.get("head") if isinstance(item.get("head"), dict) else {}
-        base = item.get("base") if isinstance(item.get("base"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
-        branch = head.get("ref")
-        if (
-            user.get("login") == "github-actions[bot]"
-            and head_repo.get("full_name") == _repository()
-            and isinstance(branch, str)
-            and branch.startswith("codex/local-engineering-")
-            and base.get("ref") == "main"
-            and item.get("state", "open") == "open"
-        ):
-            return True
-    return False
-
 
 def _dispatch_with_admission(payload: ManualTaskRequest | None, *, correlation_id: str, resume_once: bool = False) -> dict[str, Any]:
     if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
