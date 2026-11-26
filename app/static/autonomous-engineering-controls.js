@@ -18,6 +18,7 @@
     if (settingsSaving) return;
     settingsSaving = true;
     saveButton.disabled = true;
+    const submittedEdits = status.captureSettingsEdits();
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
     const intervalHours = Number($("interval-hours").value);
@@ -28,7 +29,7 @@
         method: "POST",
         body: JSON.stringify({model, interval_hours: intervalHours, execution_mode: executionMode})
       });
-      $("custom-model").value = "";
+      status.acknowledgeSettings(submittedEdits);
       await status.refresh(true);
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
     } catch (error) {

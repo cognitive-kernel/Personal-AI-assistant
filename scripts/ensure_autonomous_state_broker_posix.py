@@ -344,6 +344,25 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
                 os.close(descriptor)
 
 
+def _prepare_service_socket_directory(path: Path, service_uid: int, client_gid: int) -> None:
+    """Create the writable mount before the service manager starts the broker."""
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if info.st_uid not in {0, service_uid} or info.st_mode & 0o022:
+            raise RuntimeError("The broker socket directory owner or permissions are unsafe.")
+        os.fchown(fd, service_uid, client_gid)
+        # Access to the socket requires traversal, not directory enumeration.
+        os.fchmod(fd, 0o710)
+    finally:
+        os.close(fd)
+
+
 def _systemd_unit(
     service_user: str,
     python: Path,
@@ -532,11 +551,11 @@ def _elevated_setup(
     client_gid = pwd.getpwuid(installer_uid).pw_gid
     service_group = grp.getgrgid(client_gid).gr_name
     package_dir = config_dir / "app"
-    package_dir.mkdir(mode=0o750, exist_ok=True)
+    package_dir.mkdir(mode=0o710, exist_ok=True)
     if package_dir.is_symlink() or not package_dir.is_dir():
         raise RuntimeError("Protected broker package directory is unsafe.")
     os.chown(package_dir, 0, client_gid)
-    os.chmod(package_dir, 0o750)
+    os.chmod(package_dir, 0o710)
     _write_atomic(package_dir / "__init__.py", b"", 0o640, owner_gid=client_gid)
     for module in (
         "autonomous_engineering_state.py",
@@ -554,6 +573,7 @@ def _elevated_setup(
     _write_atomic(service_script, source.read_bytes(), 0o640, owner_gid=client_gid)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
     socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
+    _prepare_service_socket_directory(socket_dir, service_uid, client_gid)
     socket_path = socket_dir / "broker.sock"
 
     system = sys.platform

@@ -26,4 +26,4 @@ markers = [
 include = ["app*"]
 
 [tool.setuptools.package-data]
-app = ["ai_learning/static/*", "ai_learning/browser_extension/*"]
+app = ["static/*", "ai_learning/static/*", "ai_learning/browser_extension/*"]

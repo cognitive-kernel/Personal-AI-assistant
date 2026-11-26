@@ -1,4 +1,8 @@
+import os
+import stat
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -160,3 +164,28 @@ def test_windows_broker_setup_uses_machine_wide_mutex_and_persistent_recovery_ma
     assert "$requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0" in ensure
     assert "recovery marker persistence failed; setup mutex retained until process exit." in ensure
     assert "if ($null -ne $setupMutexState -and -not $preserveSetupMutex)" in ensure
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Requires POSIX directory ownership")
+def test_posix_socket_directory_is_created_and_reused_safely(tmp_path):
+    from scripts.ensure_autonomous_state_broker_posix import _prepare_service_socket_directory
+
+    socket_dir = tmp_path / "broker socket"
+    uid, gid = os.geteuid(), os.getegid()
+    _prepare_service_socket_directory(socket_dir, uid, gid)
+    original = socket_dir.stat()
+    assert (original.st_uid, original.st_gid) == (uid, gid)
+    assert stat.S_IMODE(original.st_mode) == 0o710
+
+    _prepare_service_socket_directory(socket_dir, uid, gid)
+    assert socket_dir.stat().st_ino == original.st_ino
+
+    unsafe = tmp_path / "unsafe"
+    unsafe.symlink_to(socket_dir, target_is_directory=True)
+    with pytest.raises(OSError):
+        _prepare_service_socket_directory(unsafe, uid, gid)
+    assert socket_dir.stat().st_ino == original.st_ino
+
+    socket_dir.chmod(0o777)
+    with pytest.raises(RuntimeError, match="permissions are unsafe"):
+        _prepare_service_socket_directory(socket_dir, uid, gid)

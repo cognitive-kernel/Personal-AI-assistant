@@ -287,6 +287,7 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
             {"Path": r"\\GPU Adapter Memory(*)\\Shared Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 4294967296},
         ],
     }
+    monkeypatch.setattr(hardware, "_windows_powershell_candidates", lambda: ["powershell.exe"])
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     result = hardware._detect_windows_gpus()
     assert len(result) == 1
@@ -464,6 +465,7 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
         ],
     }
     monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "_windows_powershell_candidates", lambda: ["powershell.exe"])
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         virtual_memory=lambda: SimpleNamespace(available=1024 * 1024**2),

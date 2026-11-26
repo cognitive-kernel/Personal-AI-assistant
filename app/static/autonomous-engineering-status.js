@@ -8,6 +8,19 @@
   const pauseButton = $("pause-agent");
   const resumeButton = $("resume-agent");
   const taskButton = $("send-agent-task");
+  const editedSettings = new Map();
+  for (const id of ["ollama-model", "execution-mode", "interval-hours", "custom-model"]) {
+    $(id).addEventListener("input", () => {
+      editedSettings.set(id, { value: $(id).value });
+    });
+  }
+  function acknowledgeSettings(savedEdits) {
+    for (const [id, edit] of savedEdits) {
+      if (editedSettings.get(id) !== edit) continue;
+      editedSettings.delete(id);
+      if (id === "custom-model") $(id).value = "";
+    }
+  }
   let lastPendingWork = null;
   const labels = {
     ollama: $("ollama-state"), model: $("model-state"), codex: $("codex-state"),
@@ -33,12 +46,17 @@
       select.value = "";
       return;
     }
-    if (!selectedModel || savedModelUnavailable) {
+    const draft = editedSettings.get(select.id);
+    const draftAvailable = draft && installed.includes(draft.value) &&
+      !(savedModelUnavailable && draft.value === selectedModel);
+    if (!selectedModel || savedModelUnavailable || (draft && !draftAvailable)) {
       const placeholder = document.createElement("option");
       placeholder.value = "";
       placeholder.disabled = true;
       placeholder.selected = true;
-      placeholder.textContent = selectedModelIsContextVariant
+      placeholder.textContent = draft && !draftAvailable
+        ? "مدل انتخاب‌شده در فهرست مدل‌های قابل استفاده نیست"
+        : selectedModelIsContextVariant
         ? "مدل ذخیره‌شده نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب کنید"
         : savedModelUnavailable
           ? "مدل ذخیره‌شده نصب نیست؛ مدل دیگری انتخاب کنید"
@@ -56,7 +74,8 @@
       }
       select.append(option);
     }
-    select.value = selectedModel && installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
+    const savedValue = installed.includes(selectedModel) && !selectedModelIsContextVariant ? selectedModel : "";
+    select.value = draft ? (draftAvailable ? draft.value : "") : savedValue;
   }
   let statusRefreshPromise = null;
   // Serialize post-mutation snapshots. When multiple mutations finish while an
@@ -188,13 +207,13 @@
       $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
       renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
       const executionMode = data.execution_mode || "continuous";
-      if (document.activeElement !== $("execution-mode")) {
+      if (!editedSettings.has("execution-mode")) {
         $("execution-mode").value = executionMode;
       }
       dispatchButton.textContent = executionMode === "continuous"
         ? "شروع صف پیوسته"
         : "اجرای یک چرخهٔ زمان‌بندی‌شده";
-      if (document.activeElement !== $("interval-hours")) {
+      if (!editedSettings.has("interval-hours")) {
         $("interval-hours").value = [1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours)) ? String(Number(data.interval_hours)) : "24";
       }
       labels.codex.textContent = checks.codex_installed ? "موجود" : "در حساب برنامه نصب نیست";
@@ -359,6 +378,8 @@
   window.autonomousEngineeringStatus = Object.freeze({
     version: 1,
     refresh,
+    captureSettingsEdits: () => new Map(editedSettings),
+    acknowledgeSettings,
     stop,
     resume,
     canStartDispatch,

@@ -3755,7 +3755,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    state = {"model": "", "posted": None}
+    state = {"model": "", "posted": None, "interval_hours": 24, "execution_mode": "continuous"}
     installed_models = [
         "gpt-oss:20b",
         "qwen3:14b",
@@ -3792,8 +3792,8 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
             "model_capabilities": ["completion", "tools"] if selected_ready else [],
             "model_supports_tools": selected_ready,
             "model_metadata_error": None if selected_ready else "No Ollama model is saved in repository settings.",
-            "interval_hours": 24,
-            "execution_mode": "continuous",
+            "interval_hours": state["interval_hours"],
+            "execution_mode": state["execution_mode"],
             "paused": False,
             "github": {"recent_runs": [], "settings": {"model": selected}},
             "codex": {"installed": False, "version": None},
@@ -3803,7 +3803,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
     def save_settings(route):
         payload = route.request.post_data_json
         state["posted"] = payload
-        state["model"] = payload["model"]
+        state.update(payload)
         route.fulfill(status=200, json={"message": "تنظیمات ذخیره شد."})
 
     browser_errors = []
@@ -3843,6 +3843,15 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 0
 
         model_picker.select_option("gpt-oss:20b")
+        page.locator("#execution-mode").select_option("scheduled")
+        page.locator("#interval-hours").select_option("6")
+        with page.expect_response("**/api/autonomous-engineering/status"):
+            page.locator("#refresh-agent").click()
+        page.wait_for_function("() => !document.querySelector('#refresh-agent').disabled")
+        assert model_picker.input_value() == "gpt-oss:20b"
+        assert page.locator("#execution-mode").input_value() == "scheduled"
+        assert page.locator("#interval-hours").input_value() == "6"
+
         page.locator("#save-agent-settings").click()
         page.wait_for_function(
             "() => document.querySelector('#model-detail')?.textContent.includes('مدل ذخیره‌شده: gpt-oss:20b')",
@@ -3851,8 +3860,8 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
 
         assert state["posted"] == {
             "model": "gpt-oss:20b",
-            "interval_hours": 24,
-            "execution_mode": "continuous",
+            "interval_hours": 6,
+            "execution_mode": "scheduled",
         }
         assert model_picker.input_value() == "gpt-oss:20b"
         assert page.locator("#agent-message").inner_text() == "تنظیمات ذخیره شد."
