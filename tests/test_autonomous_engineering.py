@@ -1542,10 +1542,13 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     })
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8, *, raise_os_error=False):
+    stdin_payloads = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False, input_text=None):
         calls.append(command)
         if command[1:2] == ["api"]:
             return subprocess.CompletedProcess(command, 0, "[]", "")
+        stdin_payloads.append(input_text)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
@@ -1555,12 +1558,13 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
 
     assert result["accepted"] is True
     assert len(result["correlation_id"]) == 32
-    assert calls[-1][-2:] == ["--raw-field", "manual_task=" + task]
-    assert calls[-1][-4] == "--raw-field"
-    assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
-    assert calls[-1].count("--field") == 0
-    assert calls[-1][-1] == "manual_task=" + task
-    assert "@C:\\Users\\ExampleUser\\Desktop\\spec.txt" in calls[-1][-1]
+    assert calls[-1][-1] == "--json"
+    assert task not in calls[-1]
+    assert len(stdin_payloads) == 1
+    assert json.loads(stdin_payloads[0]) == {
+        "correlation_id": result["correlation_id"],
+        "manual_task": task,
+    }
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
