@@ -161,3 +161,15 @@ def test_autonomous_engineering_run_history_has_a_single_backend_owner():
         assert function in facade
     assert "_run_history.workflow_runs(" in facade
     assert "_run_history.verified_workflow_run(" in facade
+
+
+
+def test_autonomous_engineering_settings_have_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_settings.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def save_settings(" in backend
+    assert "def save_autonomous_engineering_settings(" in facade
+    assert "_settings_backend.save_settings(" in facade
+    assert "save_repository_variables=_save_repository_variables" in facade
+    assert "ollama_status=_ollama_status" in facade
