@@ -679,49 +679,10 @@ jobs:
 
       - name: Provision verified GitHub CLI for this Runner job
         if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
-        shell: powershell
+        shell: python {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          $requiredGhVersion = "2.104.0"
-          $existingGh = Get-Command gh -ErrorAction SilentlyContinue
-          $existingVersion = ""
-          if ($existingGh) {
-            $existingVersion = (& $existingGh.Source --version 2>$null | Select-Object -First 1).Trim()
-          }
-          if ($existingVersion -notmatch [regex]::Escape($requiredGhVersion)) {
-            $archiveName = "gh_$($requiredGhVersion)_windows_amd64.zip"
-            $releaseBase = "https://github.com/cli/cli/releases/download/v$requiredGhVersion"
-            $downloadRoot = Join-Path $env:RUNNER_TEMP "autonomous-gh-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)"
-            $archivePath = Join-Path $downloadRoot $archiveName
-            $checksumsPath = Join-Path $downloadRoot "checksums.txt"
-            $extractRoot = Join-Path $downloadRoot "extracted"
-            New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-            Invoke-WebRequest -Uri "$releaseBase/$archiveName" -OutFile $archivePath -TimeoutSec 180
-            Invoke-WebRequest -Uri "$releaseBase/gh_$($requiredGhVersion)_checksums.txt" -OutFile $checksumsPath -TimeoutSec 60
-            $checksumLine = (Get-Content -LiteralPath $checksumsPath) | Where-Object { $_ -match ("\s" + [regex]::Escape($archiveName) + "$") } | Select-Object -First 1
-            if (-not $checksumLine -or $checksumLine -notmatch "^([0-9a-fA-F]{64})\s+") {
-              throw "The official GitHub CLI checksum file did not contain the expected Windows archive."
-            }
-            $expectedHash = $Matches[1].ToLowerInvariant()
-            $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actualHash -ne $expectedHash) {
-              throw "The downloaded GitHub CLI archive failed SHA-256 verification."
-            }
-            Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
-            $ghExecutable = Get-ChildItem -LiteralPath $extractRoot -Filter "gh.exe" -File -Recurse | Select-Object -First 1
-            if (-not $ghExecutable) { throw "The verified GitHub CLI archive did not contain gh.exe." }
-            $ghBin = Split-Path -Parent $ghExecutable.FullName
-          } else {
-            $ghBin = Split-Path -Parent $existingGh.Source
-          }
-          $ghBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$ghBin;$env:PATH"
-          $gh = Get-Command gh -ErrorAction Stop
-          $verifiedGhVersion = (& $gh.Source --version 2>&1 | Select-Object -First 1).Trim()
-          if ($LASTEXITCODE -ne 0 -or $verifiedGhVersion -notmatch [regex]::Escape($requiredGhVersion)) {
-            throw "Could not verify the pinned GitHub CLI version $requiredGhVersion."
-          }
-          Write-Host "GitHub CLI is ready in the current Runner job: $verifiedGhVersion"
+          import runpy
+          runpy.run_path("scripts/autonomous_engineering_prerequisites.py", run_name="__main__")
 
       - name: Ensure Codex CLI is installed for the Runner service account
         if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
