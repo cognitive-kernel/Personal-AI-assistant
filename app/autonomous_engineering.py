@@ -75,6 +75,7 @@ from .autonomous_engineering_errors import (
     AutonomousEngineeringAPIRoute,
     _structured_error_response,
 )
+from . import autonomous_engineering_github as _github_adapter
 
 
 def _is_windows() -> bool:
