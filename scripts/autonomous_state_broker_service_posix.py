@@ -40,7 +40,7 @@ class UnixSocketBroker:
 
     def _prepare_socket_path(self) -> None:
         parent = self.socket_path.parent
-        parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        parent.mkdir(parents=True, exist_ok=True, mode=0o710)
         info = parent.lstat()
         if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
             raise RuntimeError("Broker socket parent must be a real directory.")

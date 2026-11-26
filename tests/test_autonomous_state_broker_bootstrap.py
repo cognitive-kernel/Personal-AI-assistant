@@ -189,3 +189,19 @@ def test_posix_socket_directory_is_created_and_reused_safely(tmp_path):
     socket_dir.chmod(0o777)
     with pytest.raises(RuntimeError, match="permissions are unsafe"):
         _prepare_service_socket_directory(socket_dir, uid, gid)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Requires POSIX installer module")
+def test_systemd_unit_recreates_socket_directory_on_every_start():
+    from scripts.ensure_autonomous_state_broker_posix import _systemd_unit
+
+    socket_dir = Path("/run/paa-state-broker-0123456789abcdef")
+    unit = _systemd_unit(
+        "runner", Path("/usr/bin/python3"), Path("/etc/protected/broker.py"),
+        Path("/var/lib/assistant state"), socket_dir / "broker.sock",
+        client_uid=1001, service_group="assistant",
+    )
+
+    assert f"RuntimeDirectory={socket_dir.name}\nRuntimeDirectoryMode=0710\n" in unit
+    assert 'ReadWritePaths="/var/lib/assistant state"\n' in unit
+    assert f'"{socket_dir}/broker.sock"' in unit

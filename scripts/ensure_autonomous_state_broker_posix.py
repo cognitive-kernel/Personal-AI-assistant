@@ -345,7 +345,7 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
 
 
 def _prepare_service_socket_directory(path: Path, service_uid: int, client_gid: int) -> None:
-    """Create the writable mount before the service manager starts the broker."""
+    """Prepare and protect the macOS broker directory on explicit setup."""
     try:
         path.mkdir(mode=0o700)
     except FileExistsError:
@@ -404,7 +404,9 @@ def _systemd_unit(
         "CapabilityBoundingSet=\n"
         "AmbientCapabilities=\n"
         "UMask=027\n"
-        f"ReadWritePaths={quote(str(state_dir))} {quote(str(socket_path.parent))}\n\n"
+        f"RuntimeDirectory={socket_path.parent.name}\n"
+        "RuntimeDirectoryMode=0710\n"
+        f"ReadWritePaths={quote(str(state_dir))}\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
@@ -573,14 +575,15 @@ def _elevated_setup(
         _write_atomic(package_dir / module, module_source.read_bytes(), 0o640, owner_gid=client_gid)
     _write_atomic(service_script, source.read_bytes(), 0o640, owner_gid=client_gid)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
-    socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
-    _prepare_service_socket_directory(socket_dir, service_uid, client_gid)
-    socket_path = socket_dir / "broker.sock"
-
+    socket_name = f"paa-state-broker-{socket_hash}"
     system = sys.platform
     if system.startswith("linux"):
+        socket_path = Path("/run") / socket_name / "broker.sock"
         _install_systemd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     elif system == "darwin":
+        socket_dir = Path("/tmp") / socket_name
+        _prepare_service_socket_directory(socket_dir, service_uid, client_gid)
+        socket_path = socket_dir / "broker.sock"
         _install_launchd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     else:
         raise RuntimeError(f"Automatic broker service setup is not implemented for {system}.")
