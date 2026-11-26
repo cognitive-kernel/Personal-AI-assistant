@@ -251,6 +251,7 @@ jobs:
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
       - name: Probe MXC and Codex exec_command under the Runner identity
+        id: codex_probe
         timeout-minutes: 25
         shell: powershell
         run: |
@@ -325,6 +326,14 @@ jobs:
             throw "Workspace probe file remains after the smoke test; cleanup was not verified."
           }
           Write-Host "CODEX_WINDOWS_MXC_SERVICE_SMOKE_OK"
+
+      - name: Verify persistent Ollama context after diagnostic Codex task
+        if: steps.context_preflight.outcome == 'success' && steps.codex_probe.outcome == 'success'
+        timeout-minutes: 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL" -VerifyOnly
 
       - name: Unload and remove this diagnostic run's temporary Ollama context model
         if: always() && steps.context_preflight.outcome != 'skipped'
