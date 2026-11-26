@@ -1548,7 +1548,8 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
         calls.append(command)
         if command[1:2] == ["api"]:
             return subprocess.CompletedProcess(command, 0, "[]", "")
-        stdin_payloads.append(input_text)
+        if input_text is not None:
+            stdin_payloads.append(input_text)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
