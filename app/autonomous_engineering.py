@@ -78,6 +78,7 @@ from .autonomous_engineering_errors import (
 from . import autonomous_engineering_github as _github_adapter
 from . import autonomous_engineering_run_log_safety as _run_log_safety
 from . import autonomous_engineering_run_history as _run_history
+from . import autonomous_engineering_settings as _settings_backend
 
 # Backward-compatible cache seam used by existing tests and integrations.
 _RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
@@ -606,49 +607,16 @@ def _save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...]) ->
 
 @router.post("/settings", status_code=200)
 def save_autonomous_engineering_settings(payload: EngineeringSettings) -> dict[str, Any]:
-    model = payload.model.strip()
-    if not _MODEL_PATTERN.fullmatch(model):
-        raise HTTPException(status_code=422, detail="شناسهٔ مدل Ollama معتبر نیست.")
-    if _is_codex_context_variant(model):
-        raise HTTPException(status_code=422, detail="این مدل نسخهٔ داخلی Context است؛ مدل اصلی Ollama را انتخاب کنید.")
-    if payload.interval_hours not in _ALLOWED_INTERVAL_HOURS:
-        raise HTTPException(status_code=422, detail="فاصلهٔ اجرا باید یکی از ۱، ۲، ۴، ۶، ۱۲ یا ۲۴ ساعت باشد.")
-    if payload.execution_mode not in {"scheduled", "continuous"}:
-        raise HTTPException(status_code=422, detail="حالت اجرا معتبر نیست.")
-    local_model = _ollama_status(model)
-    if not local_model.get("online"):
-        raise HTTPException(status_code=503, detail="سرویس Ollama محلی در دسترس نیست؛ مدل ذخیره نشد.")
-    if not local_model.get("model_installed"):
-        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده در فهرست مدل‌های نصب‌شدهٔ Ollama وجود ندارد.")
-    if not local_model.get("model_metadata_available"):
-        raise HTTPException(status_code=422, detail="حداکثر Context مدل از metadata معتبر Ollama قابل تأیید نیست؛ مدل ذخیره نشد.")
-    if not local_model.get("model_context_supported"):
-        raise HTTPException(
-            status_code=422,
-            detail="با توجه به metadata مدل و حافظهٔ آزاد فعلی، ظرفیت امن Context قابل محاسبه نیست؛ تنظیمات ذخیره نشد.",
-        )
-    if not local_model.get("model_supports_tools"):
-        raise HTTPException(status_code=422, detail="مدل انتخاب‌شده قابلیت tools را اعلام نکرده و برای Codex قابل استفاده نیست.")
-    gh = shutil.which("gh")
-    if not gh:
-        raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
-    auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
-    if not auth or auth.returncode != 0:
-        raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
-    updates = (
-        ("AUTONOMOUS_ENGINEERING_MODEL", model),
-        ("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", str(payload.interval_hours)),
-        ("AUTONOMOUS_ENGINEERING_MODE", payload.execution_mode),
+    return _settings_backend.save_settings(
+        payload,
+        model_pattern=_MODEL_PATTERN,
+        allowed_interval_hours=_ALLOWED_INTERVAL_HOURS,
+        is_codex_context_variant=_is_codex_context_variant,
+        ollama_status=_ollama_status,
+        which=shutil.which,
+        run_command=_run,
+        save_repository_variables=_save_repository_variables,
     )
-    _save_repository_variables(gh, updates)
-    return {
-        "saved": True,
-        "model": model,
-        "interval_hours": payload.interval_hours,
-        "execution_mode": payload.execution_mode,
-        "message": "تنظیمات عامل در متغیرهای مخزن GitHub ذخیره شد.",
-    }
-
 
 def _has_open_autonomous_pr(gh: str) -> bool:
     """Fail closed unless GitHub confirms there is no controller-owned open PR."""
