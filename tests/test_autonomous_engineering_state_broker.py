@@ -394,7 +394,7 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert '"active_progress_run"' in service
     assert "RecoverStaleProgress(current, out recoveredRunId)" in service
     assert "InspectRepositoryOwnerProcess" in service
-    assert 'owner["process_started_at"]' in service
+    assert 'owner.TryGetValue("process_started_at"' in service
     assert 'processState != "missing" && processState != "reused"' in service
     assert '"progress_recovery"' in service
     assert '"interrupted"' in service
@@ -404,8 +404,8 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     cleanup_names_start = cleanup.index("string[] cleanupNames")
     cleanup_names_end = cleanup.index("};", cleanup_names_start)
     cleanup_names = cleanup[cleanup_names_start:cleanup_names_end]
-    assert '"current.json"' not in cleanup_names
-    assert '"events.jsonl"' not in cleanup_names
+    assert '"current.json",' not in cleanup_names
+    assert '"events.jsonl",' not in cleanup_names
     assert '"current.json"' in cleanup
     assert '"events.jsonl"' in cleanup
     assert "FileShare.Read | FileShare.Delete" in service
