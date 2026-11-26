@@ -729,3 +729,15 @@ The subsequent documentation-only evidence update does not change runtime code a
 - Startup preflight treats the temporary-tag case as recoverable only when the base model is already installed; it never pulls or starts Ollama automatically.
 - Regression coverage: existing temporary profile, absent legacy generic key, preservation of ordinary profile values, environment-seeded temporary value, and missing base-model behavior.
 - Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; latest integration report: `docs/AUTONOMOUS_ENGINEERING_INTEGRATION_2026-11-25.fa.md`. Exact-head CI and Windows owner-host acceptance remain open.
+
+
+## 2026-11-26 — PR #872 disposition and backend architecture gate
+
+- Live GitHub state: PR #872 is the only open PR; it is Draft, unmerged, and based on main. Its current head is `18bcba48e843a5920e27c33f51f4bf98ec1728aa`.
+- Exact-head workflows verified successful: tests `45759899919`, Browser E2E `45759899887`, CodeQL `45759899837`, dependency audit `45759899799`.
+- PR #872 is retained as the integration PR; it is neither merged nor cancelled. The backend architecture gate and Windows target-host acceptance are blocking.
+- `app/autonomous_engineering.py` remains a 1,626-line multi-responsibility module. Existing `tests/test_autonomous_engineering_module_boundaries.py` validates UI JavaScript boundaries but does not yet enforce Python backend boundaries.
+- A separate remediation branch was created from the exact PR head: `fix/autonomous-engineering-modular-boundaries-20261126`.
+- The modularization plan and prompt-conflict resolution are recorded in `docs/AUTONOMOUS_ENGINEERING_MODULARIZATION_PLAN_2026-11-26.fa.md`.
+- No task, checkpoint, Runner, Broker, Windows service, ACL, secret, repository variable, user database, model, or host state was changed during this audit.
+- Do not mark the module fixed or merge until backend decomposition/fitness tests, final exact-head CI, and real Windows target-host acceptance all pass.
