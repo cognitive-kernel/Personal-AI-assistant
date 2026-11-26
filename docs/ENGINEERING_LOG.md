@@ -1,3 +1,14 @@
+## 2026-11-26 — mandatory minimal-dependency and automatic prerequisite policy
+
+- Both master engineering prompts now explicitly prohibit unnecessary dependencies on external software, shells, services, package managers, exact versions, fixed identities, and fixed paths.
+- Application code, existing libraries, bundled helpers, and native OS APIs are mandatory first choices. PowerShell is explicitly forbidden in startup, Broker communication, state ownership/locking, process inspection, and other paths that native/application code can implement; it is allowed only for a proven PowerShell-specific capability or explicit owner approval for that scope.
+- For an approved, genuinely required external prerequisite, the application must discover actual capabilities and compatible versions, acquire the artifact from its official source, verify signature/digest where available, install/cache it in an application/job-scoped location, verify it, and then continue. Missing/incompatible prerequisites must trigger this flow when authorized rather than fail due to an assumed preinstalled version.
+- Privileged machine-wide changes, global PATH changes, services, account/group/ACL changes, untrusted downloads, and silent privilege escalation remain prohibited. If safe installation cannot proceed, only the dependent capability is blocked and the exact blocker is exposed.
+- Added mandatory regression coverage requirements for clean/missing/incompatible tools, native no-tool paths, interrupted/invalid downloads, partial installs, permissions, offline mode, cache reuse, concurrency, retries, and isolation of unrelated features.
+- Updated source prompt branches: UI prompt bdddae3cb55398ea72d4e60c09a739660b7dc5c2; master prompt fe21ebb45ef0eaae120e907ba0a208a50f0af234. Applied the same binding policy to the active engineering branch prompts: UI 2b72ec46b678d40bf274eb69953a28ddb92ff4e4; master 5ad5b5575631fb04614fe589e15bea78f0ca1505.
+- This policy does not itself remove the current PowerShell/Windows Service implementation; it makes that architecture a documented non-conformance that must be replaced or justified by a narrowly scoped, explicitly approved exception. No local host services, ACLs, identities, checkpoints, models, or task state were changed.
+
+---
 ## 2026-11-26 — live stale-run recovery wired into cleanup
 
 - Windows Broker cleanup now acquires the established repository -> durable-state -> checkpoint-store locks, then checks the exact progress run ID/attempt, host, per-run owner token, PID, and OS process creation time.
