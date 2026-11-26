@@ -2554,6 +2554,32 @@ def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
     assert calls == []
 
 
+def test_verified_workflow_run_rejects_noncanonical_api_ids(monkeypatch):
+    for api_id in (True, 0, -1, "123", 124):
+        monkeypatch.setattr(agent, "_github_api_json", lambda *args, api_id=api_id, **kwargs: {
+            "id": api_id,
+            "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+            "status": "queued",
+        })
+        with pytest.raises(HTTPException) as error:
+            agent._verified_workflow_run("gh", 123)
+        assert error.value.status_code == 404
+
+
+def test_cancel_uses_only_the_verified_api_run_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": 777, "status": "queued",
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
+    assert result["run_id"] == 777
+    assert calls[-1][1:4] == ["run", "cancel", "777"]
+
+
 def test_run_logs_reject_non_agent_workflow(monkeypatch):
     monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
         "id": 123, "path": ".github/workflows/another.yml@refs/heads/main", "status": "completed",
