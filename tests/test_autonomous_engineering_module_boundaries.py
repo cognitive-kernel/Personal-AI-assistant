@@ -197,3 +197,14 @@ def test_autonomous_engineering_run_log_payload_has_a_single_backend_owner():
     assert "_run_logs_backend.build_run_logs_payload(" in facade
     assert "_github_api_json(gh," in facade
     assert "_verified_workflow_run(gh, run_id)" in facade
+
+
+
+def test_autonomous_engineering_pr_preflight_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_pr_preflight.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def has_open_autonomous_pr(" in backend
+    assert "def _has_open_autonomous_pr(" in facade
+    assert "_pr_preflight.has_open_autonomous_pr(" in facade
+    assert "run_command=_run" in facade
