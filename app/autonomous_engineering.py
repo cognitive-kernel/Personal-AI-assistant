@@ -79,6 +79,7 @@ from . import autonomous_engineering_github as _github_adapter
 from . import autonomous_engineering_run_log_safety as _run_log_safety
 from . import autonomous_engineering_run_history as _run_history
 from . import autonomous_engineering_settings as _settings_backend
+from . import autonomous_engineering_readiness as _readiness_backend
 
 # Backward-compatible cache seam used by existing tests and integrations.
 _RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
@@ -401,72 +402,24 @@ def collect_status() -> dict[str, Any]:
         ollama = _status_ollama_fallback(model)
     progress_storage = progress_storage is True
 
-    settings = github_settings
-    interval_hours = settings.get("interval_hours", _DEFAULT_INTERVAL_HOURS)
-    execution_mode = settings.get("execution_mode", "continuous")
-    paused = bool(settings.get("paused", False))
-    checks = {
-        "ollama_online": ollama["online"],
-        "model_installed": ollama["model_installed"],
-        "model_selectable": ollama.get("model_selectable", ollama["model_installed"] and not _is_codex_context_variant(model)) is True,
-        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant") is True,
-        "model_context_metadata_available": ollama.get("model_metadata_available") is True,
-        "model_context_supported": ollama.get("model_context_supported") is True,
-        "model_tools_metadata_available": ollama.get("model_tools_metadata_available") is True,
-        "model_supports_tools": ollama.get("model_supports_tools") is True,
-        "codex_installed": codex["installed"],
-        "runner_running": runner["running"],
-        "github_cli_authenticated": github["authenticated"],
-        "github_runs_available": github.get("runs_available", False),
-        "progress_storage_accessible": progress_storage,
-        "durable_state_available": pending_work.get("available") is True,
-    }
-    ready = all(
-        value
-        for key, value in checks.items()
-        if key not in {"codex_installed", "model_is_codex_context_variant", "model_tools_metadata_available"}
+    return _readiness_backend.build_status_payload(
+        github=github,
+        github_settings=github_settings,
+        codex=codex,
+        runner=runner,
+        ollama=ollama,
+        pending_work=pending_work,
+        progress_storage=progress_storage,
+        model=model,
+        repository=_repository(),
+        workflow=_WORKFLOW,
+        platform_name=platform.platform(),
+        timed_out=timed_out,
+        errors=errors,
+        unavailable=unavailable,
+        default_interval_hours=_DEFAULT_INTERVAL_HOURS,
+        is_codex_context_variant=_is_codex_context_variant,
     )
-    active_runs = github.get("recent_runs", [])
-    active = any(
-        isinstance(item, dict)
-        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
-        for item in active_runs
-    )
-    can_dispatch = ready and not paused and not active
-    return {
-        "ready": ready,
-        "can_dispatch": can_dispatch,
-        "checks": checks,
-        "pending_work": pending_work,
-        "ollama": ollama,
-        "codex": codex,
-        "runner": runner,
-        "github": github,
-        "repository": _repository(),
-        "workflow": _WORKFLOW,
-        "model": model,
-        "models": ollama.get("models", []),
-        "selectable_models": ollama.get("selectable_models", ollama.get("models", [])),
-        "model_is_codex_context_variant": ollama.get("model_is_codex_context_variant", False),
-        "model_context_length": ollama.get("model_context_length"),
-        "model_recommended_context_length": ollama.get("model_recommended_context_length"),
-        "model_context_supported": ollama.get("model_context_supported", False),
-        "model_context_error": ollama.get("model_context_error"),
-        "model_capabilities": ollama.get("model_capabilities", []),
-        "model_tools_metadata_available": ollama.get("model_tools_metadata_available", False),
-        "model_tools_verification_method": ollama.get("model_tools_verification_method", "unverified"),
-        "model_supports_tools": ollama.get("model_supports_tools", False),
-        "model_metadata_error": ollama.get("model_metadata_error"),
-        "interval_hours": interval_hours,
-        "execution_mode": execution_mode,
-        "paused": paused,
-        "progress_storage_accessible": progress_storage,
-        "platform": platform.platform(),
-        "local_only_inference": True,
-        "status_probe_timeouts": timed_out,
-        "status_probe_errors": errors,
-        "status_probe_unavailable": unavailable,
-    }
 
 @router.get("/status")
 def autonomous_engineering_status() -> dict[str, Any]:
