@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import secrets
 import socket
 import time
 
@@ -11,6 +12,8 @@ from contextlib import contextmanager
 from typing import Iterator
 
 from .autonomous_engineering_state import execution_state_directory
+
+_OWNER_TOKEN_ENV = "AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN"
 
 
 def _open_repository_lock_file(lock_path, *, create: bool):
@@ -27,6 +30,8 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
     lock_path = state_dir / "repository-execution.lock"
     handle = _open_repository_lock_file(lock_path, create=True)
     acquired = False
+    previous_owner_token = os.environ.get(_OWNER_TOKEN_ENV)
+    owner_token = secrets.token_hex(32)
     try:
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
@@ -64,6 +69,7 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
                 "schema_version": 2,
                 "pid": os.getpid(),
                 "process_started_at": process_started_at,
+                "owner_token": owner_token,
                 "run_id": str(run_id),
                 "run_attempt": str(run_attempt),
                 "host": socket.gethostname(),
@@ -78,7 +84,14 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
         handle.write(owner_metadata)
         handle.truncate(1 + len(owner_metadata))
         handle.flush()
-        yield
+        os.environ[_OWNER_TOKEN_ENV] = owner_token
+        try:
+            yield
+        finally:
+            if previous_owner_token is None:
+                os.environ.pop(_OWNER_TOKEN_ENV, None)
+            else:
+                os.environ[_OWNER_TOKEN_ENV] = previous_owner_token
     finally:
         try:
             if acquired:
@@ -148,6 +161,8 @@ def require_parent_repository_execution_lock(run_id: str) -> None:
             or owner.get("host") != socket.gethostname()
             or not math.isfinite(recorded_started_at)
             or not math.isclose(recorded_started_at, parent_started_at, rel_tol=0.0, abs_tol=0.02)
+            or not isinstance(owner.get("owner_token"), str)
+            or os.environ.get(_OWNER_TOKEN_ENV) != owner.get("owner_token")
         ):
             raise RuntimeError("PR publication is not owned by the active cycle controller.")
     finally:
