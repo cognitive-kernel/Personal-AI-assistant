@@ -1,3 +1,12 @@
+## 2026-11-26 — PR #878: restore shadowed Broker regression tests
+
+- A diff audit of PR #872 found five duplicate top-level test names in `tests/test_autonomous_engineering_state_broker.py`; the same file on current main had no duplicates. Earlier definitions were silently overwritten during Python module import.
+- Added a test-integrity regression guard and renamed the five repeated definitions without removing test bodies or assertions.
+- Audit and Gate A/B state-transition inventory: `docs/AUTONOMOUS_ENGINEERING_GATE_A_B_AUDIT_2026-11-26.fa.md`.
+- Fix commit: `cee98e6c27395a4f4b42dd564706450497118fbb`; Draft PR #878 targets PR #877's modularization branch.
+- Exact-head CI for PR #878 was queued when recorded; no pass is claimed. Windows target-host acceptance remains open.
+- No durable task/checkpoint, Runner, Broker, service, ACL, secret, repository variable, model, or user host state was changed.
+
 ## 2026-11-25 — وضعیت جاری اصلاح ریشه‌ای Autonomous Engineering
 
 - مبنای integration: `main` با SHA `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
