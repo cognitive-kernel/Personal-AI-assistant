@@ -1773,11 +1773,13 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             // state; a verified checkpoint itself remains recovery material and is preserved.
             return WithRepositoryExecutionLock(delegate
             {
-                return WithStateLock(delegate
+                try
                 {
-                    try
+                    return WithStateLock(delegate
                     {
-                        return WithCheckpointStoreLock(delegate
+                        try
+                        {
+                            return WithCheckpointStoreLock(delegate
                         {
                             string[] markerNames = {
                                 "pending-manual-task.txt",
@@ -1908,8 +1910,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             { "blockers", new[] { "checkpoint_writer_active" } },
                             { "message", "A checkpoint watcher owns the durable checkpoint store; cleanup was refused." }
                         };
-                    }
-                }, 2000);
+                        }
+                    }, 2000);
+                }
+                catch (System.TimeoutException)
+                {
+                    return new Dictionary<string, object> {
+                        { "conflict", true },
+                        { "blockers", new[] { "durable_state_lock_active" } },
+                        { "message", "A durable-state writer owns the shared state lock; cleanup was refused." }
+                    };
+                }
             }, 250);
         }
         catch (System.TimeoutException)
