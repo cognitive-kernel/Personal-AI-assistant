@@ -82,6 +82,9 @@ def _with_run_correlation(record: dict[str, Any]) -> dict[str, Any]:
     correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
     if re.fullmatch(r"[a-f0-9]{32}", correlation_id):
         payload.setdefault("correlation_id", correlation_id)
+    owner_token = os.getenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", "").strip().lower()
+    if re.fullmatch(r"[a-f0-9]{64}", owner_token):
+        payload.setdefault("execution_owner_token", owner_token)
     job = os.getenv("GITHUB_JOB", "").strip()
     if job:
         payload.setdefault("job", job)
