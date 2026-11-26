@@ -1,3 +1,14 @@
+## 2026-11-26 — live stale-run recovery wired into cleanup
+
+- Windows Broker cleanup now acquires the established repository -> durable-state -> checkpoint-store locks, then checks the exact progress run ID/attempt, host, per-run owner token, PID, and OS process creation time.
+- A verified checkpoint no longer blocks expendable telemetry cleanup merely because its pointer is active. The checkpoint-store lock still blocks cleanup while a watcher is actually active; checkpoint bytes and metadata are never included in the cleanup file list.
+- A stopped owner process is reconciled to `interrupted` and a deterministic recovery event is appended. Mismatched owner tokens, legacy PID reuse ambiguity, host mismatch, access denied, unreadable metadata, and active processes remain fail-closed.
+- `current.json` and `events.jsonl` are now retained. Cleanup removes only temporary telemetry files. Progress writes acquire the same durable-state lock to serialize with cleanup/recovery.
+- The opaque execution owner token is propagated from the repository-locking controller to child progress writers and stripped from Dashboard current/event responses.
+- Expanded Python and Windows integration tests for exact owner-token matching, stale-run recovery, checkpoint preservation, active repository/watcher locks, and progress-writer coordination. Exact-head CI is queued/in progress; results must be checked before this stage is accepted.
+
+---
+
 ## 2026-11-26 — native state ownership and stale-run recovery foundation
 
 - Created proposed ADR-025 to supersede the machine-service/PowerShell broker architecture after the replacement passes migration and target-host acceptance: `docs/architecture/ADR-025-native-autonomous-state-and-runner-ownership.md`.
