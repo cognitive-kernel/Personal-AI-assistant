@@ -79,6 +79,9 @@ from . import autonomous_engineering_github as _github_adapter
 from . import autonomous_engineering_run_log_safety as _run_log_safety
 from . import autonomous_engineering_run_history as _run_history
 
+# Backward-compatible cache seam used by existing tests and integrations.
+_RUN_DIAGNOSTICS_CACHE = _run_history._DIAGNOSTICS_CACHE
+
 
 def _is_windows() -> bool:
     """Expose the platform boundary so cleanup behavior can be tested portably."""
@@ -1050,6 +1053,9 @@ def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]
 
 
 def _cached_run_diagnostics(run_id: int) -> dict[str, Any] | None:
+    # Preserve the legacy monkeypatch seam while keeping cache ownership in
+    # the run-history module.
+    _run_history._DIAGNOSTICS_CACHE = _RUN_DIAGNOSTICS_CACHE
     return _run_history.cached_run_diagnostics(
         run_id, read_diagnostics=_read_run_diagnostics
     )
