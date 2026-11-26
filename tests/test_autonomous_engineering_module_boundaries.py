@@ -173,3 +173,15 @@ def test_autonomous_engineering_settings_have_a_single_backend_owner():
     assert "_settings_backend.save_settings(" in facade
     assert "save_repository_variables=_save_repository_variables" in facade
     assert "ollama_status=_ollama_status" in facade
+
+
+
+def test_autonomous_engineering_readiness_payload_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_readiness.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def build_status_payload(" in backend
+    assert "def collect_status(" in facade
+    assert "_readiness_backend.build_status_payload(" in facade
+    assert "ThreadPoolExecutor(" not in backend
+    assert "BoundedSemaphore(" not in backend
