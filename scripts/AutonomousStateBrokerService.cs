@@ -1693,6 +1693,19 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             !String.Equals(Convert.ToString(owner.ContainsKey("host") ? owner["host"] : ""), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
             return false;
 
+        object rawOwnerToken, rawCurrentToken;
+        bool ownerHasToken = owner.TryGetValue("owner_token", out rawOwnerToken);
+        bool currentHasToken = current.TryGetValue("execution_owner_token", out rawCurrentToken);
+        if (ownerHasToken != currentHasToken)
+            return false;
+        if (ownerHasToken)
+        {
+            string ownerToken = Convert.ToString(rawOwnerToken);
+            string currentToken = Convert.ToString(rawCurrentToken);
+            if (ownerToken.Length != 64 || !String.Equals(ownerToken, currentToken, StringComparison.Ordinal))
+                return false;
+        }
+
         string processState = InspectRepositoryOwnerProcess(owner);
         if (processState != "missing" && processState != "reused")
             return false;
