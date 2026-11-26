@@ -395,6 +395,8 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "RecoverStaleProgress(current, out recoveredRunId)" in service
     assert "InspectRepositoryOwnerProcess" in service
     assert 'owner.TryGetValue("process_started_at"' in service
+    assert 'owner.TryGetValue("owner_token"' in service
+    assert 'current.TryGetValue("execution_owner_token"' in service
     assert 'processState != "missing" && processState != "reused"' in service
     assert '"progress_recovery"' in service
     assert '"interrupted"' in service
