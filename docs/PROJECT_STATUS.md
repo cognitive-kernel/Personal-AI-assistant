@@ -1,3 +1,14 @@
+## 2026-11-26 — stale-run recovery integrated; native Runner architecture pending
+
+- The Windows Broker cleanup path now distinguishes stale progress from a live execution using the exact run ID/attempt, host, owner token, PID, process creation time, and independent repository/checkpoint locks.
+- A stopped non-terminal run transitions to `interrupted` with a recovery event. Verified checkpoints, current progress, event history, history records, and pending markers are preserved; cleanup only removes temporary files.
+- Progress writers now coordinate through the durable-state lock. Dashboard responses omit the internal owner token.
+- Python unit tests and Windows live-service integration tests have been added. Exact-head CI is running; no green result or Windows target-host acceptance is claimed yet.
+- **Still open:** remove the mandatory Windows Broker Service, PowerShell provisioning/communication, machine-wide state root, and service-account/group/ACL requirements. The proposed replacement uses a service-free, user-session Runner with native cross-platform locks. Its scheduling trade-off requires confirmation before changing Runner registration and workflow labels.
+- No local service, Runner, ACL, account/group, checkpoint, pending task, model, or user host state has been modified. PR #879 remains Draft.
+
+---
+
 ## 2026-11-26 — native state ownership and recovery work in progress
 
 - New Draft remediation branch: `fix/autonomous-engineering-native-state-runtime-20261126`, based on PR #878 head `8ec6fa4b3e665cf7a16945386ed75af9c7861a53`.
