@@ -208,3 +208,15 @@ def test_autonomous_engineering_pr_preflight_has_a_single_backend_owner():
     assert "def _has_open_autonomous_pr(" in facade
     assert "_pr_preflight.has_open_autonomous_pr(" in facade
     assert "run_command=_run" in facade
+
+
+
+def test_autonomous_engineering_progress_projection_is_a_pure_backend():
+    backend = (ROOT / "app" / "autonomous_engineering_progress_projection.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def enrich_progress_payload(" in backend
+    assert "def _enrich_progress_from_github(" in facade
+    assert "_progress_projection.enrich_progress_payload(current, jobs)" in facade
+    assert "subprocess" not in backend
+    assert "import requests" not in backend
