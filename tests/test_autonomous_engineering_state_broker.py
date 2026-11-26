@@ -392,7 +392,22 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "An autonomous Runner owns the repository execution lock" in service
     assert 'Path.Combine(_stateDirectory, "current.json")' in service
     assert '"active_progress_run"' in service
-    assert "progress state as a blocker" in service
+    assert "RecoverStaleProgress(current, out recoveredRunId)" in service
+    assert "InspectRepositoryOwnerProcess" in service
+    assert 'owner["process_started_at"]' in service
+    assert 'processState != "missing" && processState != "reused"' in service
+    assert '"progress_recovery"' in service
+    assert '"interrupted"' in service
+    cleanup_start = service.index("private object CleanupProgress()")
+    cleanup_end = service.index("private object WithRepositoryExecutionLock", cleanup_start)
+    cleanup = service[cleanup_start:cleanup_end]
+    cleanup_names_start = cleanup.index("string[] cleanupNames")
+    cleanup_names_end = cleanup.index("};", cleanup_names_start)
+    cleanup_names = cleanup[cleanup_names_start:cleanup_names_end]
+    assert '"current.json"' not in cleanup_names
+    assert '"events.jsonl"' not in cleanup_names
+    assert '"current.json"' in cleanup
+    assert '"events.jsonl"' in cleanup
     assert "FileShare.Read | FileShare.Delete" in service
     assert '"progress_writer_active"' in service
     assert "A progress writer is active" in service
