@@ -59,7 +59,16 @@ def test_autonomous_workflow_uses_the_selected_managed_python_for_execution():
         encoding="utf-8"
     )
 
-    assert '$venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"' in workflow
-    assert '& $venvPython "$env:GITHUB_WORKSPACE\\scripts\\autonomous_engineering_cycle.py" run' in workflow
-    assert 'Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"' not in workflow
-    assert '$env:PATH = "$env:GITHUB_WORKSPACE\\.venv\\Scripts;$env:PATH"' not in workflow
+    execution_step = workflow.split(
+        "- name: Execute one isolated task, validate, and publish for owner review", 1
+    )[1].split("- name: Verify persistent Ollama context", 1)[0]
+    dev_dependencies_step = workflow.split(
+        "- name: Install project dependencies for local test execution", 1
+    )[1].split("- name: Prepare bounded engineering instructions", 1)[0]
+
+    managed_python = 'Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"'
+    assert managed_python in execution_step
+    assert '& $venvPython (Join-Path $env:GITHUB_WORKSPACE "scripts\\autonomous_engineering_cycle.py") run' in execution_step
+    assert '$env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"' not in execution_step
+    assert managed_python in dev_dependencies_step
+    assert '$env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"' not in dev_dependencies_step
