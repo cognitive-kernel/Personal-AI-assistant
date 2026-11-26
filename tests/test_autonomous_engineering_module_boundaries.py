@@ -182,7 +182,9 @@ def test_autonomous_engineering_readiness_payload_has_a_single_backend_owner():
 
     assert "def build_status_payload(" in backend
     assert "def collect_status(" in facade
-    assert "_readiness_backend.build_status_payload(" in facade
+    service = (ROOT / "app" / "autonomous_engineering_status_service.py").read_text(encoding="utf-8")
+    assert "_status_service.collect_status(" in facade
+    assert "_readiness_backend.build_status_payload(" in service
     assert "ThreadPoolExecutor(" not in backend
     assert "BoundedSemaphore(" not in backend
 
@@ -194,9 +196,11 @@ def test_autonomous_engineering_run_log_payload_has_a_single_backend_owner():
 
     assert "def build_run_logs_payload(" in backend
     assert "def autonomous_engineering_run_logs(" in facade
-    assert "_run_logs_backend.build_run_logs_payload(" in facade
-    assert "_github_api_json(gh," in facade
-    assert "_verified_workflow_run(gh, run_id)" in facade
+    service = (ROOT / "app" / "autonomous_engineering_run_operations.py").read_text(encoding="utf-8")
+    assert "_run_operations.run_logs(" in facade
+    assert "_run_logs_backend.build_run_logs_payload(" in service
+    assert "_github_api_json(gh," in service
+    assert "_verified_workflow_run(gh, run_id)" in service
 
 
 

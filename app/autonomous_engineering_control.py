@@ -282,3 +282,21 @@ def set_pause(gh: str, paused: bool, *, _run, _repository) -> bool:
     except OSError:
         return False
     return bool(result and result.returncode == 0)
+
+
+def pause(*, _DISPATCH_REQUEST_LOCK, which, _run, _repository) -> dict[str, Any]:
+    if not _DISPATCH_REQUEST_LOCK.acquire(blocking=False):
+        raise HTTPException(status_code=409, detail="درخواست کنترل اجرای دیگری در حال انجام است؛ وضعیت را بازخوانی کنید.", headers={"X-Error-Code": "AUTONOMOUS_PAUSE_IN_PROGRESS", "X-Retryable": "false"})
+    try:
+        gh = which("gh")
+        if not gh:
+            raise HTTPException(status_code=503, detail="GitHub CLI نصب نشده است.")
+        auth = _run([gh, "auth", "status", "--hostname", "github.com"], timeout=8)
+        if not auth or auth.returncode != 0:
+            raise HTTPException(status_code=503, detail="دسترسی GitHub در حساب برنامه آماده نیست.")
+        result = _run([gh, "variable", "set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body", "true", "--repo", _repository()], timeout=15)
+        if not result or result.returncode != 0:
+            raise HTTPException(status_code=502, detail="ثبت توقف ایمن در GitHub ناموفق بود.")
+        return {"accepted": True, "paused": True, "message": "توقف ایمن ثبت شد؛ وظیفهٔ جاری تا مرز امن ادامه می‌یابد و وظیفهٔ جدید آغاز نمی‌شود."}
+    finally:
+        _DISPATCH_REQUEST_LOCK.release()

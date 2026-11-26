@@ -3359,3 +3359,19 @@ def test_github_api_adapter_constructs_only_canonical_endpoints(monkeypatch, pat
     ))
     assert agent._github_api_json("gh", path) == {}
     assert calls == [["gh", "api", "repos/owner/repo/" + path]]
+
+
+
+def test_pause_refuses_concurrent_local_control_mutation(monkeypatch):
+    from threading import Lock
+    lock = Lock()
+    lock.acquire()
+    monkeypatch.setattr(agent, "_DISPATCH_REQUEST_LOCK", lock)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: pytest.fail("Pause must not mutate during another local control operation"))
+    try:
+        with pytest.raises(HTTPException) as error:
+            agent.pause_autonomous_engineering()
+        assert error.value.status_code == 409
+        assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_PAUSE_IN_PROGRESS"
+    finally:
+        lock.release()

@@ -16,26 +16,27 @@ _DIAGNOSTICS_CACHE_MAX_ENTRIES = 256
 
 
 def cached_run_diagnostics(
-    run_id: int, *, read_diagnostics: Callable[[int], dict[str, Any] | None]
+    run_id: int, *, read_diagnostics: Callable[[int], dict[str, Any] | None], cache: dict | None = None
 ) -> dict[str, Any] | None:
     """Bound and expire the per-run diagnostic cache."""
+    cache = _DIAGNOSTICS_CACHE if cache is None else cache
     now = time.monotonic()
     with _DIAGNOSTICS_CACHE_LOCK:
-        cached = _DIAGNOSTICS_CACHE.get(run_id)
+        cached = cache.get(run_id)
         if cached is not None and now - cached[0] < _DIAGNOSTICS_CACHE_TTL_SECONDS:
             return cached[1]
     diagnostic = read_diagnostics(run_id)
     now = time.monotonic()
     with _DIAGNOSTICS_CACHE_LOCK:
-        _DIAGNOSTICS_CACHE[run_id] = (now, diagnostic)
+        cache[run_id] = (now, diagnostic)
         expired = [
-            key for key, (cached_at, _value) in _DIAGNOSTICS_CACHE.items()
+            key for key, (cached_at, _value) in cache.items()
             if now - cached_at >= _DIAGNOSTICS_CACHE_TTL_SECONDS
         ]
         for key in expired:
-            _DIAGNOSTICS_CACHE.pop(key, None)
-        while len(_DIAGNOSTICS_CACHE) > _DIAGNOSTICS_CACHE_MAX_ENTRIES:
-            _DIAGNOSTICS_CACHE.pop(next(iter(_DIAGNOSTICS_CACHE)))
+            cache.pop(key, None)
+        while len(cache) > _DIAGNOSTICS_CACHE_MAX_ENTRIES:
+            cache.pop(next(iter(cache)))
     return diagnostic
 
 

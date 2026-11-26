@@ -53,7 +53,7 @@ def build_status_payload(
     active_runs = github.get("recent_runs", [])
     active = any(
         isinstance(item, dict)
-        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}
+        and item.get("status") in {"queued", "in_progress", "waiting", "requested", "pending", "suspended"}
         for item in active_runs
     )
     return {
