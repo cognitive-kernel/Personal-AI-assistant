@@ -1118,10 +1118,12 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
 
     try:
         if _is_windows():
-            # The protected Windows Broker is authoritative: it acquires the
-            # repository, durable-state, and checkpoint-store locks itself and
-            # checks active/unknown progress while those locks are held. Do
-            # not perform a stale GitHub preflight in the dashboard process.
+            # The Broker owns local repository/state/checkpoint locks, but it
+            # cannot independently authenticate the remote GitHub workflow
+            # state. Check remote admission before asking it to reconcile local
+            # progress; an active/queued workflow must never be marked stale
+            # merely because its local controller process has exited.
+            ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
         ensure_no_active_workflow()
         # POSIX uses the same repository lock as the Runner, then the helper
