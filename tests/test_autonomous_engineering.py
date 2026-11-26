@@ -1417,10 +1417,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
     assert "pending-manual-task.txt" in workflow
-    assert "function Get-LiveRepositoryVariable" in workflow
-    assert "/actions/variables/$Name" in workflow
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in workflow
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in workflow
+    assert "scripts/autonomous_engineering_admission.py" in workflow
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "ensure_autonomous_state_broker.ps1" in acl_script
@@ -3225,12 +3222,23 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
     start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
     end = workflow.index("- name: Provision verified GitHub CLI for this Runner job", start)
-    gate = workflow[start:end]
+    persistence = workflow.index("- name: Persist manual task under the controller's runner and concurrency ownership")
+    gate = workflow[start:persistence]
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
-    provision = workflow.index("- name: Provision verified GitHub CLI for this Runner job")
-    assert concurrency < start < provision
+    assert concurrency < start < persistence < end
+    assert "shell: python {0}" in gate
+    assert "scripts/autonomous_engineering_admission.py" in gate
+    assert 'VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}' in gate
+    assert 'GH_TOKEN: ${{ github.token }}' not in gate
+    assert "MANUAL_TASK:" in gate and "EVENT_NAME:" in gate
+    assert "RESUME_ONCE:" in gate and "RECOVERY_ATTEMPT:" in gate
 
     gated_steps = (
+        "Persist manual task under the controller's runner and concurrency ownership",
+        "Prepare Runner virtual environment and install runtime dependencies",
+        "Initialize live progress before prerequisite checks",
+        "Snapshot accepted scorecard from trusted main",
+        "Capture live GitHub state with the read-only workflow token",
         "Provision verified GitHub CLI for this Runner job",
         "Ensure Codex CLI is installed for the Runner service account",
         "Verify local Ollama and Codex prerequisites",
@@ -3245,44 +3253,6 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
         step_body = workflow[step_start:next_step if next_step >= 0 else len(workflow)]
         assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in step_body
 
-    assert "$repositoryUri = \"https://api.github.com/repos/$env:GITHUB_REPOSITORY\"" in gate
-    assert "$repositoryMetadata = Invoke-RestMethod -Method Get" in gate
-    assert "$repositoryMetadata.full_name" in gate
-    assert gate.index("$repositoryMetadata = Invoke-RestMethod") < gate.index('Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"')
-    assert "function Get-LiveRepositoryVariable" in gate
-    assert "/actions/variables/$Name" in gate
-    assert "/actions/variables?per_page=1" in gate
-    variable_reader = gate[gate.index("function Get-LiveRepositoryVariable"):]
-    assert variable_reader.index("if ($statusCode -eq 404)") < variable_reader.index("/actions/variables?per_page=1") < variable_reader.index("return $DefaultValue")
-    assert "Could not verify repository Variables read permission" in gate
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in gate
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in gate
-    assert "EVENT_NAME" in gate and "RECOVERY_ATTEMPT" in gate
-    assert "RESUME_ONCE" in gate and "unmarkedEmptyDispatch" in gate
-    assert "resume_once:" in workflow
-    assert "AUTONOMOUS_ENGINEERING_RESUME_ONCE:" in workflow
-    assert "AUTONOMOUS_ENGINEERING_MANUAL_TASK:" in workflow
-    assert "modeValue -eq \"scheduled\"" in gate
-    assert "Invoke-RestMethod -Method Get" in gate
-    assert 'VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}' in gate
-    assert '$env:VARIABLES_TOKEN' in gate
-    assert 'Remove-Item Env:VARIABLES_TOKEN' in gate
-    assert 'Repository secret AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is missing' in gate
-    assert 'No task will start.' in gate
-    assert 'Variables: read' in gate
-    assert 'Authorization = "Bearer $settingsToken"' in gate
-    assert '$headers.Authorization = $null' in gate
-    assert '$settingsToken = $null' in gate
-    assert 'Authorization = "Bearer $env:GH_TOKEN"' not in gate
-    assert 'GH_TOKEN: ${{ github.token }}' not in gate
-    assert 'auth token --hostname github.com' not in gate
-    assert 'if ($statusCode -eq 404)' in gate
-    assert "Failing closed; no new task will start." in gate
-    assert "[System.IO.File]::AppendAllText" in gate
-    assert "[System.Text.UTF8Encoding]::new($false)" in gate
-    assert "Out-File" not in gate
-    assert "PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED" not in gate
-    assert "EXECUTION_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE" not in gate
     verify_start = workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)
     verify_end = workflow.index("- name: Unload and remove this run's temporary Ollama context model", verify_start)
     verify_step = workflow[verify_start:verify_end]
@@ -3323,8 +3293,7 @@ def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
 
     live_gate = workflow.index("Recheck live Pause and execution mode after concurrency admission")
     assert gate_start < live_gate
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in workflow[live_gate:]
-    assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in workflow[live_gate:]
+    assert "scripts/autonomous_engineering_admission.py" in workflow[live_gate:]
     assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[live_gate:]
 
 

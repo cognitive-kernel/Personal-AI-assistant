@@ -145,7 +145,7 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "NetworkStream" not in service
     assert '"version", 1' in service
     assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
-    assert '_WINDOWS and method == "GET" and path == "/v1/health/verify"' in python_client
+    assert '(_WINDOWS or native) and method == "GET" and path == "/v1/health/verify"' in python_client
     assert 'method == "POST" and path == "/v1/cleanup"' in python_client
     assert 're.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path)' in python_client
     assert "Unsupported state-broker endpoint" in python_client
