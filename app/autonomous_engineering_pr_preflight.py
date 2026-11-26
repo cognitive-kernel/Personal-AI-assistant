@@ -37,11 +37,30 @@ def has_open_autonomous_pr(
             detail="ساختار فهرست PRهای GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
         )
     for item in pulls:
-        user = item.get("user") if isinstance(item.get("user"), dict) else {}
-        head = item.get("head") if isinstance(item.get("head"), dict) else {}
-        base = item.get("base") if isinstance(item.get("base"), dict) else {}
-        head_repo = head.get("repo") if isinstance(head.get("repo"), dict) else {}
+        user_value = item.get("user", {})
+        head_value = item.get("head", {})
+        base_value = item.get("base", {})
+        if not all(isinstance(value, dict) for value in (user_value, head_value, base_value)):
+            raise HTTPException(
+                status_code=502,
+                detail="ساختار جزئیات PRهای GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
+            )
+        user = user_value
+        head = head_value
+        base = base_value
+        head_repo_value = head.get("repo", {})
+        if not isinstance(head_repo_value, dict):
+            raise HTTPException(
+                status_code=502,
+                detail="ساختار مخزن مبدأ PR در پاسخ GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
+            )
+        head_repo = head_repo_value
         branch = head.get("ref")
+        if branch is not None and not isinstance(branch, str):
+            raise HTTPException(
+                status_code=502,
+                detail="نام شاخهٔ مبدأ PR در پاسخ GitHub معتبر نیست؛ وظیفهٔ جدید ارسال نشد.",
+            )
         if (
             user.get("login") == "github-actions[bot]"
             and head_repo.get("full_name") == repository
