@@ -22,6 +22,11 @@ except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_state_paths import execution_state_directory
 
 try:
+    from .autonomous_engineering_state_lock import durable_state_lock
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_state_lock import durable_state_lock
+
+try:
     from .autonomous_engineering_process_job import WindowsProcessJob
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_process_job import WindowsProcessJob
@@ -125,17 +130,18 @@ def persist(record: dict[str, Any]) -> bool:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        payload = {**_with_run_correlation(record), "updated_at": now()}
-        temporary = directory / "current.json.tmp"
-        temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
-        temporary.replace(directory / "current.json")
-    except OSError as exc:
+        # Coordinate progress replacement with Broker cleanup/recovery and the
+        # durable task store. The lock order remains repository -> durable state
+        # -> checkpoint store; progress writers acquire only durable state.
+        with durable_state_lock(directory, timeout_seconds=5):
+            payload = {**_with_run_correlation(record), "updated_at": now()}
+            temporary = directory / "current.json.tmp"
+            temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+            temporary.replace(directory / "current.json")
+            append_event({"type": "progress_event", **payload})
+    except (OSError, RuntimeError, TimeoutError) as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
         return False
-    try:
-        append_event({"type": "progress_event", **payload})
-    except OSError as exc:
-        print(f"Progress event log unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
     return True
 
 
