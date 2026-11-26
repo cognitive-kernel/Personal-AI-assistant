@@ -6,7 +6,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 
-
 def test_autonomous_workflow_bootstraps_python_and_node_before_using_them():
     workflow = (ROOT / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(
         encoding="utf-8"
@@ -45,6 +44,7 @@ def test_autonomous_workflow_bootstraps_python_and_node_before_using_them():
     assert "Get-FileHash -LiteralPath $archivePath -Algorithm SHA256" in workflow
     assert "official GitHub CLI checksum file" in workflow
 
+
 def test_autonomous_workflow_keeps_codex_installation_pinned():
     workflow = (ROOT / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(
         encoding="utf-8"
@@ -52,3 +52,14 @@ def test_autonomous_workflow_keeps_codex_installation_pinned():
 
     assert 'requiredCodexVersion = "0.167.0"' in workflow
     assert 'npm install --global "@openai/codex@$requiredCodexVersion"' in workflow
+
+
+def test_autonomous_workflow_uses_the_selected_managed_python_for_execution():
+    workflow = (ROOT / ".github" / "workflows" / "autonomous-codex-engineering.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert '$venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\\python.exe"' in workflow
+    assert '& $venvPython "$env:GITHUB_WORKSPACE\\scripts\\autonomous_engineering_cycle.py" run' in workflow
+    assert 'Join-Path $env:GITHUB_WORKSPACE ".venv\\Scripts\\python.exe"' not in workflow
+    assert '$env:PATH = "$env:GITHUB_WORKSPACE\\.venv\\Scripts;$env:PATH"' not in workflow
