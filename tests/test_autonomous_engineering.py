@@ -3199,7 +3199,7 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
     ).read_text(encoding="utf-8")
     assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
     start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
-    end = workflow.index("- name: Execute one isolated task, validate, and publish for owner review", start)
+    end = workflow.index("- name: Provision verified GitHub CLI for this Runner job", start)
     gate = workflow[start:end]
     concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
     provision = workflow.index("- name: Provision verified GitHub CLI for this Runner job")
