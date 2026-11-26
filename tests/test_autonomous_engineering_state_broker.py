@@ -465,7 +465,7 @@ def test_broker_pipe_open_reports_missing_service_instead_of_hiding_it_as_timeou
     assert fake.calls == broker._ERROR_FILE_NOT_FOUND_RETRIES
 
 
-def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
+def test_broker_pipe_open_waits_for_busy_instance_repeated_regression(monkeypatch):
     class FakeKernel:
         def __init__(self):
             self.calls = 0
@@ -487,7 +487,7 @@ def test_broker_pipe_open_waits_for_busy_instance(monkeypatch):
     assert fake.calls == 2
 
 
-def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
+def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights_repeated_regression():
     service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
 
     local_service = service.index('new SecurityIdentifier("S-1-5-19")')
@@ -503,13 +503,13 @@ def test_broker_pipe_acl_grants_local_service_minimal_server_instance_rights():
     assert "AccessControlType.Allow" in service[local_service:authenticated_users]
 
 
-def test_broker_live_windows_integration_rejects_worker_loop_diagnostics():
+def test_broker_live_windows_integration_rejects_worker_loop_diagnostics_repeated_regression():
     service_test = (ROOT / "scripts" / "test_autonomous_state_broker_service.ps1").read_text(encoding="utf-8")
 
     assert '$workerDiagnosticsPath = Join-Path $stateRoot "service-errors.log"' in service_test
     assert "recorded unexpected exceptions" in service_test
 
-def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
+def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order_repeated_regression():
     service = (ROOT / "scripts" / "AutonomousStateBrokerService.cs").read_text(encoding="utf-8")
     cleanup_start = service.index("private object CleanupProgress()")
     repository_lock = service.index("WithRepositoryExecutionLock", cleanup_start)
@@ -531,7 +531,7 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order():
     assert "A progress writer is active" in service
 
 
-def test_python_broker_health_preserves_posix_and_extends_windows_contract(monkeypatch):
+def test_python_broker_health_preserves_posix_and_extends_windows_contract_repeated_regression(monkeypatch):
     captured = {}
 
     def healthy_request(method, path, **kwargs):
