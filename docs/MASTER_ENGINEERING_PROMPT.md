@@ -175,3 +175,58 @@ The project is considered 100% complete only when:
 Work continuously, methodically, and without human intervention until the project is 100% complete. Prefer correctness, durability, and non-regression over speed. When in doubt, choose the safer, more explicit, more testable design.
 
 Begin now by reading the current `docs/PROJECT_STATUS.md`, open Issues, and the highest-priority remaining gate. Then start the cycle.
+
+
+## Mandatory Addendum — Runtime Independence, Enforced Modular Decomposition, and Automatic Prerequisite Provisioning
+
+This addendum is binding. It is not advisory and must not be weakened by another section of this prompt. Apply the stricter security, isolation, and evidence requirement whenever clauses overlap.
+
+### A. Mandatory decomposition into small, independently owned modules
+
+- **Large and monolithic source files MUST be broken down.** Any oversized, multi-responsibility, multi-workflow, or cross-layer file must be decomposed into smaller files and modules with one clear responsibility each. Keeping a God Module for convenience or to minimize file count is prohibited.
+- File length alone is not the decomposition criterion. Responsibility, change frequency, state ownership, failure boundaries, and dependency direction determine module boundaries. Before adding features to an oversized module, perform the structural refactor first. Any temporary exception requires a documented technical reason, an owner, and a measurable removal plan.
+- No independent capability may depend on another capability's executable/internal file, private symbols, global variables, import order, import-time side effects, or private data structures to perform its core behavior.
+- Modules may communicate only through small, explicit, documented, versionable contracts: interfaces, schemas, events, or service APIs. Direct access to another module's implementation details or internal state is prohibited.
+- Dependency direction must be one-way. Domain logic must not depend on UI, framework, CLI, shell, or a specific provider. Circular imports, cross-importing internals, and unowned shared mutable state are prohibited.
+- Each capability must own its entry point, state, input/output contract, error handling, configuration, tests, and required adapters. A defect or change in one capability must not disable an independent capability.
+- Shared code belongs only in small, dependency-light foundation modules. Do not turn a common/shared directory into a dumping ground for unrelated feature logic.
+- Files must remain understandable and maintainable. Reviewers must require decomposition of oversized or multi-responsibility files. Merely moving lines into many files without reducing coupling is not an acceptable refactor.
+- Add independent import/load tests, contract tests, behavioral tests, and failure-isolation tests for module boundaries. Enforce architecture with dependency/fitness tests so prohibited coupling cannot silently return.
+- Keep blast radius local: change only the module that owns the capability. Any shared contract change requires versioning, backward-compatibility analysis, migration, and tests for every consumer.
+- Refactor incrementally without behavior regression: add characterization/regression tests first, extract modules, migrate consumers, then remove the old path. Never remove or weaken a healthy capability merely to simplify a refactor.
+
+### B. Remove runtime dependencies on uncontrolled tools and user environments
+
+- Core startup, UI, storage, and internal capabilities MUST NOT require PowerShell, CMD, a particular shell, Git CLI, GitHub CLI, Docker, developer tools, IDE/SDK/compiler installation, a fixed username/group, Administrator privileges, a fixed installation path, drive letter, working directory, GPU, or hardware vendor.
+- For ordinary operating-system operations, prefer standard OS APIs and application-owned libraries. Use a shell or subprocess only when a specific capability genuinely requires an external executable; isolate that dependency behind that capability's adapter and pass structured, validated arguments without shell interpretation.
+- PowerShell and CMD MUST NOT be runtime prerequisites. If Python, a Windows API, a standard library, or an application-bundled helper can perform the operation, shell invocation is prohibited. An unavoidable script must be an optional adapter; its absence may disable only that capability.
+- Only explicitly agreed and genuinely required external services such as Ollama, plus integrations explicitly enabled by the user, may be prerequisites within their own capability boundary. Their absence must not prevent startup or unrelated modules.
+- Discover paths, identity, and permissions through OS APIs at runtime. Installation and data paths must be relocatable, Unicode-safe, and independent of the current working directory.
+- Missing hardware telemetry, GPU, or vendor information must not fail the application by itself. Resource selection must use actual capabilities and safe fallbacks; accelerators are optional.
+
+### C. Compatibility detection and automatic acquisition/installation of required prerequisites
+
+- Maintain a central machine-readable prerequisite manifest. For every dependency record its name/purpose, scope (core or feature-specific), OS/architecture/ABI, required capabilities, tested compatible version range, official acquisition source, signature/hash verification, installation method, managed installation location, cache policy, lifecycle, and rollback/uninstall procedure.
+- **Do not impose arbitrary exact-version requirements on end users.** Define tested compatibility ranges and detect capabilities. Exact pins are permitted only for reproducible build inputs, ABI constraints, a documented vulnerable/incompatible release, or a documented security requirement; record the reason, scope, and review date.
+- Before a capability runs, detect the actual version and required capabilities; comparing version strings alone is insufficient. Reuse an installed version when it is compatible. If it is incompatible, too old, incomplete, or missing, automatically initiate acquisition of a compatible version.
+- **Automatic provisioning is mandatory:** for a missing or incompatible required prerequisite, the application must acquire a compatible version from an official/trusted source, verify the artifact using a trustworthy hash/signature, and install or prepare it in an application-managed or user-scoped location. Then re-detect and verify the version and capabilities and record the result. This must work both at startup for core prerequisites and when a specific version/capability error is encountered at runtime; do not delegate manual version hunting or installation to the user.
+- Prefer bundled/managed runtimes and per-user installation. Avoid changing PATH, Registry, services, system settings, or performing machine-wide installation unless the capability genuinely requires it. Obtain explicit, least-privilege approval before a machine-wide or elevated mutation; lack of permission must not disable unrelated capabilities.
+- Downloads must be resumable, cached, deduplicated, and safe to retry. Never execute incomplete or unverified artifacts. Validate TLS and publisher signatures or checksums published through an independent trusted channel. Never construct download URLs or versions from untrusted input.
+- Installation and upgrades must be atomic and rollback-capable. Preserve the last known-good version until the replacement is verified. Cleanup must never delete the user's base model, user files, settings, or other installed versions.
+- If the network is unavailable, check for a valid cached artifact. If no verified artifact or compatible route exists, mark only the dependent capability unavailable with a precise error and remediation. Never run an untrusted version or report false success.
+- Do not download/install unnecessarily at startup. Provision only core prerequisites or prerequisites for a capability the user actually invokes. Never auto-install optional or development-only tools.
+- Expose dependency status in diagnostics/UI independently: detected version, compatible range, selected runtime, source, verification status, installation status, and affected capabilities. Do not expose secrets or sensitive paths.
+- Test each dependency and adapter against multiple real versions in its supported range. Fault-inject out-of-range and missing versions, failed downloads, invalid hashes, network loss, partial installation, restricted permissions, rollback, and retry.
+
+### D. Mandatory tests and acceptance criteria
+
+- Produce a complete dependency inventory and classify every item as exactly one of: core, feature-specific, optional adapter, development/test-only, or removable. Record its owner, compatible range, discovery/provisioning method, and tests.
+- Use static checks and runtime tests to prove that no startup path or independent capability depends on PowerShell/CMD, fixed paths, fixed identities, Administrator access, or developer tools.
+- On Windows, cover no-PowerShell, Windows PowerShell 5.1, and PowerShell 7 environments. Main application paths must work with neither PowerShell engine installed.
+- Run clean-install and relocation tests as a non-admin user, with spaces and Unicode in paths, a changed working directory, a non-default installation path, and missing optional tools.
+- Test every module in isolation: independent import/load, no dependency cycles, no imports from another module's private internals, contract behavior, failure injection, and proof that its failure does not propagate to independent modules.
+- Decomposition of oversized or multi-responsibility files is part of Definition of Done. Recording technical debt without an owned remediation plan does not satisfy the mandatory decomposition requirement.
+- End-to-end tests must prove that a clean installation starts, securely acquires and installs a missing/incompatible required prerequisite, runs the dependent capability afterward, and preserves unrelated capabilities when provisioning fails.
+- Never claim independence, version compatibility, or automatic provisioning without logs and test/artifact evidence for the target combination.
+
+**Blocking gate:** Do not add new capabilities or declare this area complete until the dependency inventory, dependency graph, God Module inventory, decomposition plan, isolation tests, and automatic prerequisite-provisioning path are implemented and supported by recorded evidence.
