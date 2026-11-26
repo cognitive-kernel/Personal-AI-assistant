@@ -23,7 +23,7 @@ def _open_repository_lock_file(lock_path, *, create: bool):
 
 
 @contextmanager
-def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
+def repository_execution_lock(run_id: str, run_attempt: str, *, record_owner: bool = True) -> Iterator[None]:
     """Own the repository worktree exclusively across processes and sessions."""
     state_dir = execution_state_directory()
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -60,6 +60,10 @@ def repository_execution_lock(run_id: str, run_attempt: str) -> Iterator[None]:
                     "This run exited without touching its checkpoint or working tree."
                 ) from exc
         acquired = True
+        if not record_owner:
+            # Maintenance must not destroy the prior run's fencing evidence.
+            yield
+            return
         try:
             process_started_at = float(psutil.Process(os.getpid()).create_time())
         except (psutil.Error, OSError, ValueError) as exc:

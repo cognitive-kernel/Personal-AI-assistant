@@ -251,14 +251,12 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
         raise RuntimeError("Legacy state was previously migrated to another target.")
 
     lock_names = (
-        "autonomous-durable-state.lock",
         "repository-execution.lock",
+        "autonomous-durable-state.lock",
         "autonomous-checkpoint-store.lock",
     )
-    lock_paths = sorted(
-        [legacy / name for name in lock_names] + [state_dir / name for name in lock_names],
-        key=lambda value: str(value.resolve()),
-    )
+    roots = sorted((legacy, state_dir), key=lambda value: str(value.resolve()))
+    lock_paths = [root / name for name in lock_names for root in roots]
     descriptors = []
     try:
         for lock_path in lock_paths:

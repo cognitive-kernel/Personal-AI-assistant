@@ -6,6 +6,7 @@ durable-state, and checkpoint-store locks before persisting a recovery transitio
 from __future__ import annotations
 
 import math
+import re
 import socket
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
@@ -50,6 +51,7 @@ def inspect_lock_owner_process(
         isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0
         or isinstance(started_at, bool) or not isinstance(started_at, (int, float))
         or not math.isfinite(float(started_at))
+        or started_at <= 0
         or not isinstance(owner_host, str) or not owner_host
     ):
         return "unknown"
@@ -91,7 +93,7 @@ def classify_run_recovery(
         return RunRecoveryDecision("unknown", "current_progress_unreadable", None, None)
 
     raw_run_id = current.get("run_id")
-    raw_attempt = current.get("run_attempt", "1")
+    raw_attempt = current.get("run_attempt")
     if raw_run_id is None or isinstance(raw_run_id, bool) or not str(raw_run_id).strip():
         return RunRecoveryDecision("unknown", "run_id_missing", None, None)
     if raw_attempt is None or isinstance(raw_attempt, bool) or not str(raw_attempt).strip():
@@ -110,11 +112,11 @@ def classify_run_recovery(
         return RunRecoveryDecision("unknown", "lock_owner_run_mismatch", run_id, attempt)
     owner_token = lock_owner.get("owner_token")
     current_token = current.get("execution_owner_token")
-    if (owner_token is None) != (current_token is None) or (
-        owner_token is not None and (
-            not isinstance(owner_token, str) or len(owner_token) != 64
-            or owner_token != current_token
-        )
+    if (
+        lock_owner.get("schema_version") != 2
+        or not isinstance(owner_token, str)
+        or re.fullmatch(r"[a-f0-9]{64}", owner_token) is None
+        or owner_token != current_token
     ):
         return RunRecoveryDecision("unknown", "lock_owner_token_mismatch", run_id, attempt)
     if owner_host.casefold() != socket.gethostname().casefold():

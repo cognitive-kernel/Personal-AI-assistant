@@ -183,3 +183,29 @@ def test_owner_on_another_host_is_unknown_not_stale():
         hostname=socket.gethostname(),
         process_factory=lambda _pid: None,
     ) == "unknown"
+
+
+
+def test_legacy_or_invalid_fencing_metadata_cannot_authorize_recovery():
+    for token in (None, "x" * 64, "a" * 63):
+        current, owner = _current(), _owner()
+        if token is None:
+            current.pop("execution_owner_token")
+            owner.pop("owner_token")
+        else:
+            current["execution_owner_token"] = owner["owner_token"] = token
+        decision = classify_run_recovery(
+            current, owner, repository_lock_held=False, checkpoint_lock_held=False,
+            process_state="missing", remote_status="completed",
+        )
+        assert decision.state == "unknown"
+
+
+def test_missing_attempt_does_not_default_to_first_attempt():
+    current = _current()
+    current.pop("run_attempt")
+    decision = classify_run_recovery(
+        current, _owner(attempt="1"), repository_lock_held=False, checkpoint_lock_held=False,
+        process_state="missing", remote_status="completed",
+    )
+    assert decision.state == "unknown"

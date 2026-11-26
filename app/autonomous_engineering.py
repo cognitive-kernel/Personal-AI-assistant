@@ -880,7 +880,7 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
         ensure_no_active_workflow()
         # POSIX uses the same repository lock as the Runner, then the helper
         # acquires durable-state and checkpoint-store locks in that order.
-        with repository_execution_lock("ui-cleanup", "1"):
+        with repository_execution_lock("ui-cleanup", "1", record_owner=False):
             ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
     except StateBrokerConflict as exc:

@@ -413,3 +413,16 @@ def test_publish_parent_guard_requires_the_locked_cycle_controller(
         )
     assert child.returncode != 0
     assert "not owned by the active cycle controller" in child.stderr
+
+
+
+def test_maintenance_lock_preserves_previous_run_identity(monkeypatch, shared_state_tmp_path):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    with repository_execution_lock("previous-run", "1"):
+        pass
+    path = shared_state_tmp_path / "repository-execution.lock"
+    previous = path.read_bytes()
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", raising=False)
+    with repository_execution_lock("ui-cleanup", "1", record_owner=False):
+        assert "AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN" not in os.environ
+    assert path.read_bytes() == previous
