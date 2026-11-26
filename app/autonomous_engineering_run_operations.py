@@ -49,10 +49,8 @@ def delete_run(run_id: int, *, _authenticated_gh, _verified_workflow_run, _run, 
     )
     if not result or result.returncode != 0:
         _STATUS_LOGGER.warning(
-            "GitHub run deletion failed; run_id=%s returncode=%s stderr_present=%s",
-            trusted_run_id,
+            "GitHub run deletion failed; returncode=%s",
             result.returncode if result else None,
-            bool(result and result.stderr),
         )
         raise HTTPException(
             status_code=502,
