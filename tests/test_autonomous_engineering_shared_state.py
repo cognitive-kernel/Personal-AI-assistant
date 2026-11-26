@@ -164,3 +164,24 @@ def test_posix_migration_does_not_replace_shared_lock_files(monkeypatch, tmp_pat
     assert (resolved / "state.json").read_text(encoding="utf-8") == '{"ok":true}'
     assert (resolved / "repository-execution.lock").read_bytes() != b"legacy lock metadata"
     assert (resolved / "autonomous-durable-state.lock").read_bytes() != b"legacy durable lock"
+
+
+
+def test_legacy_migration_acquires_repository_before_state_before_checkpoint(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+    home = tmp_path / "legacy-home"
+    legacy = home / ".personal-ai-assistant" / "autonomous-engineering"
+    shared = tmp_path / "shared"
+    legacy.mkdir(parents=True)
+    calls = []
+    @contextmanager
+    def lock(path, **kwargs):
+        calls.append(path.name)
+        yield
+    monkeypatch.setattr(state, "exclusive_file_lock", lock)
+    state._migrate_legacy_posix_state(legacy, shared, home)
+    assert calls == [
+        "repository-execution.lock", "repository-execution.lock",
+        "autonomous-durable-state.lock", "autonomous-durable-state.lock",
+        "autonomous-checkpoint-store.lock", "autonomous-checkpoint-store.lock",
+    ]

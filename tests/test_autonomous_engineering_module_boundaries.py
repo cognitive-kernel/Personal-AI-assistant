@@ -368,3 +368,17 @@ def test_autonomous_engineering_private_cross_module_imports_are_explicitly_scop
         "Private cross-module imports require an explicit compatibility exception: "
         + repr(violations)
     )
+
+
+
+def test_workflow_control_owns_dispatch_and_cancel_implementation():
+    import ast
+    facade = ast.parse((ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8"))
+    control = ast.parse((ROOT / "app" / "autonomous_engineering_control.py").read_text(encoding="utf-8"))
+    functions = {node.name: node for node in facade.body if isinstance(node, ast.FunctionDef)}
+    for name in ("_dispatch_with_admission", "_dispatch_autonomous_engineering_locked", "_cancel_autonomous_engineering_locked", "_set_autonomous_engineering_pause"):
+        assert len(functions[name].body) == 1
+        assert isinstance(functions[name].body[0], ast.Return)
+    assert {"dispatch_with_admission", "dispatch_locked", "cancel_locked", "set_pause"} <= {
+        node.name for node in control.body if isinstance(node, ast.FunctionDef)
+    }

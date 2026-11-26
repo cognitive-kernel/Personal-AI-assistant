@@ -95,14 +95,14 @@ def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | 
         raise RuntimeError("The legacy state was previously migrated to a different shared root.")
 
     lock_names = (
-        "autonomous-durable-state.lock",
         "repository-execution.lock",
+        "autonomous-durable-state.lock",
         "autonomous-checkpoint-store.lock",
     )
-    lock_paths = sorted(
-        [legacy / name for name in lock_names] + [shared / name for name in lock_names],
-        key=lambda item: str(item.resolve()),
-    )
+    # Lock scope comes first, then stable root order. Sorting complete paths
+    # alphabetically inverted the repository -> state -> checkpoint hierarchy.
+    roots = sorted((legacy, shared), key=lambda item: str(item.resolve()))
+    lock_paths = [root / name for name in lock_names for root in roots]
     with ExitStack() as stack:
         for lock_path in lock_paths:
             stack.enter_context(exclusive_file_lock(
