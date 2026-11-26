@@ -127,3 +127,15 @@ def test_autonomous_engineering_selector_contract_matches_the_page():
         source = _read(name)
         used.update(re.findall(r'\$\("([^"]+)"\)', source))
     assert not used - ids, f"UI module selectors missing from HTML: {sorted(used - ids)}"
+
+ 
+def test_autonomous_engineering_run_log_safety_has_a_single_backend_owner():
+    backend = (ROOT / "app" / "autonomous_engineering_run_log_safety.py").read_text(encoding="utf-8")
+    facade = (ROOT / "app" / "autonomous_engineering.py").read_text(encoding="utf-8")
+
+    assert "def sanitize_workflow_log(" in backend
+    assert "def workflow_failure_summary(" in backend
+    assert "def _sanitize_workflow_log(" in facade
+    assert "def _workflow_failure_summary(" in facade
+    assert "_run_log_safety.sanitize_workflow_log(" in facade
+    assert "_run_log_safety.workflow_failure_summary(" in facade
