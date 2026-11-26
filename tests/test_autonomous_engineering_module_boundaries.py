@@ -220,3 +220,151 @@ def test_autonomous_engineering_progress_projection_is_a_pure_backend():
     assert "_progress_projection.enrich_progress_payload(current, jobs)" in facade
     assert "subprocess" not in backend
     assert "import requests" not in backend
+
+
+def _autonomous_engineering_python_import_graph():
+    import ast
+    import importlib.util
+
+    app_dir = ROOT / "app"
+    module_paths = {
+        f"app.{path.stem}": path
+        for path in app_dir.glob("autonomous_engineering*.py")
+    }
+    graph = {module: set() for module in module_paths}
+
+    for module, path in module_paths.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name in graph:
+                        graph[module].add(alias.name)
+                continue
+            if not isinstance(node, ast.ImportFrom):
+                continue
+
+            if node.level:
+                relative_name = "." * node.level + (node.module or "")
+                base = importlib.util.resolve_name(relative_name, "app")
+                candidates = (
+                    [f"{base}.{alias.name}" for alias in node.names]
+                    if node.module is None
+                    else [base]
+                )
+            else:
+                base = node.module or ""
+                candidates = (
+                    [f"{base}.{alias.name}" for alias in node.names]
+                    if base == "app"
+                    else [base]
+                )
+            graph[module].update(candidate for candidate in candidates if candidate in graph)
+
+    return module_paths, graph
+
+
+def test_autonomous_engineering_backend_import_graph_is_acyclic():
+    _, graph = _autonomous_engineering_python_import_graph()
+    visiting = []
+    visited = set()
+    cycles = []
+
+    def visit(module):
+        if module in visiting:
+            start = visiting.index(module)
+            cycles.append(visiting[start:] + [module])
+            return
+        if module in visited:
+            return
+        visiting.append(module)
+        for dependency in sorted(graph[module]):
+            visit(dependency)
+        visiting.pop()
+        visited.add(module)
+
+    for module in sorted(graph):
+        visit(module)
+
+    assert not cycles, "Autonomous Engineering import cycles: " + repr(cycles)
+
+
+def test_autonomous_engineering_feature_modules_do_not_import_the_router_facade():
+    facade = "app.autonomous_engineering"
+    _, graph = _autonomous_engineering_python_import_graph()
+    violations = {
+        module: sorted(dependencies & {facade})
+        for module, dependencies in graph.items()
+        if module != facade and facade in dependencies
+    }
+    assert not violations, (
+        "Feature/domain modules must not import the FastAPI router facade: "
+        + repr(violations)
+    )
+
+
+def test_autonomous_engineering_contracts_remain_dependency_independent():
+    import ast
+
+    contracts_path = ROOT / "app" / "autonomous_engineering_contracts.py"
+    tree = ast.parse(contracts_path.read_text(encoding="utf-8"), filename=str(contracts_path))
+    forbidden_roots = {
+        "fastapi", "requests", "httpx", "subprocess", "psutil",
+        "ollama", "github", "app",
+    }
+    imports = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imports.update(alias.name.split(".", 1)[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            imports.add(node.module.split(".", 1)[0])
+
+    violations = sorted(imports & forbidden_roots)
+    assert not violations, (
+        "Shared API contracts must not depend on transport/provider/runtime modules: "
+        + repr(violations)
+    )
+
+
+def test_autonomous_engineering_private_cross_module_imports_are_explicitly_scoped():
+    import ast
+
+    app_dir = ROOT / "app"
+    module_paths = {
+        f"app.{path.stem}": path
+        for path in app_dir.glob("autonomous_engineering*.py")
+    }
+    allowed_compatibility_imports = {
+        (
+            "app.autonomous_engineering",
+            "app.autonomous_engineering_errors",
+            "_structured_error_response",
+        ),
+    }
+    violations = []
+    for source_module, path in module_paths.items():
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom) or not node.module:
+                continue
+            if node.level:
+                import importlib.util
+                target_module = importlib.util.resolve_name(
+                    "." * node.level + node.module, "app"
+                )
+            else:
+                target_module = node.module
+            if target_module not in module_paths:
+                continue
+            for alias in node.names:
+                if alias.name.startswith("_") and (
+                    source_module, target_module, alias.name
+                ) not in allowed_compatibility_imports:
+                    violations.append(
+                        (source_module, target_module, alias.name)
+                    )
+
+    assert not violations, (
+        "Private cross-module imports require an explicit compatibility exception: "
+        + repr(violations)
+    )
