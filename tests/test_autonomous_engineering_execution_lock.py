@@ -34,6 +34,8 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     assert metadata["schema_version"] == 2
     assert metadata["pid"] == os.getpid()
     assert metadata["process_started_at"] == pytest.approx(psutil.Process(os.getpid()).create_time(), abs=0.02)
+    assert len(metadata["owner_token"]) == 64
+    assert all(character in "0123456789abcdef" for character in metadata["owner_token"])
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
     assert metadata["host"]
