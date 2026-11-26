@@ -52,4 +52,4 @@ def test_progress_projection_marks_only_fully_successful_jobs_complete():
 
     assert completed["status"] == "completed"
     assert completed["percent"] == 100
-    assert unsuccessful["status"] == "running"
+    assert unsuccessful["status"] == "failed"
