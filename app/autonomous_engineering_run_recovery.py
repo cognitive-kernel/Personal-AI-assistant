@@ -108,6 +108,15 @@ def classify_run_recovery(
     owner_host = str(lock_owner.get("host") or "")
     if owner_run_id != run_id or owner_attempt != attempt:
         return RunRecoveryDecision("unknown", "lock_owner_run_mismatch", run_id, attempt)
+    owner_token = lock_owner.get("owner_token")
+    current_token = current.get("execution_owner_token")
+    if (owner_token is None) != (current_token is None) or (
+        owner_token is not None and (
+            not isinstance(owner_token, str) or len(owner_token) != 64
+            or owner_token != current_token
+        )
+    ):
+        return RunRecoveryDecision("unknown", "lock_owner_token_mismatch", run_id, attempt)
     if owner_host.casefold() != socket.gethostname().casefold():
         return RunRecoveryDecision("unknown", "lock_owner_host_mismatch", run_id, attempt)
 
