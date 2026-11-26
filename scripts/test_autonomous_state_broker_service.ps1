@@ -27,7 +27,7 @@ function Invoke-SetupMutexProcessIntegrationTest {
     New-Item -ItemType Directory -Path $testRoot -Force | Out-Null
     $childScript = Join-Path $testRoot "mutex-child.ps1"
     $ownerThreadAssembly = Join-Path $testRoot "StateBrokerSetupMutexOwnerThreadProbe.dll"
-    $holderErrorPath = Join-Path $testRoot "holder.stderr"
+    $holderErrorPath = Join-Path $testRoot "holder.error"
     $mutexName = "Global\PersonalAIAssistant.StateBrokerSetup.CI." + [guid]::NewGuid().ToString("N")
     $activeHost = [string](Get-Process -Id $PID -ErrorAction Stop).Path
     $anchorMutex = $null
@@ -65,6 +65,12 @@ public static class StateBrokerSetupMutexOwnerThreadProbe {
 
     $childSource = @'
 $ErrorActionPreference = "Stop"
+trap {
+    if ($env:STATE_BROKER_LOCK_ERROR) {
+        [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_ERROR, ($_ | Out-String))
+    }
+    exit 1
+}
 $modulePath = $env:STATE_BROKER_LOCK_MODULE
 Import-Module -Name $modulePath -Force -ErrorAction Stop
 
@@ -75,7 +81,13 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         $env:STATE_BROKER_LOCK_MODE = "holder"
         $hostPath = [string](Get-Process -Id $PID -ErrorAction Stop).Path
         $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $env:STATE_BROKER_LOCK_SCRIPT + '"'
-        $child = Start-Process -FilePath $hostPath -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardError $env:STATE_BROKER_LOCK_HOLDER_STDERR
+        $proxyErrorPath = $env:STATE_BROKER_LOCK_ERROR
+        try {
+            $env:STATE_BROKER_LOCK_ERROR = $env:STATE_BROKER_LOCK_HOLDER_ERROR
+            $child = Start-Process -FilePath $hostPath -ArgumentList $arguments -PassThru -WindowStyle Hidden
+        } finally {
+            $env:STATE_BROKER_LOCK_ERROR = $proxyErrorPath
+        }
         $pidSignal = $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL
         [System.IO.File]::WriteAllText($pidSignal + ".tmp", [string]$child.Id)
         [System.IO.File]::Move($pidSignal + ".tmp", $pidSignal)
@@ -95,13 +107,19 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         }
     }
     "busy" {
+        $lock = $null
         try {
             $lock = Enter-AutonomousStateBrokerSetupMutex -Name $env:STATE_BROKER_LOCK_NAME -MarkerRegistrySubKey $env:STATE_BROKER_LOCK_MARKER_KEY
-            Exit-AutonomousStateBrokerSetupMutex -Lock $lock
-            throw "A second process acquired the State Broker setup mutex while the owner was alive."
         } catch {
             if ($_.Exception.Message -notmatch "already running") { throw }
             [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "busy")
+        }
+        if ($null -ne $lock) {
+            try {
+                [System.IO.File]::WriteAllText($env:STATE_BROKER_LOCK_SIGNAL, "acquired")
+            } finally {
+                Exit-AutonomousStateBrokerSetupMutex -Lock $lock
+            }
         }
     }
     "abandoned" {
@@ -204,7 +222,8 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         "STATE_BROKER_LOCK_MODULE",
         "STATE_BROKER_LOCK_SCRIPT",
         "STATE_BROKER_LOCK_OWNER_ASSEMBLY",
-        "STATE_BROKER_LOCK_HOLDER_STDERR",
+        "STATE_BROKER_LOCK_ERROR",
+        "STATE_BROKER_LOCK_HOLDER_ERROR",
         "STATE_BROKER_LOCK_NAME",
         "STATE_BROKER_LOCK_MODE",
         "STATE_BROKER_LOCK_SIGNAL",
@@ -225,10 +244,21 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         $env:STATE_BROKER_LOCK_MODE = $Mode
         $env:STATE_BROKER_LOCK_SIGNAL = $SignalPath
         $arguments = '-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' + $childScript + '"'
-        $errorPath = Join-Path $testRoot ($Mode + ".stderr")
-        $process = Start-Process -FilePath $activeHost -ArgumentList $arguments -PassThru -WindowStyle Hidden -RedirectStandardError $errorPath
+        $env:STATE_BROKER_LOCK_ERROR = Join-Path $testRoot ($Mode + ".error")
+        $process = Start-Process -FilePath $activeHost -ArgumentList $arguments -PassThru -WindowStyle Hidden
         [void]$children.Add($process)
+        # Keep the process handle open so Windows PowerShell Desktop can read
+        # the exit code even when the child terminates immediately.
+        [void]$process.Handle
         return $process
+    }
+
+    function Write-SetupMutexTestDiagnostics {
+        param([string]$ErrorPath)
+        if (Test-Path -LiteralPath $ErrorPath -PathType Leaf) {
+            $diagnostics = Get-Content -LiteralPath $ErrorPath -Tail 20 -ErrorAction SilentlyContinue
+            if ($diagnostics) { Write-Host ($diagnostics -join [Environment]::NewLine) }
+        }
     }
 
     function Wait-SetupMutexTestSignal {
@@ -245,10 +275,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
             if (Test-Path -LiteralPath $SignalPath -PathType Leaf) { return }
             Start-Sleep -Milliseconds 100
         }
-        if (Test-Path -LiteralPath $ErrorPath -PathType Leaf) {
-            $diagnostics = Get-Content -LiteralPath $ErrorPath -Tail 20 -ErrorAction SilentlyContinue
-            if ($diagnostics) { Write-Host ($diagnostics -join [Environment]::NewLine) }
-        }
+        Write-SetupMutexTestDiagnostics -ErrorPath $ErrorPath
         if ($Process.HasExited) {
             throw "State Broker mutex test failed during ${Phase}. The child exited with code $($Process.ExitCode)."
         }
@@ -263,7 +290,7 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         $env:STATE_BROKER_LOCK_MODULE = $modulePath
         $env:STATE_BROKER_LOCK_SCRIPT = $childScript
         $env:STATE_BROKER_LOCK_OWNER_ASSEMBLY = $ownerThreadAssembly
-        $env:STATE_BROKER_LOCK_HOLDER_STDERR = $holderErrorPath
+        $env:STATE_BROKER_LOCK_HOLDER_ERROR = $holderErrorPath
         $env:STATE_BROKER_LOCK_NAME = $mutexName
         $env:STATE_BROKER_LOCK_RELEASE = Join-Path $testRoot "release-owner-thread"
         $env:STATE_BROKER_LOCK_STOP = Join-Path $testRoot "stop-holder-process"
@@ -277,9 +304,10 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
 
         $holderThreadSignal = Join-Path $testRoot "holder-thread-held"
         $proxy = Start-SetupMutexTestChild -Mode "proxy" -SignalPath $holderThreadSignal
-        Wait-SetupMutexTestSignal -Process $proxy -SignalPath $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL -Phase "holder PID publication" -ErrorPath (Join-Path $testRoot "proxy.stderr")
+        Wait-SetupMutexTestSignal -Process $proxy -SignalPath $env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL -Phase "holder PID publication" -ErrorPath (Join-Path $testRoot "proxy.error")
         $holderId = [int][System.IO.File]::ReadAllText($env:STATE_BROKER_LOCK_CHILD_PID_SIGNAL)
         $holder = [System.Diagnostics.Process]::GetProcessById($holderId)
+        [void]$holder.Handle
         Wait-SetupMutexTestSignal -Process $holder -SignalPath $holderThreadSignal -Phase "holder thread mutex acquisition" -ErrorPath $holderErrorPath
         if ([System.IO.File]::ReadAllText($holderThreadSignal) -ne "held") {
             throw "The holder thread did not confirm initial mutex ownership."
@@ -289,16 +317,31 @@ switch ($env:STATE_BROKER_LOCK_MODE) {
         # keep owning the mutex and block a third process from entering.
         Stop-Process -Id $proxy.Id -Force -ErrorAction Stop
         $proxy.WaitForExit()
+        $holder.Refresh()
+        if ($holder.HasExited) {
+            Write-SetupMutexTestDiagnostics -ErrorPath $holderErrorPath
+            throw "The mutex holder exited when its launcher was terminated (exit code $($holder.ExitCode))."
+        }
         $busySignal = Join-Path $testRoot "busy.signal"
         $busy = Start-SetupMutexTestChild -Mode "busy" -SignalPath $busySignal
         if (-not $busy.WaitForExit(15000)) {
             Stop-Process -Id $busy.Id -Force -ErrorAction SilentlyContinue
             throw "The concurrent mutex rejection probe did not exit within its deadline."
         }
-        if ($busy.ExitCode -ne 0 -or
-            -not (Test-Path -LiteralPath $busySignal -PathType Leaf) -or
-            [System.IO.File]::ReadAllText($busySignal) -ne "busy") {
+        $busyOutcome = if (Test-Path -LiteralPath $busySignal -PathType Leaf) {
+            [System.IO.File]::ReadAllText($busySignal)
+        }
+        if ($busyOutcome -eq "acquired") {
             throw "A competing process entered the broker setup mutex after its launcher was terminated."
+        }
+        if ($busy.ExitCode -ne 0 -or $busyOutcome -ne "busy") {
+            Write-SetupMutexTestDiagnostics -ErrorPath (Join-Path $testRoot "busy.error")
+            throw "The competing process did not report a busy setup mutex (exit code $($busy.ExitCode), outcome '$busyOutcome')."
+        }
+        $holder.Refresh()
+        if ($holder.HasExited) {
+            Write-SetupMutexTestDiagnostics -ErrorPath $holderErrorPath
+            throw "The mutex holder exited during the competing-process probe (exit code $($holder.ExitCode))."
         }
 
         # Let only the dedicated .NET owner thread exit. The holder process
