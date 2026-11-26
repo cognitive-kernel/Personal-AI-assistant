@@ -248,10 +248,12 @@ def _repository() -> str:
 
 def _run(
     command: list[str], timeout: int = 8, *, raise_os_error: bool = False,
+    input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str] | None:
     try:
         return subprocess.run(
             command,
+            input=input_text,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -984,9 +986,19 @@ def _dispatch_autonomous_engineering_locked(
         raise HTTPException(status_code=503, detail="GitHub CLI احراز هویت نشده است.")
     if manual_task and _has_open_autonomous_pr(gh):
         raise HTTPException(status_code=409, detail="یک PR مهندسی خودکار هنوز باز است؛ ابتدا همان PR را بازبینی و تعیین‌تکلیف کنید.")
-    command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main", "--raw-field", f"correlation_id={correlation_id}", "--raw-field", f"manual_task={manual_task}"]
-    if resume_once:
-        command.extend(["--raw-field", "resume_once=true"])
+    command = [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main"]
+    workflow_input = None
+    if manual_task:
+        # Keep owner-provided task text out of argv; gh reads workflow inputs from stdin.
+        command.append("--json")
+        inputs = {"correlation_id": correlation_id, "manual_task": manual_task}
+        if resume_once:
+            inputs["resume_once"] = True
+        workflow_input = json.dumps(inputs, ensure_ascii=False)
+    else:
+        command.extend(["--raw-field", f"correlation_id={correlation_id}", "--raw-field", "manual_task="])
+        if resume_once:
+            command.extend(["--raw-field", "resume_once=true"])
         if not _set_autonomous_engineering_pause(gh, False):
             restored = _set_autonomous_engineering_pause(gh, True)
             raise HTTPException(
@@ -1003,7 +1015,10 @@ def _dispatch_autonomous_engineering_locked(
                 },
             )
     try:
-        result = _run(command, timeout=20, raise_os_error=True)
+        if workflow_input is not None:
+            result = _run(command, timeout=20, raise_os_error=True, input_text=workflow_input)
+        else:
+            result = _run(command, timeout=20, raise_os_error=True)
     except OSError as exc:
         if resume_once and not _set_autonomous_engineering_pause(gh, True):
             raise HTTPException(
