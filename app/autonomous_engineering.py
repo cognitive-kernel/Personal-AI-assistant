@@ -524,9 +524,20 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     removed = 0
     removed_bytes = 0
     failed_files: list[str] = []
+    recovery = None
     if _broker_owns_cleanup():
         try:
-            result = cleanup_shared_progress_data()
+            from .autonomous_engineering_native_config import native_state_enabled
+            if native_state_enabled():
+                from .autonomous_engineering_native_recovery import cleanup_native_progress
+                result = cleanup_native_progress(
+                    execution_state_directory(),
+                    verify_remote=lambda run_id: _verified_workflow_run(_authenticated_gh(), run_id),
+                    ensure_remote_idle=lambda: _ensure_no_active_workflow(),
+                )
+            else:
+                result = cleanup_shared_progress_data()
+            recovery = result.get("recovery")
             removed = int(result.get("files_removed", 0))
             removed_bytes = int(result.get("bytes_removed", 0))
             failed_files.extend(str(item) for item in result.get("failed_files", []))
@@ -619,6 +630,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
     ]
     return {
         "cleaned": not failed_files,
+        **({"recovery": recovery} if recovery is not None else {}),
         "files_removed": removed,
         "bytes_removed": removed_bytes,
         "failed_files": failed_files,
@@ -631,17 +643,14 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
         ),
     }
 
+def _ensure_no_active_workflow() -> None:
+    runs = _workflow_runs(_authenticated_gh())
+    if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
+        raise HTTPException(status_code=409, detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.")
+
+
 @router.post("/cleanup")
 def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
-    def ensure_no_active_workflow() -> None:
-        gh = _authenticated_gh()
-        runs = _workflow_runs(gh)
-        if any(item.get("status") in _ACTIVE_RUN_STATES for item in runs):
-            raise HTTPException(
-                status_code=409,
-                detail="عامل هنوز اجرای فعال یا در صف دارد؛ پاک‌سازی داده‌های موقت تا پایان اجرا مجاز نیست.",
-            )
-
     try:
         if _broker_owns_cleanup():
             # The Broker owns local repository/state/checkpoint locks, but it
@@ -649,13 +658,13 @@ def cleanup_autonomous_engineering_temporary_data() -> dict[str, Any]:
             # state. Check remote admission before asking it to reconcile local
             # progress; an active/queued workflow must never be marked stale
             # merely because its local controller process has exited.
-            ensure_no_active_workflow()
+            _ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
-        ensure_no_active_workflow()
+        _ensure_no_active_workflow()
         # POSIX uses the same repository lock as the Runner, then the helper
         # acquires durable-state and checkpoint-store locks in that order.
         with repository_execution_lock("ui-cleanup", "1", record_owner=False):
-            ensure_no_active_workflow()
+            _ensure_no_active_workflow()
             return _cleanup_autonomous_engineering_temporary_data_locked()
     except StateBrokerConflict as exc:
         blockers = set(getattr(exc, "blockers", []) or [])

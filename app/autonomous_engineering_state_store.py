@@ -432,15 +432,20 @@ class RestrictedStateBroker:
         except OSError as exc:
             raise BrokerFailure(503, "dispatch_admission_state_unavailable") from exc
 
-    def cleanup(self) -> dict[str, Any]:
+    def cleanup(self, *, reconcile=None) -> dict[str, Any]:
         def perform() -> dict[str, Any]:
+            recovery = reconcile(self.state_dir) if reconcile is not None else None
+            if recovery is not None and recovery.state in {"active", "unknown"}:
+                raise LifecycleConflict("Run ownership could not be cleared safely.", [recovery.reason])
             blockers = [
                 filename
                 for filename in MARKERS.values()
                 if self._regular_file(self.state_dir / filename) is not None
             ]
             checkpoint = self._checkpoint_summary()
-            if checkpoint.get("available") is True or checkpoint.get("verified") is False:
+            if checkpoint.get("verified") is False or (
+                checkpoint.get("available") is True and reconcile is None
+            ):
                 blockers.append("latest-worktree-checkpoint")
             if blockers:
                 return {
@@ -470,6 +475,7 @@ class RestrictedStateBroker:
                 "files_removed": removed,
                 "bytes_removed": removed_bytes,
                 "failed_files": failed,
+                **({"recovery": recovery.as_dict()} if recovery is not None else {}),
                 "preserved": [
                     "current.json",
                     "events.jsonl",

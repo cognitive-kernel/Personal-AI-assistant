@@ -202,7 +202,9 @@
         ? data.codex.version + "؛ این بررسی فقط حساب برنامه را پوشش می‌دهد."
         : "حساب Runner جداگانه و هنگام اجرای Workflow بررسی می‌شود.";
       labels.runner.textContent = stateText(checks.runner_running);
-      $("runner-detail").textContent = checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
+      $("runner-detail").textContent = checks.native_runner_workflow_compatible === false
+        ? "اجرای Workflow در حالت بومی هنوز تأیید نشده است؛ داشبورد و ذخیره‌سازی مستقل در دسترس‌اند."
+        : checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
       const githubReady = checks.github_cli_authenticated && checks.github_runs_available;
       labels.github.textContent = stateText(githubReady);
       $("github-detail").textContent = !checks.github_cli_authenticated
@@ -217,11 +219,15 @@
         ? lastPendingWork.reason.slice(0, 240)
         : "";
       labels.storage.textContent = stateText(checks.progress_storage_accessible);
-      $("storage-detail").textContent = checks.progress_storage_accessible
+      const nativeState = data.state_backend === "native";
+      $("storage-detail").textContent = nativeState
+        ? (checks.progress_storage_accessible ? "فضای وضعیت بومی بدون سرویس خارجی آماده است." : "فضای وضعیت بومی آماده نیست؛ مسیر و دسترسی حساب فعلی را بررسی کنید.")
+        : checks.progress_storage_accessible
         ? "سرویس Broker محلی آماده است؛ وضعیت پایدار از کانال محدود محلی قابل خواندن است."
         : "سرویس Broker آماده نیست. نصب یا ترمیم آن فقط پس از فشردن دکمهٔ زیر و تأیید مجوز مدیر انجام می‌شود. Runner برای نصب Broker لازم نیست؛ Runner فقط قابلیت اجرای Workflow را فراهم می‌کند." +
           (brokerDiagnostic ? " تشخیص فعلی: " + brokerDiagnostic : "");
       const setupBrokerButton = $("setup-state-broker");
+      setupBrokerButton.textContent = nativeState ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم Broker";
       setupBrokerButton.hidden = checks.progress_storage_accessible === true;
       setupBrokerButton.disabled = checks.progress_storage_accessible === true;
       const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
@@ -291,7 +297,7 @@
       pill.textContent = paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
       pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const activeRun = (data.github && data.github.recent_runs || []).find(run =>
-        ["queued", "in_progress", "waiting", "requested", "pending"].includes(run.status));
+        ["queued", "in_progress", "waiting", "requested", "pending", "suspended"].includes(run.status));
       const active = Boolean(activeRun);
       lastActiveRunId = activeRun && Number.isSafeInteger(Number(activeRun.id)) && Number(activeRun.id) > 0
         ? Number(activeRun.id)
@@ -303,7 +309,7 @@
       syncDispatchControls();
       cancelButton.disabled = !active;
       pauseButton.disabled = Boolean(data.paused);
-      resumeButton.disabled = !data.paused;
+      resumeButton.disabled = !data.paused || checks.native_runner_workflow_compatible === false;
       // Run history refreshes independently and after committed mutations.
       // Rendering this status snapshot here bypasses its request sequence and
       // can overwrite a newer, explicitly refreshed run list with stale data.

@@ -110,6 +110,7 @@ def verified_workflow_run(
         raise HTTPException(status_code=404, detail="اجرای درخواستی متعلق به عامل مهندسی خودکار نیست.")
     return {
         "id": verified_run_id,
+        "run_attempt": run.get("run_attempt"),
         "status": str(run.get("status") or "unknown"),
         "conclusion": run.get("conclusion"),
         "workflow_path": workflow_path,
