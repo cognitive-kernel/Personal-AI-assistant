@@ -2789,3 +2789,14 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Startup preflight نیز اگر base model نصب باشد، این وضعیت را recoverable تشخیص می‌دهد و هشدار unavailable/pull تولید نمی‌کند؛ اگر base نصب نباشد، قابلیت chat unavailable گزارش می‌شود و pull خودکار اجرا نمی‌شود.
 - Regression در `tests/test_db_schema.py`، `tests/test_core.py` و `tests/test_startup_model_preflight.py` اضافه/به‌روزرسانی شده است.
 - Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; documentation head after integration snapshot: `ee58b9ea37ff732bd174f1ea2f813ad1ca30b95c`. Exact-head CI is pending; target-host acceptance remains open.
+
+
+## 2026-11-26 — تصمیم وضعیت PR #872 و ممیزی معماری Backend
+
+- وضعیت زندهٔ GitHub بررسی شد: PR #872 تنها PR باز مخزن است؛ Draft و unmerged باقی مانده و head فعلی آن `18bcba48e843a5920e27c33f51f4bf98ec1728aa` است.
+- چهار workflow روی همین SHA موفق‌اند: Tests `45759899919`، Browser E2E `45759899887`، CodeQL `45759899837` و dependency audit `45759899799`.
+- تصمیم: PR #872 به‌عنوان PR یکپارچه‌سازی حفظ می‌شود؛ نه merge و نه cancel. God Module در Backend و پذیرش Windows واقعی دو گیت مسدودکننده‌اند.
+- `app/autonomous_engineering.py` هنوز ۱۶۲۶ خط و چندمسئولیتی است. تست موجود `tests/test_autonomous_engineering_module_boundaries.py` عمدتاً UI JavaScript را بررسی می‌کند و برای اثبات مرزهای Python کافی نیست.
+- شاخهٔ مستقل `fix/autonomous-engineering-modular-boundaries-20261126` از SHA دقیق PR ایجاد شد. برنامهٔ مرزبندی و حل تعارض دو master prompt در `docs/AUTONOMOUS_ENGINEERING_MODULARIZATION_PLAN_2026-11-26.fa.md` ثبت شده است.
+- این مرحله فقط audit و مستندسازی بود؛ هیچ task/checkpoint، Runner، Broker، service، ACL، secret، repository variable، دیتابیس کاربر، مدل یا state میزبان تغییر نکرد.
+- وضعیت operationally fixed یا ready-to-merge اعلام نمی‌شود تا refactor و architecture fitness tests، CI دقیق head نهایی و پذیرش واقعی Windows موفق شوند.
