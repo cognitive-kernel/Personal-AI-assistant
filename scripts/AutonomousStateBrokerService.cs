@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -1611,13 +1612,140 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         return "cleanup_failed";
     }
 
+    private Dictionary<string, object> ReadRepositoryExecutionOwner()
+    {
+        string lockPath = Path.Combine(_stateDirectory, "repository-execution.lock");
+        if (!SafeFileExists(lockPath)) return null;
+        try
+        {
+            using (FileStream stream = new FileStream(
+                lockPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                // Byte zero is held by this Broker while cleanup runs. Windows
+                // byte-range locking permits reading the owner record after byte zero.
+                if (stream.Length <= 1) return null;
+                stream.Position = 1;
+                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
+                {
+                    return _json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string, object>;
+                }
+            }
+        }
+        catch { return null; }
+    }
+
+    private string InspectRepositoryOwnerProcess(Dictionary<string, object> owner)
+    {
+        if (owner == null) return "unknown";
+        int pid;
+        try { pid = Convert.ToInt32(owner["pid"], System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return "unknown"; }
+        if (pid <= 0) return "unknown";
+
+        Process process = null;
+        try
+        {
+            process = Process.GetProcessById(pid);
+            if (process.HasExited) return "missing";
+            object rawStartedAt;
+            if (!owner.TryGetValue("process_started_at", out rawStartedAt))
+                return "unknown"; // Legacy PID-only metadata cannot rule out PID reuse.
+            double recordedStartedAt = Convert.ToDouble(
+                rawStartedAt, System.Globalization.CultureInfo.InvariantCulture);
+            double actualStartedAt = (process.StartTime.ToUniversalTime() -
+                new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+            if (Double.IsNaN(recordedStartedAt) || Double.IsInfinity(recordedStartedAt))
+                return "unknown";
+            return Math.Abs(actualStartedAt - recordedStartedAt) <= 0.02 ? "alive" : "reused";
+        }
+        catch (ArgumentException) { return "missing"; }
+        catch (InvalidOperationException) { return "missing"; }
+        catch (Win32Exception) { return "unknown"; }
+        catch (NotSupportedException) { return "unknown"; }
+        catch (Exception) { return "unknown"; }
+        finally { if (process != null) process.Dispose(); }
+    }
+
+    private bool RecoverStaleProgress(Dictionary<string, object> current, out string recoveredRunId)
+    {
+        recoveredRunId = null;
+        if (current == null) return false;
+        object rawStatus;
+        string status = current.TryGetValue("status", out rawStatus)
+            ? Convert.ToString(rawStatus).Trim().ToLowerInvariant() : "";
+        string[] terminal = {
+            "completed", "succeeded", "success", "complete", "failed",
+            "cancelled", "skipped", "blocked", "interrupted"
+        };
+        if (Array.Exists(terminal, item => String.Equals(item, status, StringComparison.Ordinal)))
+            return true;
+
+        string runId = Convert.ToString(current.ContainsKey("run_id") ? current["run_id"] : "");
+        string attempt = Convert.ToString(current.ContainsKey("run_attempt") ? current["run_attempt"] : "1");
+        if (String.IsNullOrWhiteSpace(runId) || String.IsNullOrWhiteSpace(attempt))
+            return false;
+
+        Dictionary<string, object> owner = ReadRepositoryExecutionOwner();
+        if (owner == null ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("run_id") ? owner["run_id"] : ""), runId, StringComparison.Ordinal) ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("run_attempt") ? owner["run_attempt"] : ""), attempt, StringComparison.Ordinal) ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("host") ? owner["host"] : ""), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string processState = InspectRepositoryOwnerProcess(owner);
+        if (processState != "missing" && processState != "reused")
+            return false;
+
+        double processStartedAt = 0;
+        try
+        {
+            if (owner.ContainsKey("process_started_at"))
+                processStartedAt = Convert.ToDouble(owner["process_started_at"], System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch { return false; }
+        string eventId = Sha256(Encoding.UTF8.GetBytes(
+            runId + "|" + attempt + "|" + Convert.ToString(owner["pid"]) + "|" +
+            processStartedAt.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+        ));
+        Dictionary<string, object> recoveryEvent = new Dictionary<string, object> {
+            { "type", "progress_recovery" }, { "event_id", eventId },
+            { "run_id", runId }, { "run_attempt", attempt },
+            { "status", "interrupted" }, { "reason", "owner_process_exited" },
+            { "recorded_at", DateTimeOffset.UtcNow.ToString("o") }
+        };
+        string eventsPath = Path.Combine(_stateDirectory, "events.jsonl");
+        try
+        {
+            if (SafeFileExists(eventsPath) && new FileInfo(eventsPath).Length > 8 * 1024 * 1024)
+                return false;
+            byte[] eventBytes = Encoding.UTF8.GetBytes(_json.Serialize(recoveryEvent) + "\n");
+            using (FileStream stream = new FileStream(eventsPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+            {
+                stream.Write(eventBytes, 0, eventBytes.Length);
+                stream.Flush(true);
+            }
+            current["status"] = "interrupted";
+            current["phase"] = "recovery";
+            current["phase_label"] = "اجرای قبلی متوقف شده";
+            current["activity"] = "اجرای قبلی متوقف شده بود؛ وضعیت آن بازیابی شد";
+            current["recovery_reason"] = "owner_process_exited";
+            current["recovery_event_id"] = eventId;
+            current["updated_at"] = DateTimeOffset.UtcNow.ToString("o");
+            WriteAtomic(Path.Combine(_stateDirectory, "current.json"),
+                Encoding.UTF8.GetBytes(_json.Serialize(current) + "\n"));
+            recoveredRunId = runId;
+            return true;
+        }
+        catch { return false; }
+    }
+
     private object CleanupProgress()
     {
         try
         {
             // Lock order matches the Runner: repository -> durable state -> checkpoint store.
-            // The broker enforces this itself because local pipe clients can call cleanup
-            // without passing through the dashboard's GitHub active-run preflight.
+            // The checkpoint-store lock proves that no watcher is mutating checkpoint
+            // state; a verified checkpoint itself remains recovery material and is preserved.
             return WithRepositoryExecutionLock(delegate
             {
                 return WithStateLock(delegate
@@ -1636,36 +1764,28 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             foreach (string name in markerNames)
                                 if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
                             Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
-                            if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
-                                (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
+                            if (checkpoint == null || !checkpoint.ContainsKey("verified") ||
+                                !Convert.ToBoolean(checkpoint["verified"]))
                                 blockers.Add("latest-worktree-checkpoint");
 
-                            // The workflow writes current.json before the run-scoped
-                            // repository lock is acquired. Treat a live or unknown
-                            // progress state as a blocker even when the lock is free.
+                            string recoveredRunId = null;
                             string currentProgressPath = Path.Combine(_stateDirectory, "current.json");
                             if (SafeFileExists(currentProgressPath))
                             {
                                 Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
-                                object rawStatus;
-                                string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
-                                    ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
-                                    : "";
-                                string[] terminalProgressStates = { "completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked" };
-                                if (current == null || !Array.Exists(terminalProgressStates, item =>
-                                    String.Equals(item, progressStatus, StringComparison.Ordinal)))
+                                if (!RecoverStaleProgress(current, out recoveredRunId))
                                     blockers.Add("active_progress_run");
                             }
 
                             if (blockers.Count > 0)
                                 return new Dictionary<string, object> {
                                     { "conflict", true }, { "blockers", blockers.ToArray() },
-                                    { "message", "Durable task/checkpoint state is pending; cleanup was refused." }
+                                    { "message", "Durable task/checkpoint state is pending or ownership is unknown; cleanup was refused." }
                                 };
 
+                            // The authoritative progress projection and event history are
+                            // durable recovery records. Cleanup removes only expendable temp files.
                             string[] cleanupNames = {
-                                "events.jsonl",
-                                "current.json",
                                 "events.jsonl.tmp",
                                 "current.json.tmp",
                                 "history.jsonl.tmp",
@@ -1695,43 +1815,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                     cleanupHandles.Add(handle);
                                     cleanupPaths.Add(filePath);
                                     existedBefore.Add(existed);
-                                }
-
-                                int currentIndex = Array.IndexOf(cleanupNames, "current.json");
-                                FileStream currentHandle = cleanupHandles[currentIndex];
-                                if (currentHandle.Length > 0)
-                                {
-                                    currentHandle.Position = 0;
-                                    string currentRaw;
-                                    using (StreamReader reader = new StreamReader(
-                                        currentHandle, Encoding.UTF8, true, 1024, true))
-                                    {
-                                        currentRaw = reader.ReadToEnd();
-                                    }
-                                    Dictionary<string, object> current =
-                                        _json.DeserializeObject(currentRaw) as Dictionary<string, object>;
-                                    object rawStatus;
-                                    string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
-                                        ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
-                                        : "";
-                                    string[] terminalProgressStates = { "completed", "failed", "cancelled", "skipped", "blocked" };
-                                    if (current == null || !Array.Exists(terminalProgressStates, item =>
-                                        String.Equals(item, progressStatus, StringComparison.Ordinal)))
-                                    {
-                                        return new Dictionary<string, object> {
-                                            { "conflict", true },
-                                            { "blockers", new[] { "active_progress_run" } },
-                                            { "message", "The current progress state is active or unknown; cleanup was refused." }
-                                        };
-                                    }
-                                }
-                                else if (existedBefore[currentIndex])
-                                {
-                                    return new Dictionary<string, object> {
-                                        { "conflict", true },
-                                        { "blockers", new[] { "active_progress_run" } },
-                                        { "message", "The current progress file is empty or incomplete; cleanup was refused." }
-                                    };
                                 }
 
                                 for (int i = 0; i < cleanupNames.Length; i++)
@@ -1787,7 +1870,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                 { "bytes_removed", removedBytes },
                                 { "bytes_cleared", removedBytes },
                                 { "failed_files", failed.ToArray() },
-                                { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
+                                { "preserved", new[] { "current.json", "events.jsonl", "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } },
+                                { "recovered_run_id", recoveredRunId },
+                                { "recovery_state", recoveredRunId == null ? "unchanged" : "interrupted" }
                             };
                         }, 250);
                     }
