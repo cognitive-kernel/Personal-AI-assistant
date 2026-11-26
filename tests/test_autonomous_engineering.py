@@ -1385,7 +1385,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Omit justification, prefix_rule," in workflow
     assert "additional_permissions entirely" in workflow
     assert 'Never use "require_escalated"' in workflow
-    assert "scripts/autonomous_engineering_cycle.py run" in workflow
+    assert 'Join-Path $env:GITHUB_WORKSPACE "scripts\\autonomous_engineering_cycle.py"' in workflow
+    assert ') run --run-id' in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
     assert "save_pending_pr" in cycle_controller
