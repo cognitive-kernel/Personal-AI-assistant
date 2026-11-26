@@ -878,11 +878,19 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          if ([string]::IsNullOrWhiteSpace($env:PAA_VENV_DIR)) {
+            throw "PAA_VENV_DIR was not carried into the development dependency installation step."
+          }
+          $venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The selected managed Python virtual environment is missing before development dependency installation."
+          }
           & $venvPython --version
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime cannot execute." }
           & $venvPython -c "import sys; assert sys.version_info >= (3, 11)"
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime is below Python 3.11." }
           & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
-          if ($LASTEXITCODE -ne 0) { throw "Could not install development dependencies into the prepared Runner environment." }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install development dependencies into the selected managed Runner environment." }
 
       - name: Prepare bounded engineering instructions
         if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
@@ -972,8 +980,16 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
+          if ([string]::IsNullOrWhiteSpace($env:PAA_VENV_DIR)) {
+            throw "PAA_VENV_DIR was not carried into the autonomous engineering execution step."
+          }
+          $venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The selected managed Python virtual environment is missing before autonomous engineering execution."
+          }
+          & $venvPython --version
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime cannot execute the autonomous engineering cycle." }
+          & $venvPython (Join-Path $env:GITHUB_WORKSPACE "scripts\autonomous_engineering_cycle.py") run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
 
       - name: Verify persistent Ollama context after autonomous Codex task
