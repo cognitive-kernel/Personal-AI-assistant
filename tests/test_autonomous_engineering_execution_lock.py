@@ -31,7 +31,9 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     lock_bytes = (shared_state_tmp_path / "repository-execution.lock").read_bytes()
     assert lock_bytes[:1] == b"0"
     metadata = json.loads(lock_bytes[1:].decode("utf-8"))
+    assert metadata["schema_version"] == 2
     assert metadata["pid"] == os.getpid()
+    assert metadata["process_started_at"] == pytest.approx(psutil.Process(os.getpid()).create_time(), abs=0.02)
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
     assert metadata["host"]
