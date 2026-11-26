@@ -73,7 +73,7 @@ _DISPATCH_REQUEST_LOCK = threading.Lock()
 
 from .autonomous_engineering_errors import (
     AutonomousEngineeringAPIRoute,
-    structured_error_response as _structured_error_response,
+    _structured_error_response,
 )
 
 
