@@ -877,16 +877,9 @@ def _authenticated_gh() -> str:
 
 
 def _github_api_json(gh: str, path: str, *, timeout: int = 15) -> dict[str, Any]:
-    result = _run([gh, "api", f"repos/{_repository()}/{path}"], timeout=timeout)
-    if not result or result.returncode != 0:
-        raise HTTPException(status_code=502, detail="دریافت اطلاعات اجرا از GitHub ناموفق بود.")
-    try:
-        value = json.loads(result.stdout)
-    except (TypeError, ValueError) as exc:
-        raise HTTPException(status_code=502, detail="پاسخ GitHub برای اطلاعات اجرا معتبر نیست.") from exc
-    if not isinstance(value, dict):
-        raise HTTPException(status_code=502, detail="ساختار پاسخ GitHub برای اطلاعات اجرا معتبر نیست.")
-    return value
+    return _github_adapter.github_api_json(
+        gh, path, timeout=timeout, run_command=_run, repository=_repository()
+    )
 
 
 def _cached_run_diagnostics(run_id: int) -> dict[str, Any] | None:

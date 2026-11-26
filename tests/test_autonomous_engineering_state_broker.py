@@ -542,7 +542,9 @@ def test_broker_cleanup_enforces_repository_state_and_checkpoint_lock_order_repe
     assert "An autonomous Runner owns the repository execution lock" in service
     assert 'Path.Combine(_stateDirectory, "current.json")' in service
     assert '"active_progress_run"' in service
-    assert "progress state as a blocker" in service
+    recovery_check = service.index("if (!RecoverStaleProgress(current, out recoveredRunId))", checkpoint_lock)
+    conflict_check = service.index("if (blockers.Count > 0)", recovery_check)
+    assert recovery_check < service.index('blockers.Add("active_progress_run")', recovery_check) < conflict_check
     assert "FileShare.Read | FileShare.Delete" in service
     assert '"progress_writer_active"' in service
     assert "A progress writer is active" in service

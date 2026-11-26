@@ -93,9 +93,9 @@ def verified_workflow_run(
     workflow: str,
     github_api_json: Callable[..., dict[str, Any]],
 ) -> dict[str, Any]:
-    if isinstance(run_id, bool) or not isinstance(run_id, int) or run_id <= 0:
+    if isinstance(run_id, bool) or not isinstance(run_id, int) or not 0 < run_id < 10**20:
         raise HTTPException(status_code=422, detail="شناسهٔ اجرای GitHub معتبر نیست.")
-    run = github_api_json(gh, f"actions/runs/{run_id}", timeout=12)
+    run = github_api_json(gh, f"actions/runs/{int(run_id):d}", timeout=12)
     expected_path = f".github/workflows/{workflow}"
     workflow_path = str(run.get("path") or "").split("@", 1)[0]
     verified_run_id = run.get("id")

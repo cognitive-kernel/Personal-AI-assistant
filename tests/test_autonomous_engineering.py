@@ -2547,7 +2547,7 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
     calls = []
     monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: calls.append(args) or {})
-    for invalid_id in (0, -1, True):
+    for invalid_id in (0, -1, True, "123", 10**20):
         with pytest.raises(HTTPException) as error:
             agent._verified_workflow_run("gh", invalid_id)
         assert error.value.status_code == 422
@@ -3326,3 +3326,36 @@ def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_PAUSED"' in workflow[live_gate:]
     assert 'Get-LiveRepositoryVariable -Name "AUTONOMOUS_ENGINEERING_MODE"' in workflow[live_gate:]
     assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[live_gate:]
+
+
+
+@pytest.mark.parametrize("path", [
+    "actions/runs/1/../2",
+    "actions/runs/001",
+    "actions/runs/-1",
+    "actions/runs/123?unexpected=true",
+    "actions/runs/123/jobs?per_page=10",
+    "actions/runs/123\n",
+    "actions/runs/123456789012345678901",
+    "actions/workflows/other.yml/runs?per_page=100",
+])
+def test_github_api_adapter_rejects_unapproved_paths_before_subprocess(monkeypatch, path):
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("Invalid endpoint reached subprocess"))
+    with pytest.raises(HTTPException) as error:
+        agent._github_api_json("gh", path)
+    assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize("path", [
+    "actions/runs/123",
+    "actions/runs/123/jobs?per_page=100",
+    "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=100",
+])
+def test_github_api_adapter_constructs_only_canonical_endpoints(monkeypatch, path):
+    calls = []
+    monkeypatch.setattr(agent, "_repository", lambda: "owner/repo")
+    monkeypatch.setattr(agent, "_run", lambda command, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "{}", "")
+    ))
+    assert agent._github_api_json("gh", path) == {}
+    assert calls == [["gh", "api", "repos/owner/repo/" + path]]
