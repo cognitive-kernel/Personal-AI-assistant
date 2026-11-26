@@ -229,6 +229,9 @@
       const setupBrokerButton = $("setup-state-broker");
       setupBrokerButton.textContent = nativeState ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم Broker";
       setupBrokerButton.hidden = checks.progress_storage_accessible === true;
+      const migrationButton = $("stage-native-migration");
+      migrationButton.hidden = !nativeState || checks.progress_storage_accessible === true;
+      migrationButton.disabled = !nativeState || data.paused !== true || checks.progress_storage_accessible === true;
       setupBrokerButton.disabled = checks.progress_storage_accessible === true;
       const checkpoint = lastPendingWork.checkpoint && typeof lastPendingWork.checkpoint === "object"
         ? lastPendingWork.checkpoint

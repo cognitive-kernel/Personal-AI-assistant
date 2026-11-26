@@ -97,3 +97,27 @@ def validate_native_state_root(root: Path) -> None:
         raise PermissionError("Native state root is not owned and protected by the current user.")
     if not os.access(root, os.R_OK | os.W_OK | os.X_OK):
         raise PermissionError("Native state root is not accessible to the current user.")
+
+
+def discover_migration_paths(*, is_windows: bool, machine_state: Callable[[], str]) -> tuple[Path, Path]:
+    """Discover a single existing legacy root and the canonical user destination."""
+    from platformdirs import site_data_path, user_data_path
+
+    target = Path(user_data_path("PersonalAIAssistant", appauthor=False)) / "autonomous-engineering"
+    if is_windows:
+        configured = machine_state()
+        authoritative = _absolute(configured) if configured else None
+    else:
+        from .autonomous_engineering_state_broker_config import configured_state_directory
+        authoritative = configured_state_directory()
+    program_data = os.getenv("PROGRAMDATA", "").strip()
+    site = (_absolute(program_data) if program_data else Path(site_data_path("PersonalAIAssistant", appauthor=False)).parent) / "PersonalAIAssistant" / "autonomous-engineering"
+    legacy_home = Path.home() / ".personal-ai-assistant" / "autonomous-engineering"
+    candidates = [p for p in (authoritative, site, legacy_home) if p is not None and _existing(p) and not _same(p, target)]
+    distinct = {p.resolve(): p for p in candidates}
+    if len(distinct) != 1:
+        raise RuntimeError("Exactly one accessible legacy state root must be identified before migration.")
+    source = next(iter(distinct.values()))
+    if not source.is_absolute() or not target.is_absolute():
+        raise RuntimeError("Migration roots must be absolute.")
+    return source, target

@@ -281,6 +281,37 @@ def autonomous_engineering_setup_broker() -> dict[str, Any]:
         raise error from exc
 
 
+@router.post("/state/migration/stage")
+def stage_autonomous_engineering_migration() -> dict[str, Any]:
+    from .autonomous_engineering_native_config import native_state_enabled, discover_migration_paths
+    from .autonomous_engineering_state import _machine_configured_state_directory
+    from .autonomous_engineering_native_migration import stage_native_migration
+
+    if not native_state_enabled():
+        raise HTTPException(status_code=409, detail="ابتدا حالت بومی وضعیت را صریحاً انتخاب کنید.")
+    gh = _authenticated_gh()
+
+    def require_paused_and_idle():
+        result = _run([gh, "variable", "get", "AUTONOMOUS_ENGINEERING_PAUSED", "--repo", _repository(), "--json", "value"], timeout=12)
+        try:
+            paused = result is not None and result.returncode == 0 and json.loads(result.stdout).get("value") == "true"
+        except (ValueError, TypeError, AttributeError):
+            paused = False
+        if not paused:
+            raise HTTPException(status_code=409, detail="قبل از آماده‌سازی مهاجرت، توقف ایمن GitHub باید تأیید شود.")
+        _github_adapter.require_all_remote_runs_idle(gh, github_api_json=_github_api_json)
+
+    try:
+        source, target = discover_migration_paths(is_windows=_is_windows(), machine_state=_machine_configured_state_directory)
+        return stage_native_migration(source, target, require_idle=require_paused_and_idle)
+    except (OSError, RuntimeError, ValueError, TimeoutError) as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="آماده‌سازی مهاجرت تأیید نشد؛ داده‌ها و مسیر قدیمی حفظ شدند.",
+            headers={"X-Error-Code": "NATIVE_STATE_MIGRATION_BLOCKED", "X-Retryable": "false"},
+        ) from exc
+
+
 @router.post("/models/pull", status_code=202)
 def autonomous_engineering_pull_model(payload: ModelPullRequest) -> dict[str, Any]:
     try:
@@ -533,7 +564,7 @@ def _cleanup_autonomous_engineering_temporary_data_locked() -> dict[str, Any]:
                 result = cleanup_native_progress(
                     execution_state_directory(),
                     verify_remote=lambda run_id: _verified_workflow_run(_authenticated_gh(), run_id),
-                    ensure_remote_idle=lambda: _ensure_no_active_workflow(),
+                    ensure_remote_idle=lambda: _github_adapter.require_all_remote_runs_idle(_authenticated_gh(), github_api_json=_github_api_json),
                 )
             else:
                 result = cleanup_shared_progress_data()

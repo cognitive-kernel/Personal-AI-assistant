@@ -161,6 +161,25 @@
     }
   });
 
+  const migrationButton = $("stage-native-migration");
+  let migrationActive = false;
+  migrationButton.addEventListener("click", async () => {
+    if (migrationActive || migrationButton.disabled) return;
+    if (!window.confirm("نسخهٔ بررسی‌شده از وضعیت قدیمی ایجاد شود؟ مسیر فعال، سرویس و داده‌های قبلی تغییر نمی‌کنند.")) return;
+    migrationActive = true;
+    migrationButton.disabled = true;
+    setMessage("در حال بررسی توقف اجرا، مالکیت قفل‌ها و تهیهٔ نسخه مهاجرت…");
+    try {
+      const result = await request("state/migration/stage", {method: "POST", timeoutMs: 300000});
+      setMessage(result.message || "نسخهٔ مهاجرت آماده شد؛ فعال‌سازی هنوز انجام نشده است.", "success");
+    } catch (error) {
+      setMessage(error.message || "مهاجرت متوقف شد؛ وضعیت قبلی حفظ شده است.", "error");
+    } finally {
+      migrationActive = false;
+      try { await status.refresh(true); } catch (_) {}
+    }
+  });
+
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!status.canStartManualTask()) {
