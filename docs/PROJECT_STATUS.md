@@ -1,3 +1,14 @@
+## 2026-11-26 — native state ownership and recovery work in progress
+
+- New Draft remediation branch: `fix/autonomous-engineering-native-state-runtime-20261126`, based on PR #878 head `8ec6fa4b3e665cf7a16945386ed75af9c7861a53`.
+- Proposed ADR-025 records the target architecture: remove the mandatory Windows Broker Service, PowerShell provisioning/communication, machine-wide state configuration, and manual account/group/ACL choreography; use native cross-platform process locks and run/attempt ownership, with a service-free local Runner lifecycle.
+- Root-cause evidence: Windows cleanup currently treats a verified checkpoint as an unconditional blocker and uses a non-terminal progress status as proof of a live run. Neither condition proves process liveness. A stale progress record can therefore leave cleanup permanently conflicted.
+- Implemented foundation only: repository lock metadata schema v2 now records the owner process creation time; the parent publication guard checks PID + creation time + run ID + host. Added a pure recovery classifier and focused tests for stale runs, active controller/watcher locks, queued remote runs, unknown evidence, mismatched owners, and PID reuse.
+- Not yet complete: recovery classifier is not yet wired into the live cleanup/Broker protocol; legacy Broker/PowerShell/service code remains in place pending replacement. No claim is made that the user's Windows machine is fixed or that end-to-end operation is restored.
+- Exact-head CI and non-admin Windows target-host acceptance have not yet been run for this branch. No merge is authorized.
+
+---
+
 ## 2026-11-26 — PR #878: restore shadowed Broker regression tests
 
 - A diff audit of PR #872 found five duplicate top-level test names in `tests/test_autonomous_engineering_state_broker.py`; the same file on current main had no duplicates. Earlier definitions were silently overwritten during Python module import.
