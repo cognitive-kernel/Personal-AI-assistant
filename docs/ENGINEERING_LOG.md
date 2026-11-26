@@ -1,3 +1,14 @@
+## 2026-11-26 — native state ownership and stale-run recovery foundation
+
+- Created proposed ADR-025 to supersede the machine-service/PowerShell broker architecture after the replacement passes migration and target-host acceptance: `docs/architecture/ADR-025-native-autonomous-state-and-runner-ownership.md`.
+- Confirmed the live failure mechanism in the existing Windows Broker: cleanup treats every present checkpoint as a blocker even when its watcher lock is free, and treats every non-terminal `current.json` status as an active run without proving the matching controller process is alive. It also deletes `current.json` on successful cleanup, which discards the latest projection instead of retaining an interrupted recovery record.
+- Extended repository lock metadata to schema v2 with the owning process creation timestamp. Parent-process publication now validates PID plus creation time, run ID, host, and current OS lock ownership, preventing a reused PID from satisfying the parent guard.
+- Added a pure, fail-closed run recovery classifier that distinguishes active, stale, unknown, and already-terminal progress. A stale decision requires matching run ID/attempt, released repository and checkpoint locks, a missing/reused exact owner process, and a terminal remote workflow (or an explicitly local run). Unknown process, host, or remote evidence remains blocked.
+- Added regression tests for stopped non-terminal progress, active repository ownership, active checkpoint-watcher ownership, queued remote runs, unknown evidence, run-ID mismatch, and PID reuse.
+- Work branch: `fix/autonomous-engineering-native-state-runtime-20261126`, based on the exact head of PR #878. Implementation is intentionally incomplete: the existing Windows/POSIX service broker and PowerShell provisioning have not yet been removed or altered. No host service, Runner, ACL, task, checkpoint, model, or user data was touched.
+
+---
+
 ## 2026-11-26 — regression: duplicate pytest names in Autonomous Engineering Broker suite
 
 - Comparing PR #872 against current main exposed five duplicate top-level test function names in `tests/test_autonomous_engineering_state_broker.py`. The base main file had no duplicate names.
