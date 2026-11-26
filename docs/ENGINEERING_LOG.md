@@ -1,3 +1,14 @@
+## 2026-11-26 — regression: duplicate pytest names in Autonomous Engineering Broker suite
+
+- Comparing PR #872 against current main exposed five duplicate top-level test function names in `tests/test_autonomous_engineering_state_broker.py`. The base main file had no duplicate names.
+- Python module loading overwrites an earlier function when a later function with the same name is defined. Those five earlier test bodies were therefore silently absent from pytest collection.
+- Added `tests/test_autonomous_engineering_test_integrity.py` to reject duplicate top-level pytest names in this suite.
+- Renamed the five repeated definitions with distinct `_repeated_regression` suffixes. No test body or assertion was deleted or weakened.
+- Added the Gate A/B audit at `docs/AUTONOMOUS_ENGINEERING_GATE_A_B_AUDIT_2026-11-26.fa.md`.
+- Fix branch: `fix/autonomous-engineering-state-fencing-20261126`; fix commit: `cee98e6c27395a4f4b42dd564706450497118fbb`; Draft PR #878 targets the modularization branch PR #877.
+- Eight exact-head checks were queued at the time of this log entry. This entry does not claim CI success or Windows target-host acceptance.
+- No task, checkpoint, workflow run, Runner, Broker, service, ACL, secret, repository variable, model, or user host state was changed.
+
 ## 2026-11-25 — ریشه‌یابی و اصلاح چرخهٔ عمر مدل موقت Ollama
 
 - بررسی مستقیم کد و تست‌ها نشان داد `scripts/verify_ollama_context.ps1` ظرفیت Context را از RAM آزاد و metadata مدل محاسبه می‌کرد، اما به‌جای مدل موقت مختص یک اجرا، tag پایدار `<base>-codex-ctx` می‌ساخت و پس از Codex فقط allocation را دوباره بررسی می‌کرد؛ حذف مدل بعد از task وجود نداشت.
