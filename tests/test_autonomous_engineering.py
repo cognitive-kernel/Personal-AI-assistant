@@ -3345,3 +3345,21 @@ def test_pause_refuses_concurrent_local_control_mutation(monkeypatch):
         assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_PAUSE_IN_PROGRESS"
     finally:
         lock.release()
+
+
+def test_settings_reject_malformed_rollback_snapshot_before_any_write():
+    from app.autonomous_engineering_services import save_repository_variables
+
+    calls = []
+
+    def run_command(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout='[{"name":"AUTONOMOUS_ENGINEERING_MODE"}]')
+
+    with pytest.raises(HTTPException) as error:
+        save_repository_variables(
+            "gh", (("AUTONOMOUS_ENGINEERING_MODE", "scheduled"),),
+            run_command=run_command, repository="owner/repo",
+        )
+    assert error.value.status_code == 502
+    assert [command[:3] for command in calls] == [["gh", "variable", "list"]]

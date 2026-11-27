@@ -134,7 +134,9 @@ def collect_status(*, _STATUS_PROBE_TIMEOUT_SECONDS, _GITHUB_STATUS_PROBE_TIMEOU
         errors.append("github")
         github = github_fallback
     github_settings = github.get("settings", {})
-    if not isinstance(github_settings, dict):
+    if not isinstance(github_settings, dict) or (
+        github.get("authenticated") is True and github.get("settings_available") is False
+    ):
         errors.append("github_settings")
         github_settings = {}
     model = github_settings.get("model", "")
@@ -213,6 +215,9 @@ def collect_status(*, _STATUS_PROBE_TIMEOUT_SECONDS, _GITHUB_STATUS_PROBE_TIMEOU
         default_interval_hours=_DEFAULT_INTERVAL_HOURS,
         is_codex_context_variant=_is_codex_context_variant,
     )
+    if "github_settings" in errors:
+        status["ready"] = False
+        status["can_dispatch"] = False
     if native_state_enabled():
         status["state_backend"] = "native"
         status["checks"]["native_runner_workflow_compatible"] = False

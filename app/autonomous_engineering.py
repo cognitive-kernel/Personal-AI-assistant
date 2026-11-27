@@ -224,6 +224,12 @@ def _codex_status() -> dict[str, Any]:
 
 
 def _runner_status() -> dict[str, Any]:
+    from .autonomous_engineering_native_config import native_state_enabled
+
+    if native_state_enabled():
+        from .autonomous_engineering_native_runner import native_runner_status
+
+        return native_runner_status(execution_state_directory)
     return _services.runner_status(psutil.process_iter)
 
 
