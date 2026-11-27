@@ -1,53 +1,385 @@
-## 2026-11-24 — live audit: Autonomous Engineering UI to Runner/Codex
+## 2026-11-26 — Engineering readiness, Broker permissions and Windows CI
 
-- Captured the live main baseline at `8a879d0962b00897744e114ff7297e5c6228ff1d`.
-- Inspected the Persian RTL page, all six UI JavaScript modules, the API router, the browser E2E suite, the current workflow files, and the two governing engineering prompts.
-- Inventory: 7 UI assets/modules, 13 API routes, and 21 browser tests specifically named for Autonomous Engineering. The browser-e2e workflow runs the marked browser suite and uploads browser evidence.
-- Live main checks: 10/11 succeeded; autonomous Codex job in run `45413836616` was queued. No active run or durable state was modified.
-- Open PR dependency chain: #863 -> #869 and #866 -> #870 -> #872. #872 exact head `476bcdc76c777457131224c017ea48520fe1ccee` has 8 successful checks, including Windows full tests, Windows storage regressions, browser E2E, bootstraps and pip-audit; however it is stacked on #870, while its chain starts from the older `3d1e843...` main base. #863/#866/#869/#870 have no check-runs on their current heads. Do not merge/rebase/delete these branches until the complete dependency diffs and current-main conflicts are reconciled.
-- Owner-confirmed engineering model: `gpt-oss:20b`. Actual live repository model variable and complete host inventory remain unverified from this connection.
-- The detailed inventory, endpoint/control map, state-flow table, evidence and acceptance gaps are in `docs/UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md`.
-- Next work is restricted to this module: reconcile PR dependencies without losing healthy changes; prove state/lease/lock/recovery invariants; complete browser fault-injection coverage; then obtain real Windows host acceptance from UI through Ollama/Codex/Runner/GitHub PR. No claims of target-host operational success are made by this static/GitHub audit.
+- An incomplete status probe could display a setup instruction or reset saved form values using fallback data. The dashboard now marks the affected checks as unverified, preserves confirmed settings and run controls, blocks dispatch while required checks are unknown, and shows the correlation ID. The stylesheet honors hidden controls. Chromium checks the incomplete response and the recovery to a healthy response.
+- GitHub run snapshots now retain suspended runs outside the five visible history rows. Readiness, dispatch, cancellation and recovery share the active-state list and the regression covers a suspended run at the end of the fetched results.
+- The legacy POSIX broker publishes a root-owned, versioned Python ZIP application atomically. The service creates an owner-only socket for same-UID installs and grants group connect permission only when another configured UID needs it. Kernel peer authorization remains enforced. The Linux test starts the isolated bundle from outside the checkout and verifies socket modes and health. macOS cross-user service acceptance and exact-head CodeQL remain open.
+- The preceding Windows CI run passed the live LocalService and named-pipe exercise in both PowerShell hosts, then failed because a workflow test passed the Python admission step to the PowerShell parser. Each workflow step is now validated with its declared interpreter. The mutex integration test precompiles its owner-thread helper and identifies the failing child phase if readiness times out.
+
+## 2026-11-26 — Local Engineering console installation and settings
+
+- A wheel built from PR #882 omitted the main static directory, which FastAPI requires at import time. The wheel now packages the console and its shared dashboard assets. An isolated wheel installation returned HTTP 200 for the local console, JavaScript and CSS.
+- A status refresh previously replaced unsaved model, execution mode and interval values after those fields lost focus. The console now preserves outstanding edits across refreshes and clears only edits acknowledged by a successful settings save. The Chromium regression refreshes status before saving and checks the values sent to the API. All 22 Engineering browser cases passed on the Linux workspace with disposable application databases.
+- On Linux, systemd now creates an owned runtime socket directory on every start, including after reboot. On macOS, the installer prepares the directory and rejects a symlink or unsafe existing permissions. Both paths grant group traversal. The installed Python package retains group read access for module discovery.
+- Browser coverage uses controlled integration responses for mutations. The live Linux status endpoint responded, with Ollama, Runner and durable state unavailable in this workspace. Actual target-host Runner/Codex/Ollama execution, crash recovery and exact-head CI acceptance remain open.
+
+## 2026-11-26 — PR #882 consolidated engineering remediation (in progress)
+
+- All changes are on `fix/engineering-consolidated-20261126`; PR #882 is draft. No merge, local host operation, service removal, repository variable change, or state activation was performed.
+- Backend façade split into control, readiness, run operations, state store and task owner/lifecycle modules. Compatibility façades remain; complete import/architecture isolation is not yet accepted.
+- Native transport is opt-in. Native remote dispatch is deliberately blocked pending replacement of the service-based Runner lifecycle and remaining PowerShell workflow stages.
+- Native recovery reconciles exact run/attempt and process ownership under shared locks. Migration creates a hash-verified staged copy only; the existing authority is not switched. A staged marker prevents accidental live use. Full crash/restart and real-host recovery acceptance remain open.
+- GitHub CLI acquisition now uses scoped Python download, official release checksum verification, exact archive-member extraction, and executable/capability checks. Windows x64 automatic acquisition is scoped to this capability; Codex, Ollama, Python and Runner end-to-end provisioning and UI coverage remain incomplete.
+- Security: legacy POSIX broker socket restricted to owner/group and authenticated peer UID, installed package restricted to owner/group. CodeQL still reported two new high-severity permission findings on 873a11ec72bf8e350b13b2c012ec25ca98f3190f. Do not dismiss or mark resolved; exact-head analysis and least-privilege legacy design review are required. Intermediate Linux/browser/dependency checks passed, but final Windows/full CI and comprehensive UI scenarios remain open.
+- Prior active-PR descriptions below are historical. Current evidence is PR #882 and its exact-head checks. Do not increase completion score or claim Gate A–J complete. No reliable labor-hour measurement was collected.
+
+## 2026-11-26 — mandatory minimal-dependency and automatic prerequisite policy
+
+- Both master engineering prompts now explicitly prohibit unnecessary dependencies on external software, shells, services, package managers, exact versions, fixed identities, and fixed paths.
+- Application code, existing libraries, bundled helpers, and native OS APIs are mandatory first choices. PowerShell is explicitly forbidden in startup, Broker communication, state ownership/locking, process inspection, and other paths that native/application code can implement; it is allowed only for a proven PowerShell-specific capability or explicit owner approval for that scope.
+- For an approved, genuinely required external prerequisite, the application must discover actual capabilities and compatible versions, acquire the artifact from its official source, verify signature/digest where available, install/cache it in an application/job-scoped location, verify it, and then continue. Missing/incompatible prerequisites must trigger this flow when authorized rather than fail due to an assumed preinstalled version.
+- Privileged machine-wide changes, global PATH changes, services, account/group/ACL changes, untrusted downloads, and silent privilege escalation remain prohibited. If safe installation cannot proceed, only the dependent capability is blocked and the exact blocker is exposed.
+- Added mandatory regression coverage requirements for clean/missing/incompatible tools, native no-tool paths, interrupted/invalid downloads, partial installs, permissions, offline mode, cache reuse, concurrency, retries, and isolation of unrelated features.
+- Updated source prompt branches: UI prompt bdddae3cb55398ea72d4e60c09a739660b7dc5c2; master prompt fe21ebb45ef0eaae120e907ba0a208a50f0af234. Applied the same binding policy to the active engineering branch prompts: UI 2b72ec46b678d40bf274eb69953a28ddb92ff4e4; master 5ad5b5575631fb04614fe589e15bea78f0ca1505.
+- This policy does not itself remove the current PowerShell/Windows Service implementation; it makes that architecture a documented non-conformance that must be replaced or justified by a narrowly scoped, explicitly approved exception. No local host services, ACLs, identities, checkpoints, models, or task state were changed.
+
+---
+## 2026-11-26 — live stale-run recovery wired into cleanup
+
+- Windows Broker cleanup now acquires the established repository -> durable-state -> checkpoint-store locks, then checks the exact progress run ID/attempt, host, per-run owner token, PID, and OS process creation time.
+- A verified checkpoint no longer blocks expendable telemetry cleanup merely because its pointer is active. The checkpoint-store lock still blocks cleanup while a watcher is actually active; checkpoint bytes and metadata are never included in the cleanup file list.
+- A stopped owner process is reconciled to `interrupted` and a deterministic recovery event is appended. Mismatched owner tokens, legacy PID reuse ambiguity, host mismatch, access denied, unreadable metadata, and active processes remain fail-closed.
+- `current.json` and `events.jsonl` are now retained. Cleanup removes only temporary telemetry files. Progress writes acquire the same durable-state lock to serialize with cleanup/recovery.
+- The opaque execution owner token is propagated from the repository-locking controller to child progress writers and stripped from Dashboard current/event responses.
+- Expanded Python and Windows integration tests for exact owner-token matching, stale-run recovery, checkpoint preservation, active repository/watcher locks, and progress-writer coordination. Exact-head CI is queued/in progress; results must be checked before this stage is accepted.
 
 ---
 
-## 2026-11-24 — bound job-level inspection during emergency cancellation
+## 2026-11-26 — native state ownership and stale-run recovery foundation
 
-- The job-level Codex ownership check now inspects only workflow runs reported in_progress, not every queued run.
-- If more than five workflow runs are simultaneously reported in_progress, cancellation fails closed with 409 rather than making an unbounded series of GitHub CLI calls.
-- When no Codex job is executing, the endpoint falls back to a queued Codex candidate found among preflight runs, then to the newest queued workflow.
-- Per-run job inspection has a five-second command deadline. Regression coverage verifies queued-only fallback and the fail-closed inspection bound.
+- Created proposed ADR-025 to supersede the machine-service/PowerShell broker architecture after the replacement passes migration and target-host acceptance: `docs/architecture/ADR-025-native-autonomous-state-and-runner-ownership.md`.
+- Confirmed the live failure mechanism in the existing Windows Broker: cleanup treats every present checkpoint as a blocker even when its watcher lock is free, and treats every non-terminal `current.json` status as an active run without proving the matching controller process is alive. It also deletes `current.json` on successful cleanup, which discards the latest projection instead of retaining an interrupted recovery record.
+- Extended repository lock metadata to schema v2 with the owning process creation timestamp. Parent-process publication now validates PID plus creation time, run ID, host, and current OS lock ownership, preventing a reused PID from satisfying the parent guard.
+- Added a pure, fail-closed run recovery classifier that distinguishes active, stale, unknown, and already-terminal progress. A stale decision requires matching run ID/attempt, released repository and checkpoint locks, a missing/reused exact owner process, and a terminal remote workflow (or an explicitly local run). Unknown process, host, or remote evidence remains blocked.
+- Added regression tests for stopped non-terminal progress, active repository ownership, active checkpoint-watcher ownership, queued remote runs, unknown evidence, run-ID mismatch, and PID reuse.
+- Work branch: `fix/autonomous-engineering-native-state-runtime-20261126`, based on the exact head of PR #878. Implementation is intentionally incomplete: the existing Windows/POSIX service broker and PowerShell provisioning have not yet been removed or altered. No host service, Runner, ACL, task, checkpoint, model, or user data was touched.
 
 ---
 
-## 2026-11-24 — select the actual Codex job when cancelling queued workflow runs
+## 2026-11-26 — regression: duplicate pytest names in Autonomous Engineering Broker suite
 
-### Additional root cause
-- Workflow-run status can be `in_progress` while a newer run is still executing its schedule gate and its `codex` job is queued behind the job-level concurrency group. Workflow-run status alone can therefore still select the wrong run.
+- Comparing PR #872 against current main exposed five duplicate top-level test function names in `tests/test_autonomous_engineering_state_broker.py`. The base main file had no duplicate names.
+- Python module loading overwrites an earlier function when a later function with the same name is defined. Those five earlier test bodies were therefore silently absent from pytest collection.
+- Added `tests/test_autonomous_engineering_test_integrity.py` to reject duplicate top-level pytest names in this suite.
+- Renamed the five repeated definitions with distinct `_repeated_regression` suffixes. No test body or assertion was deleted or weakened.
+- Added the Gate A/B audit at `docs/AUTONOMOUS_ENGINEERING_GATE_A_B_AUDIT_2026-11-26.fa.md`.
+- Fix branch: `fix/autonomous-engineering-state-fencing-20261126`; fix commit: `cee98e6c27395a4f4b42dd564706450497118fbb`; Draft PR #878 targets the modularization branch PR #877.
+- Eight exact-head checks were queued at the time of this log entry. This entry does not claim CI success or Windows target-host acceptance.
+- No task, checkpoint, workflow run, Runner, Broker, service, ACL, secret, repository variable, model, or user host state was changed.
 
-### Correction
-- The cancel endpoint now inspects `gh run view --json jobs` and selects the run whose `codex` job is actually `in_progress`.
-- If no Codex job is executing, it falls back to a queued Codex job, then to the first active preflight run.
-- Failure to retrieve or parse job state fails closed; the endpoint does not guess which workflow to cancel.
-- Added a regression with two workflow runs both reported `in_progress`, where the newer run has a queued Codex job and the older run owns the active Codex job.
+## 2026-11-25 — ریشه‌یابی و اصلاح چرخهٔ عمر مدل موقت Ollama
+
+- بررسی مستقیم کد و تست‌ها نشان داد `scripts/verify_ollama_context.ps1` ظرفیت Context را از RAM آزاد و metadata مدل محاسبه می‌کرد، اما به‌جای مدل موقت مختص یک اجرا، tag پایدار `<base>-codex-ctx` می‌ساخت و پس از Codex فقط allocation را دوباره بررسی می‌کرد؛ حذف مدل بعد از task وجود نداشت.
+- `scripts/ollama_legacy_cleanup.py` نیز در حالت پیش‌فرض tagهای عددی `-codex-ctxN` را در تمام خانواده‌های مدل بررسی و حذف می‌کرد. چون این tagها شناسهٔ مالکیتِ اجرای جاری نداشتند، حذف خودکارشان می‌توانست به مدل‌های ساخته‌شده یا نگه‌داری‌شده توسط کاربر آسیب بزند.
+- اصلاح در PR #872: هر اجرای workflow یک tag یکتا با context، run ID، attempt و nonce می‌سازد؛ شناسهٔ دقیق قبل از درخواست create در `GITHUB_ENV` ثبت می‌شود تا حتی شکست preflight نیز مسیر cleanup داشته باشد. مدل پایه باید همچنان نصب باشد.
+- پس از task یا شکست، step دارای `always()` فقط همان tag را unload می‌کند، نبودن آن را در `/api/ps` تأیید می‌کند، tag پایه را دوباره بررسی می‌کند، سپس همان tag موقت را حذف و نبودنش را در `/api/tags` تأیید می‌کند. اگر مالکیت، context، unload یا وجود مدل پایه قابل اثبات نباشد، حذف متوقف می‌شود.
+- مسیر diagnostic ویندوز نیز به همان lifecycle متصل شد. تشخیص internal variant در `run.py` برای نام‌های run-scoped گسترش یافت.
+- پاک‌سازی legacy اکنون audit-only است؛ حذف tagهای قدیمی فقط با گزینهٔ صریح `--delete-confirmed-legacy` ممکن است. هیچ مدل پایه یا tag نامرتبطی هدف cleanup نیست.
+- مهاجرت legacy settings اصلاح شد: هنگام ساخت chat profile جدید، variant داخلی به base tag تبدیل می‌شود؛ همچنین اگر chat profile موجود به‌اشتباه به tag موقت Codex اشاره کند، فقط suffix رزروشده حذف و base tag جایگزین می‌شود. کلید legacy و تمام مدل‌های معتبر موجود حفظ می‌شوند؛ suffix موقت حتی اگر از default مبتنی بر environment وارد تنظیمات شده باشد normalize می‌شود.
+- تست‌های جدید برای run/attempt/context mismatch، مدل پایه، unload ناموفق، حذف تأییدنشده، idempotency و رد نام‌های legacy/unowned اضافه شدند. تست‌های workflow از قرارداد persistent به قرارداد temporary تغییر کردند.
+- محدودیت باقی‌مانده: خاموش‌شدن سخت میزبان یا kill شدن کامل Runner ممکن است مانع اجرای step cleanup شود؛ در آن حالت tag run-scoped باقی می‌ماند و باید فقط با بررسی مالکیت پاک شود. این رفتار fail-closed است، نه پاک‌سازی کور.
+- code head ثبت‌شده پس از اصلاحات `4857f411b38574e88e8662e09e1c2a94150b7ed4` است؛ Tests run `45627954707` هنوز jobهای اصلی Linux/Windows را در صف دارد؛ Browser E2E run `45627954623` و dependency audit run `45627954566` موفق شده‌اند؛ CodeQL run `45627954696` پس از rerun در صف است. نتیجهٔ pass کامل تا تکمیل همهٔ jobها ادعا نمی‌شود. نتایج CI مربوط به SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` برای کد فعلی قابل استناد نیست. Windows target-host و پذیرش UI نیز pending هستند.
+- هیچ مدل Ollama، تنظیم DB، سرویس، Runner، ACL، checkpoint یا دادهٔ میزبان کاربر توسط این تغییرات دست‌کاری نشده؛ هیچ PR merge نشده است.
+
+---
+
+## 2026-11-24 — Cache failed-run diagnostics during dashboard polling
+
+- The runs endpoint already limited diagnostic reads to completed failed runs, but repeated dashboard polls could still re-read every failed run in the 100-run GitHub page.
+- Added a bounded 60-second in-process cache keyed by workflow run ID, including negative results, with a 256-entry cap and expiry pruning.
+- Added a regression test that calls the runs endpoint twice and proves the same failed-run diagnostic is read only once while the summary remains available.
+- This cache is an optimization only; the protected State Broker remains the authoritative diagnostic store.
+- Exact-head CI is required for the updated PR SHA; no target-host acceptance is claimed by this change.
+
+---
+
+## 2026-11-24 — PR #872 regression-harness correction and Resume idempotency follow-up
+
+### Exact-head CI evidence
+- Prior tested code head: `82c44e04d44f6366c307440175352fe847621781`.
+- Browser E2E and dependency audit passed; Windows storage regressions passed. The full Linux and Windows test jobs failed, so the PR was not accepted.
+- Failure causes traced from job logs:
+  - Resume timeout test's fake `_run` treated the required `AUTONOMOUS_ENGINEERING_PAUSED=false` update as the workflow dispatch and failed before testing the ambiguous dispatch path.
+  - The definitive CLI-launch error message did not explicitly tell the operator that retry is safe when `X-Retryable=true`.
+  - A static workflow test searched for the removed `run_codex()` call instead of the current `result = run()` process boundary.
+  - The retry prompt lacked the explicit worktree/checkpoint preservation sentence required by its regression.
+  - Marker tests still expected any earlier marker in the body to invalidate a valid final-line marker, contrary to the final-nonempty-line contract.
+  - Recovery tests reused an environment credential intentionally consumed by the first invocation.
+  - Module-boundary assertions omitted the new `setStatusMessage` core API.
+  - POSIX broker returned a generic blocker where Windows returned the specific reservation/grace blocker.
+  - An obsolete autouse fixture still monkeypatched the removed in-memory grace variable, causing setup errors across otherwise unrelated dispatch-safety tests.
+- No existing test was skipped or deleted. The obsolete fixture was removed because the durable broker, not an in-memory timestamp, is now the source of truth. Marker coverage was replaced with an explicit regression proving that only the final non-empty line is authoritative.
+
+### Corrections on the PR #872 branch
+- Corrected the resume-timeout fake to acknowledge the Pause=false variable update and then simulate an ambiguous workflow dispatch.
+- Made a definitive process-launch failure explicitly retryable in its user-facing detail, consistent with `X-Retryable=true`.
+- Updated static contract tests to assert the actual process boundary and the exported sticky-status API.
+- Added the exact worktree/checkpoint preservation instruction to same-task Codex report repair.
+- Updated marker tests for last-nonempty-line semantics and added a dedicated repeated/preceding-marker regression.
+- Reinitialized the dedicated read-only recovery credential between independent test invocations.
+- Removed the obsolete test fixture for `_LAST_DISPATCH_ACCEPTED_AT`; persistent State Broker reservation/grace remains authoritative.
+- Preserved structured POSIX dispatch blockers so reservation-active and recently-accepted conflicts match the Windows broker contract.
+- Added a fail-closed guard: an idle queue that is already unpaused cannot receive a second one-shot Resume dispatch. An existing active run may be unpaused without enqueueing a duplicate.
 
 ### Validation boundary
-- Exact-head Linux/Windows tests and target-host GitHub CLI behavior remain required. No workflow was cancelled by this source change.
+- The latest code head at this log update is `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`; exact-head tests, Browser E2E and dependency audit were queued. No success is claimed until all jobs finish on the final SHA.
+- The actual Windows target-host acceptance, live Runner/Ollama/Codex, dispatch/pause/resume/cancel, crash/restart, checkpoint restore, manual accessibility and owner UI acceptance remain separate gates.
+- PR #872 remains stacked on #870/#866. No merge, workflow dispatch/cancel, repository setting/secret change, task/checkpoint mutation, Runner/ACL change, database migration or user-data mutation was performed.
 
 ---
 
-## 2026-11-24 — cancel the executing workflow before newer queued runs
+## 2026-11-24 — make Resume idempotent and fail closed
+
+- Resume now uses the shared dispatch lock and a separate resume-acceptance timestamp; the manual dispatch route also checks the most recent Resume acceptance. This prevents a second workflow from being queued immediately after Resume.
+- An already-active workflow is allowed to continue after Pause is cleared, without dispatching a duplicate. Definitive preflight/launch failures restore Pause; ambiguous outcomes retain a short no-retry window and require history inspection.
+- Added regression coverage for lock contention, existing active runs, duplicate/cross-action dispatch, rollback, and unexpected status failures.
+
+## 2026-11-24 — mainline regression preservation in stacked follow-ups
+
+- The child branches are being reconciled with mainline PR #864 (serialized status refresh) and PR #867 (job-aware Cancel), both merged with exact-head CI green.
+- #869/#870 remain stacked on parent branches #863/#866. Their base updates must be integrated before merge; current child exact-head CI and target-host validation remain pending.
+
+---
+
+## 2026-11-24 — replace the unprovisioned Runner CLI assumption with a dedicated read-only credential
+
+### Follow-up audit and correction
+- The prior intermediate fix used `gh auth token` inside the Windows Runner job. Reviewing `scripts/provision_autonomous_runner.ps1` showed that its `gh auth status` check runs in the elevated installer session, while a newly provisioned Runner normally runs as a separate generated non-administrator local account. The provisioning script does not copy or configure the installer's GitHub CLI login for that service identity.
+- Therefore, assuming that the Runner service account has a persisted GitHub CLI credential was not valid for a fresh installation. That intermediate approach has been removed from the workflow.
+
+### Current implementation
+- The live post-concurrency Pause/Mode gate now reads `secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN`.
+- This must be a fine-grained token restricted to this repository with **Variables: read** (and the standard repository metadata visibility needed to verify repository identity). It is used only for read-only GET requests; the existing `GITHUB_TOKEN` remains separate for workflow/controller operations.
+- A missing secret, insufficient permission, invalid value, or failed repository verification blocks task start. The token is removed from the step environment after it is copied into the in-memory request header, and is not logged or persisted.
+- Workflow contract tests require the dedicated secret and reject the previous Runner CLI token assumption.
+
+### Required owner setup and validation boundary
+- Before this workflow can execute, the repository owner must create the fine-grained read-only token and add it under **Settings → Secrets and variables → Actions** with the exact name `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN`. Do not paste the token into chat, code, issues, or logs.
+- Exact-head Linux/Windows suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, and a target-Runner test of both live variable reads remain required. No exact-head pass is claimed here.
+- No workflow was dispatched; no repository secret, Pause/Mode variable, task, checkpoint, PR, Runner, ACL, database, or user state was changed.
+
+---
+
+## 2026-11-24 — use an authorized Runner credential for live Actions-variable reads
 
 ### Root cause
-- `gh run list` returns recent runs first. The cancel endpoint selected the first run in any active state, so a newer queued run could be cancelled while an older `in_progress` workflow continued executing the actual engineering task.
+- The post-concurrency Pause/Mode gate called the repository Actions Variables REST API with `github.token`.
+- GitHub's documented `GITHUB_TOKEN` permission set does not include the repository `Variables` permission. The API's required permission for reading repository variables is `Variables: read`; adding `variables: read` to a workflow `permissions` block is not supported by the `GITHUB_TOKEN` workflow permission schema.
+- Consequently, the new live gate could fail with an authorization response on every run, preventing the workflow from reaching the task controller. Treating that response as an unset variable would be unsafe; the gate must fail closed.
 
 ### Correction
-- The endpoint now selects an `in_progress` workflow run first and only falls back to queued/waiting/requested/pending work when no run is executing.
-- Added a regression where the newest run is queued and the older run is in progress; cancellation must target the in-progress run.
+- The live gate now obtains a short-lived-in-process token from the already authenticated GitHub CLI session of the Windows Runner service account using `gh auth token --hostname github.com`.
+- That credential is used only for read-only repository identity and Actions-variable GET requests. The workflow's `GITHUB_TOKEN` remains separate for its existing narrowly scoped workflow/controller operations and is not used for variable reads.
+- Added a workflow contract assertion requiring the Runner CLI token source and rejecting the old `github.token` Authorization path.
 
 ### Validation boundary
-- Exact-head tests and Windows/browser CI are required. This selection is based on workflow-run status; if GitHub reports multiple in-progress runs, the endpoint still chooses the first in list order and a later audit should inspect job-level concurrency state.
-- No workflow was cancelled and no task/checkpoint/durable state was modified by this source update.
+- This is a source/test correction on the stacked #870 branch. Exact-head Linux/Windows suites, Windows storage regressions, Browser E2E, CodeQL, dependency audit, and an actual Runner-account `gh auth token`/Variables API read remain required.
+- If the Runner service account is not authenticated or cannot read repository variables, the gate fails closed and starts no task. No token is printed or persisted.
+- No workflow was dispatched and no Pause/Mode variable, task, checkpoint, PR, Runner, ACL, database, or user state was changed.
+
+---
+
+## 2026-11-24 — align live-settings cycle assertions with the API call contract
+
+### CI finding
+- Exact-head tests on the #870 stack reported two failures in `test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode` and `test_next_cycle_dispatch_is_suppressed_by_live_pause`.
+- The fake API records `(method, path, payload)`; the assertions still expected two-element tuples even though GET calls explicitly pass the default `payload=None`. The product behavior and call ordering matched the expected values.
+
+### Correction
+- Updated both expected call lists to include the explicit third `None` field. No product code or safety behavior was changed.
+
+### Validation boundary
+- A new exact-head test run is required. The previous run had 2 failing assertions, 2,601 passed, 15 skipped, and 78 deselected; the skips/deselections were unchanged repository markers and are not counted as passed.
+- No workflow, repository variable, task, checkpoint, or durable state was changed by the test correction.
+
+---
+
+## 2026-11-24 — allow explicit Resume to reach the authoritative live Pause gate
+
+### Root cause
+- The Resume API clears the repository Pause variable and dispatches `resume_once=true`, but the first workflow admission step still checked the workflow-context `PAUSED` snapshot before the job entered the concurrency group.
+- If that snapshot was stale and still `true`, the schedule gate skipped the explicit Resume before the newer live API check could run. This is especially relevant to one-shot Resume while scheduled mode is active.
+
+### Correction
+- The schedule gate now lets only an explicit `workflow_dispatch` carrying `resume_once=true` pass the stale snapshot-only Pause check.
+- The live Pause/mode API gate after the concurrency group remains mandatory and authoritative. A still-active Pause, scheduled-mode mismatch, malformed setting, or API failure still prevents task start.
+- Manual task dispatch while Pause is active remains rejected at the early gate.
+- Added a workflow contract test and documented the boundary in ADR-024.
+
+### Validation boundary
+- Exact-head CI is required. The regression is static/workflow-contract coverage; runtime GitHub variable propagation is still verified by the live post-concurrency gate and target-host acceptance.
+- No repository variable or workflow was dispatched by this source change. No task/checkpoint/durable state was modified.
+
+---
+
+## 2026-11-24 — apply live Pause/mode gate to recovered merged-PR chaining
+
+### Root cause
+- The normal completion path used `_dispatch_next_cycle_if_enabled()` to re-read the live execution mode and Pause flag before dispatching the next continuous cycle.
+- The recovery path for a durable pending PR that had already been manually merged bypassed that helper and dispatched the next cycle unconditionally whenever the workflow's original `--mode` argument was `continuous`. A Pause or switch to scheduled mode made after that workflow started could therefore still queue a new run from the recovered-PR branch.
+
+### Correction
+- Reuse the same live mode/Pause gate after completing a recovered owner-merged PR.
+- Added a parameterized regression for live scheduled mode, live Pause enabled, and continuous/unpaused mode; only the last case may dispatch.
+
+### Validation boundary
+- Exact-head CI is required. No workflow was dispatched by the test; GitHub API calls are mocked.
+- No task, checkpoint, pending PR record, database, service, or user state was changed by this source update.
+
+---
+
+## 2026-11-24 — correct live settings admission regression expectations and diagnostics
+
+### Exact-head CI findings
+- The full Linux and Windows suites on the prior PR #866 head each failed the same three tests. Two cycle-dispatch tests asserted the pre-existing request count and omitted the newly required repository-identity GET before the live Mode/Pause reads.
+- The recovery repository-access test exposed a real diagnostic gap: the repository verification helper propagated the raw GitHub 404 instead of returning the explicit fail-closed repository-verification error.
+
+### Corrections
+- Updated the cycle tests to assert the complete ordered API call sequence (repository identity, then live Mode; and repository identity plus Mode followed by repository identity plus Pause).
+- Wrapped repository metadata API errors in the explicit “could not verify the configured repository” failure, preserving the original exception as the cause.
+- Kept the actual access verification and fail-closed behavior intact; no test was removed, skipped, or weakened.
+
+### Validation boundary
+- The previous head had 3 failures in both full suites (2,596 Linux passes; 2,592 Windows passes). These fixes are on a new head and require fresh exact-head Linux/Windows full suites plus all other workflows.
+- No task, checkpoint, workflow, repository variable, Runner registration, ACL, or durable state was modified.
+
+---
+
+## 2026-11-24 — verify cross-process workflow dispatch admission
+
+### Audit result
+- The API's in-process lock protects concurrent browser tabs in one local API process. Cross-process duplicate suppression is enforced by the schedule-gate's live GitHub workflow-run query and by the single-slot Runner concurrency group; manual dispatch is rejected before durable task persistence when another run is active or queued.
+- The durable task writer independently rechecks active workflow runs while holding the shared cross-process state lock, so the schedule-gate is not the only guard.
+
+### Regression
+- Added a workflow contract test asserting the current-run exclusion, active-state set, manual-dispatch rejection, no-state-change message, and non-cancelling single-slot concurrency group.
+
+### Validation boundary
+- No extra dispatch lock or persistent admission marker was added: it would duplicate the authoritative workflow and durable-state guards without improving the single-slot safety contract.
+- Exact-head CI is required.
+
+---
+
+## 2026-11-24 — fail closed when GitHub 404 may mean repository access is missing
+
+### Root cause
+- The live Pause/Mode readers treated any HTTP 404 from the repository-variable endpoint as an intentionally absent variable. GitHub can also return 404 when a token cannot access a private repository, so this could incorrectly default to `continuous` and `unpaused`.
+
+### Correction
+- The workflow now verifies repository metadata and exact `full_name` using the same token before reading variables. A repository-access failure stops the job; only a subsequent variable-specific 404 receives the documented default.
+- The recovery coordinator performs the same repository identity check before calling the live variable readers.
+- Added a regression proving an inaccessible repository cannot be mistaken for an unset execution-mode variable.
+
+### Validation boundary
+- No workflow was dispatched and no repository variable or durable task/checkpoint state was changed.
+- Exact-head Linux/Windows tests and workflow CI are required.
+
+---
+
+## 2026-11-24 — align live repository-variable tests with the shared PowerShell reader
+
+### CI findings
+- The workflow now uses a reusable `Get-LiveRepositoryVariable` helper with a dynamic variable-name URL, so static tests that required literal endpoint strings or prohibited all `actions/variables` references were stale.
+- The recovery coordinator reports `Recovery failed closed`; its test expected the different phrase `Recovery fails closed`.
+
+### Corrections
+- Workflow tests now assert the helper, the exact Pause/Mode variable names passed to it, and the fail-closed read contract.
+- Recovery tests assert the actual message and verify that Pause/Mode are re-read after backoff as well as before it.
+
+### Validation boundary
+- These changes update test contracts only. The live variable reader remains after concurrency admission, and non-404 API failures still block task execution.
+- Exact-head CI must be rerun.
+
+---
+
+## 2026-11-24 — align live-pause workflow tests with the current policy boundary
+
+### CI findings
+- The new workflow contract test called `_read()`, a helper that does not exist in `tests/test_autonomous_engineering.py`. It now reads the workflow from the repository root using `Path`.
+- The recovery workflow intentionally delegates live Pause and execution-mode reads to the trusted Python recovery policy; its workflow YAML does not inject stale `EXECUTION_MODE` or `PAUSED` snapshots. The test now asserts the API-backed policy functions and their fail-closed settings reads instead of requiring obsolete environment variables.
+
+### Validation boundary
+- These are test-contract corrections; the runtime policy remains API-backed and fail-closed.
+- Exact-head Linux/Windows tests and workflow CI must pass before acceptance.
+- No workflow was dispatched and no repository variable or durable task/checkpoint state was changed.
+
+---
+
+## 2026-11-24 — suppress continuous chaining when live Pause or mode changes
+
+- A task can finish and receive owner merge after the Pause or execution mode changed while it was running. The cycle controller previously used the workflow-start mode snapshot to decide whether to dispatch the next cycle.
+- The post-merge chaining path now re-reads live execution mode and Pause immediately before dispatch. It suppresses the next cycle if mode is scheduled, Pause is active, or either setting cannot be verified.
+- Automatic chaining does not set resume_once; therefore a stale continuous snapshot cannot turn an explicit one-shot resume into an ongoing chain in scheduled mode.
+- Added tests for scheduled mode, active Pause, API failure, and successful chaining only when live mode is continuous and unpaused.
+
+---
+
+## 2026-11-24 — mark explicit resume separately from automatic workflow chaining
+
+- Scheduled mode must allow an owner-requested one-shot resume without allowing a continuous-mode workflow snapshot to create an automatic chain.
+- Added the boolean workflow_dispatch input resume_once. The application Resume endpoint sets it explicitly; cycle chaining and recovery dispatches do not.
+- The live workflow gate and cycle controller now allow an empty workflow_dispatch in scheduled mode only when resume_once is true. Manual tasks remain allowed; push/schedule and recovery attempts are blocked.
+- Added regressions for one-shot resume, unmarked empty dispatch rejection, and manual-task admission in scheduled mode.
+
+---
+
+## 2026-11-24 — recheck live execution mode across queued automatic and recovery runs
+
+### Root cause
+- The execution-mode repository variable was passed through workflow context to both the main and recovery workflows. A run queued behind concurrency could therefore use the old continuous/scheduled value after the owner changed the setting.
+
+### Correction
+- The main workflow's post-concurrency admission gate now reads both live Pause and execution-mode repository variables. In scheduled mode, queued push/schedule runs and automatic recovery attempts are skipped; explicit manual tasks and a one-shot resume dispatch remain allowed.
+- The cycle controller rechecks both values after acquiring the repository execution lock and before durable-state recovery/task start.
+- The recovery coordinator reads live mode and Pause before classifying a failure and again after backoff immediately before dispatch. It no longer consumes workflow-context mode/Pause snapshots.
+- Missing Pause variable defaults false; missing mode variable defaults continuous. All other API failures and invalid values fail closed.
+- Added regression coverage for mode changes during recovery backoff and for controller admission after the repository lock.
+
+### Validation boundary
+- Exact-head Linux/Windows CI and the Windows PowerShell parser test remain pending. No workflow was dispatched and no repository variable was changed.
+
+---
+
+## 2026-11-24 — recheck live Pause at controller and recovery admission boundaries
+
+### Root cause
+- A live workflow-step check still left a narrow interval before the Python controller acquired the repository execution lock and entered task recovery.
+- The automatic recovery coordinator previously relied on a PAUSED value passed through workflow context, and could wait through backoff while Pause changed.
+
+### Correction
+- The cycle controller reads the current repository Actions variable after acquiring the repository execution lock and before calling run_cycle.
+- Recovery reads the live variable before classifying the failed run and again after backoff immediately before workflow dispatch.
+- Missing variable (HTTP 404) means default false. Other API failures and malformed values fail closed.
+- Recovery no longer receives a PAUSED snapshot in its workflow environment.
+- Added unit tests for the controller lock ordering, missing-variable default, API failure, and Pause activation during recovery backoff.
+
+### Validation boundary
+- Exact-head Linux/Windows CI and Windows PowerShell parser validation remain pending.
+- No task, checkpoint, workflow run, or repository variable was modified by these checks.
+
+---
+
+## 2026-11-24 — write the live Pause output without a PowerShell 5.1 BOM
+
+- The live Pause workflow step now appends its output using .NET UTF-8 without BOM. This avoids PowerShell 5.1 `Out-File -Encoding utf8` potentially prefixing the first GitHub Actions output key with a BOM.
+- Added a workflow contract assertion for the BOM-free writer.
+
+---
+
+## 2026-11-24 — read the live safe-pause flag after workflow concurrency admission
+
+### Root cause
+- The pre-task pause step used `vars.AUTONOMOUS_ENGINEERING_PAUSED`, which is a workflow-context snapshot. A run queued behind the job-level concurrency group could therefore observe the value from when that run was created, not a pause change made while it waited.
+- The step was named as a recheck but did not fetch the current repository variable.
+
+### Correction
+- The pre-task gate now reads the repository variable through the GitHub Actions Variables API after the `codex` job has acquired its concurrency slot.
+- An absent variable (HTTP 404) retains the documented default `false`; malformed values, authorization failures, rate limits, and network/API failures stop the job before a new task starts.
+- The existing task execution step remains conditional on the live gate output.
+
+### Validation boundary
+- Added a workflow contract regression asserting that the live API read occurs after the concurrency declaration and that all non-404 read failures fail closed.
+- Exact-head CI is required. The remaining race between the final API read and the actual task start is bounded to that short interval; this check closes the much larger queued-run stale-snapshot window.
+- No workflow was dispatched and no task/checkpoint state was changed by this source update.
 
 ---
 
@@ -2453,30 +2785,86 @@ Validation boundary: exact-head CI and a new self-hosted Runner execution are pe
 - Added an audit-only mode and tests with multiple model families, including Qwen legacy aliases, loaded-model preservation, marker mismatches, and post-delete verification.
 - This changes cleanup behavior only on a normal verified preflight; `-VerifyOnly` never deletes models. No user-host model was removed during this change. Exact-head CI and target-host audit remain required.
 
+## 2026-11-24 — serialize Cancel and fail closed on ambiguous targets
 
-## 2026-11-24 — serialize Autonomous Engineering post-mutation status refreshes
+- Cancel now shares the dispatch/resume lock, preventing a run-list inspection from racing a concurrent workflow submission.
+- Target selection prefers exactly one in-progress Codex job. Multiple in-progress Codex jobs or multiple queued Codex candidates fail closed; when no Codex job is identifiable, fallback is allowed only if exactly one workflow is active. Ambiguous active sets are never resolved by choosing the newest run.
+- Added tests for multiple active/queued Codex candidates, ambiguous workflow fallback, the single-run fallback, and lock contention. Exact-head CI and Windows target-host acceptance remain pending.
 
-### Root cause
-- `refreshAfterMutation()` waited for the current status poll before starting a fresh read, but did not serialize multiple mutation refreshes that were waiting on the same poll. If two controls completed while one status request was in flight, both continuations could start independent status requests. Their responses could overlap and a slower snapshot could overwrite a newer UI state.
+### Autonomous Engineering backend, retry and dashboard hardening (2026-11-24)
 
-### Correction
-- Added a mutation-refresh queue in `app/static/autonomous-engineering-status.js`. Each post-mutation read now waits for the preceding mutation refresh and any pre-existing poll before issuing its authoritative status request.
-- Added a Playwright regression that holds the pre-mutation poll open, completes two mutation refresh requests concurrently, and asserts that no more than one status request is active and that the final snapshot is refreshed after both mutations.
+- Replaced gh workflow run --field with --raw-field for manual_task, correlation_id and the one-shot resume_once input. This prevents @path file expansion and preserves literal string values.
+- Routed /dispatch and /resume through one admission path. Resume rechecks readiness, Pause, active runs, pending work and checkpoint integrity; if a run is already active it clears Pause without dispatching a duplicate. Otherwise it clears Pause immediately before the one-shot dispatch so the workflow's post-concurrency live gate sees the resumed state. Definite launch/rejection failures attempt to restore Pause=true; ambiguous dispatch outcomes keep Pause=false because GitHub may have accepted the run and require run-history reconciliation.
+- Moved the persistent cross-worker grace window into the protected State Broker. The two-phase acquire/complete reservation is serialized under the broker durable-state lock, uses a 120-second lease, treats abandoned leases conservatively, and commits a 30-second post-acceptance grace. Both POSIX and Windows broker transports validate the exact request schema; the application does not access protected Windows state files directly.
+- Changed /cancel to require the run_id from the UI snapshot, fetch that exact run directly, verify its workflow path and active state, inspect the Codex job for in-progress runs, and cancel only the same canonical ID.
+- Limited _workflow_runs diagnostic reads to failed runs on the current result page. _verified_workflow_run now performs one workflow-scoped GET for the selected ID instead of refetching the full run list.
+- Cleanup responses expose only logical filenames, not absolute user paths. Workflow and Codex diagnostic sanitizers redact Bearer, Basic, GitHub tokens, sk- API keys, JWTs and named secrets.
+- On Windows, cleanup delegates admission to the protected broker, which checks repository ownership, active progress, durable state and checkpoint blockers while holding its own locks. The dashboard no longer relies on an unlocked GitHub preflight. POSIX retains its active-run recheck inside the repository execution lock.
+- Codex stdout/stderr are captured and redacted, persisted failure details are included in the next same-task retry prompt, and report-only repair is capped at 600 seconds. Typed report failures distinguish no final agent message, missing terminal marker, and marker not on the final non-empty line. A missing final agent message is recorded with terminal-turn/event metadata and stops blind retries while preserving the checkpoint.
+- Completion markers are accepted only as an exact plain-text final non-empty line. A marker quoted in a bullet or followed by prose is not accepted.
+- UI changes separate sticky action feedback from polled service status, fix the refresh click callback, preserve keyed run/log panel DOM across polls, keep Cancel/Pause/Resume available after transient poll failures, cancel by snapshot run ID, and correct retryable semantics, cleanup partial-failure styling, invalid dates, interval fallback, response-body timeout handling and the Windows provisioning command path.
+- Added broker contract and service tests, dispatch reservation/grace tests, resume/cancel regressions, retry classification and report-marker tests, and UI contract assertions. Exact-head Linux/Windows CI, browser E2E, C# Broker compilation/integration, and target-host operational acceptance remain required; no result is claimed before those runs complete.
 
-### Evidence boundary
-- Branch: `fix/autonomous-engineering-status-refresh-serialization-20261124`, based on main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
-- Browser E2E and exact-head CI have not yet run on the updated branch. The fix is not considered verified until those checks pass.
-- No workflow, task, checkpoint, Runner service, database, or durable user state was changed.
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.
+
+## 2026-11-25 — harden read-only Variables permission verification
+
+- GitHub may return HTTP 404 both for an absent repository variable and for a token that cannot access the variable endpoint. Repository metadata access alone does not prove the fine-grained token has Variables: read.
+- The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
+- This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
+- Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
 
 
-### 2026-11-24 — Playwright regression harness correction
+## 2026-11-25 — یکپارچه‌سازی ماژول مهندسی و CI دقیق
 
-- The first Browser E2E run correctly failed the new regression, but the failure was in test setup rather than the product fix: the test replaced `fetch` after page load without proving the initial status poll had completed. The test could therefore await an existing request that bypassed the controlled fetch stub and time out.
-- Corrected the harness to stub status/runs/progress before navigation, wait for the authoritative limited-readiness state, then stop pollers and start the controlled in-flight request. The test now deterministically owns all status responses used by the race scenario.
-- The initial run also confirmed CodeQL and Windows storage regressions passed; Browser E2E failed only this new test. The revised exact-head CI is pending; no test failure was suppressed or skipped.
+- شاخهٔ integration: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ head کد `583f482af18b2921225ce91ae1d3ebdc5d765aec`؛ مبنای `main` برابر `8b7c20c50ef4fd9346e924d212a35f36ff646515` است. مقایسهٔ زندهٔ GitHub وضعیت `ahead` با `behind=0` و 69 فایل تغییرکرده را نشان می‌دهد.
+- PR اصلی: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، همچنان Draft و باز؛ هیچ merge انجام نشده است.
+- چهار workflow روی exact head موفق‌اند:
+  - Tests شامل Linux/Windows، Windows storage/Broker integration و managed Python bootstrap: [run 45595886385](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886385).
+  - Browser E2E: [run 45595886850](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886850).
+  - CodeQL: [run 45595886382](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886382).
+  - Dependency audit: [run 45595886307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886307).
+- در Windows storage job، build/attestation بستهٔ Broker، LocalService و Named Pipe، ACL، PowerShell Desktop/Core، identity portability، checkpoint/recovery، process lock و SQLite restore موفق شدند.
+- اصلاحات اصلی: `--raw-field` برای workflow inputs؛ durable cross-process dispatch admission؛ Resume یک‌باره با live Pause/Mode gate؛ exact-run Cancel؛ Broker setup صریح و startup فقط‌خواندنی؛ Broker package قابل‌راستی‌آزمایی؛ Codex report/retry diagnostics؛ UI state/polling hardening.
+- بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
+- گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
+- نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
 
 
-### 2026-11-24 — browser regression syntax failure and correction
+## 2026-11-25 — رفع تکرار بارگذاری PowerShell Security
 
-- The second Browser E2E attempt failed during Python test collection: one line of the multi-line `page.wait_for_function` predicate was missing its opening quote. No product code executed in that run.
-- Corrected the predicate string. The next exact-head run must pass Python collection and execute the controlled Playwright race test; this failure remains recorded rather than hidden.
+- Root cause: دو مسیر مستقل (scripts/AutonomousWindowsIdentity.psm1 و probe در app/windows_powershell.py) ماژول Microsoft.PowerShell.Security را بدون بررسی وضعیت بارگذاری قبلی Import می‌کردند. در PowerShell 5.1، بارگذاری مجدد type data می‌تواند با خطای duplicate member در System.Security.AccessControl.ObjectSecurity متوقف شود.
+- اصلاح: هر دو مسیر ابتدا Get-Module را بررسی می‌کنند؛ فقط در صورت نبود ماژول آن را از $PSHOME\Modules import می‌کنند. مسیر ماژول بارگذاری‌شده باید متعلق به همان PowerShell host باشد؛ مسیر PSModulePath پس از import در finally بازیابی می‌شود. دستورات Get-Acl و Set-Acl نیز صریحاً بررسی می‌شوند.
+- Regression: تست Windows PowerShell 5.1 با PSModulePath آلوده به مسیر PowerShell 7، ماژول identity را دو بار با -Force import می‌کند و مسیر ماژول Security و بازیابی PSModulePath را بررسی می‌کند. تست discovery نیز وجود guard جلوگیری از import تکراری و کنترل مسیر host را assert می‌کند.
+- Code head تحت اعتبارسنجی: abb2e7b8007e173b8c4116919e5051c36bf5c25b. در زمان ثبت، Tests و Browser E2E و Dependency audit در صف بودند و CodeQL لغو شده بود؛ بنابراین هیچ نتیجهٔ موفقی برای این head ادعا نمی‌شود.
+- پذیرش Windows واقعی هنوز باز است: CI نمی‌تواند وضعیت module/type data و runspace موجود روی میزبان مالک را کامل بازتولید کند. تا اجرای تست روی همان میزبان و مشاهدهٔ Broker health، این مشکل operationally closed محسوب نمی‌شود.
+
+- تست دوم Windows اکنون سناریوی مهم‌تر را نیز پوشش می‌دهد: Security module ابتدا از مسیر خود PowerShell 5.1 بارگذاری می‌شود، سپس PSModulePath آلوده به مسیر PowerShell 7 بازمی‌گردد و identity module باید بدون re-import و بدون خطای duplicate TypeData بارگذاری شود.
+
+
+## 2026-11-25 — بازیابی مدل گفتگو پس از حذف Codex context موقت
+
+- ریشهٔ دوم مشکل مدل: tag موقت Codex می‌توانست در `chat_ollama_model` باقی بماند؛ چون بعد از task حذف می‌شود، اجرای بعدی به مدل ناموجود اشاره می‌کرد.
+- `db.init_databases` اکنون مقدار ذخیره‌شدهٔ chat را می‌خواند و فقط suffix رزروشدهٔ Codex را به base tag تبدیل می‌کند؛ این کار برای پروفایل موجود و default واردشده از environment نیز انجام می‌شود. مدل‌های عادی کاربر و کلید legacy عمومی تغییر نمی‌کنند.
+- Startup preflight نیز اگر base model نصب باشد، این وضعیت را recoverable تشخیص می‌دهد و هشدار unavailable/pull تولید نمی‌کند؛ اگر base نصب نباشد، قابلیت chat unavailable گزارش می‌شود و pull خودکار اجرا نمی‌شود.
+- Regression در `tests/test_db_schema.py`، `tests/test_core.py` و `tests/test_startup_model_preflight.py` اضافه/به‌روزرسانی شده است.
+- Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; documentation head after integration snapshot: `ee58b9ea37ff732bd174f1ea2f813ad1ca30b95c`. Exact-head CI is pending; target-host acceptance remains open.
+
+
+## 2026-11-26 — تصمیم وضعیت PR #872 و ممیزی معماری Backend
+
+- وضعیت زندهٔ GitHub بررسی شد: PR #872 تنها PR باز مخزن است؛ Draft و unmerged باقی مانده و head فعلی آن `18bcba48e843a5920e27c33f51f4bf98ec1728aa` است.
+- چهار workflow روی همین SHA موفق‌اند: Tests `45759899919`، Browser E2E `45759899887`، CodeQL `45759899837` و dependency audit `45759899799`.
+- تصمیم: PR #872 به‌عنوان PR یکپارچه‌سازی حفظ می‌شود؛ نه merge و نه cancel. God Module در Backend و پذیرش Windows واقعی دو گیت مسدودکننده‌اند.
+- `app/autonomous_engineering.py` هنوز ۱۶۲۶ خط و چندمسئولیتی است. تست موجود `tests/test_autonomous_engineering_module_boundaries.py` عمدتاً UI JavaScript را بررسی می‌کند و برای اثبات مرزهای Python کافی نیست.
+- شاخهٔ مستقل `fix/autonomous-engineering-modular-boundaries-20261126` از SHA دقیق PR ایجاد شد. برنامهٔ مرزبندی و حل تعارض دو master prompt در `docs/AUTONOMOUS_ENGINEERING_MODULARIZATION_PLAN_2026-11-26.fa.md` ثبت شده است.
+- این مرحله فقط audit و مستندسازی بود؛ هیچ task/checkpoint، Runner، Broker، service، ACL، secret، repository variable، دیتابیس کاربر، مدل یا state میزبان تغییر نکرد.
+- وضعیت operationally fixed یا ready-to-merge اعلام نمی‌شود تا refactor و architecture fitness tests، CI دقیق head نهایی و پذیرش واقعی Windows موفق شوند.

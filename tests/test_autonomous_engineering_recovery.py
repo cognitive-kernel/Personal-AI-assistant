@@ -29,11 +29,54 @@ def _failed_execution_jobs():
 
 
 def _configure_environment(monkeypatch):
-    monkeypatch.setenv("EXECUTION_MODE", "continuous")
-    monkeypatch.setenv("PAUSED", "false")
     monkeypatch.setenv("GH_REPO", "cognitive-kernel/Personal-AI-assistant")
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("FAILED_RUN_ID", "123")
+
+
+def test_main_requires_dedicated_variables_credential(monkeypatch):
+    _configure_environment(monkeypatch)
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN")
+    reports = []
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 1
+    assert reports
+    assert "read-only Variables credential" in reports[0][0][1]
+
+
+def test_github_actions_client_separates_workflow_and_settings_credentials(monkeypatch):
+    authorizations = []
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def read(self, size):
+            return b'{"ok": true}'
+
+    def fake_urlopen(request, timeout):
+        authorizations.append(request.get_header("Authorization"))
+        return Response()
+
+    monkeypatch.setattr(recovery.urllib.request, "urlopen", fake_urlopen)
+    client = recovery.GitHubActionsClient("owner/repository", "workflow-token")
+    client.set_settings_token("settings-token")
+
+    client.request("GET", "/actions/runs")
+    client.request_settings("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    try:
+        client.request_settings("POST", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        assert "only GET requests" in str(exc)
+    else:
+        raise AssertionError("The read-only settings credential accepted a write request.")
+
+    assert authorizations == ["Bearer workflow-token", "Bearer settings-token"]
 
 
 def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
@@ -52,6 +95,12 @@ def test_main_blocks_admission_rejection_without_dispatch(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -85,6 +134,12 @@ def test_main_does_not_dispatch_for_a_preflight_failure(monkeypatch):
             return 0
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -111,6 +166,12 @@ def test_main_opens_breaker_as_a_failed_recovery_result(monkeypatch):
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -137,6 +198,12 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
             return 1
 
         def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "false"}
             calls.append((method, path, payload))
             return {}
 
@@ -154,16 +221,42 @@ def test_main_dispatches_only_an_empty_recovery_task_below_threshold(monkeypatch
     ]
 
 
-def test_main_honors_scheduled_mode_and_durable_pause_before_api_access(monkeypatch):
+def test_main_honors_live_scheduled_mode_and_durable_pause(monkeypatch):
     _configure_environment(monkeypatch)
-    monkeypatch.setenv("EXECUTION_MODE", "scheduled")
-    monkeypatch.setattr(recovery, "GitHubActionsClient", lambda *args: (_ for _ in ()).throw(AssertionError("API must not be called")))
     monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: None)
 
+    class ScheduledClient:
+        def __init__(self, repository, token):
+            pass
+
+        def request(self, method, path, payload=None):
+            assert method == "GET"
+            if path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            assert path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"
+            return {"value": "scheduled"}
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", ScheduledClient)
     assert recovery.main() == 0
 
-    monkeypatch.setenv("EXECUTION_MODE", "continuous")
-    monkeypatch.setenv("PAUSED", "true")
+    # main() intentionally consumes the read-only credential from the environment.
+    _configure_environment(monkeypatch)
+
+    class PausedClient:
+        def __init__(self, repository, token):
+            pass
+
+        def request(self, method, path, payload=None):
+            assert method == "GET"
+            if path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
+            if path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "true"}
+            raise AssertionError(path)
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", PausedClient)
     assert recovery.main() == 0
 
 
@@ -231,6 +324,12 @@ def test_current_admission_rejection_does_not_hide_an_already_open_breaker(monke
             return 3
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             raise AssertionError("An open breaker must not dispatch.")
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -275,6 +374,12 @@ def test_main_does_not_dispatch_for_a_superseded_recovery_event(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run exists.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             raise AssertionError("A superseded event must not dispatch.")
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -303,6 +408,12 @@ def test_main_rechecks_ownership_after_backoff_before_dispatch(monkeypatch):
             raise recovery.RecoverySuperseded("A newer main-branch workflow run appeared during backoff.")
 
         def request(self, *args, **kwargs):
+            if args[:2] == ("GET", "/"):
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE"):
+                return {"value": "continuous"}
+            if args[:2] == ("GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED"):
+                return {"value": "false"}
             calls.append((args, kwargs))
 
     monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
@@ -327,3 +438,128 @@ def test_report_appends_summaries_and_emits_truthful_annotations(monkeypatch, tm
     assert "::error title=Circuit breaker OPEN::" in output
     assert "## Recovery scheduled" in saved
     assert "## Circuit breaker OPEN" in saved
+
+
+def test_live_pause_missing_variable_defaults_false():
+    class MissingVariableClient:
+        def request(self, method, path, payload=None):
+            if path == "/actions/variables?per_page=1":
+                return {"total_count": 0, "variables": []}
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    assert recovery._live_pause_enabled(MissingVariableClient()) is False
+
+
+def test_live_pause_missing_variable_fails_closed_without_variables_read_permission():
+    import pytest
+
+    class MissingPermissionClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    with pytest.raises(RuntimeError, match="repository Variables read permission"):
+        recovery._live_pause_enabled(MissingPermissionClient())
+
+
+def test_live_pause_api_failure_fails_closed():
+    import pytest
+
+    class DeniedClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 403: forbidden")
+
+    with pytest.raises(RuntimeError, match="Could not verify the live durable Pause setting"):
+        recovery._live_pause_enabled(DeniedClient())
+
+
+def test_main_rechecks_live_pause_after_backoff_before_dispatch(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            self.pause_reads = 0
+
+        def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                return {"value": "continuous"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                self.pause_reads += 1
+                return {"value": "false" if self.pause_reads == 1 else "true"}
+            calls.append((method, path, payload))
+            return {}
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 1
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery paused"
+    assert "became active during backoff" in reports[-1][0][1]
+
+
+def test_live_execution_mode_missing_variable_defaults_continuous():
+    class MissingVariableClient:
+        def request(self, method, path, payload=None):
+            if path == "/actions/variables?per_page=1":
+                return {"total_count": 0, "variables": []}
+            raise RuntimeError("GitHub Actions API failed: HTTP 404: not found")
+
+    assert recovery._live_execution_mode(MissingVariableClient()) == "continuous"
+
+
+def test_live_execution_mode_api_failure_fails_closed():
+    import pytest
+
+    class DeniedClient:
+        def request(self, method, path, payload=None):
+            raise RuntimeError("GitHub Actions API failed: HTTP 403: forbidden")
+
+    with pytest.raises(RuntimeError, match="Could not verify the live execution mode"):
+        recovery._live_execution_mode(DeniedClient())
+
+
+def test_main_rechecks_live_execution_mode_after_backoff_before_dispatch(monkeypatch):
+    _configure_environment(monkeypatch)
+    calls = []
+    reports = []
+
+    class FakeClient:
+        def __init__(self, repository, token):
+            self.mode_reads = 0
+
+        def request(self, method, path, payload=None):
+            if method == "GET" and path == "/":
+                return {"full_name": "cognitive-kernel/Personal-AI-assistant"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_MODE":
+                self.mode_reads += 1
+                return {"value": "continuous" if self.mode_reads == 1 else "scheduled"}
+            if method == "GET" and path == "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+                return {"value": "false"}
+            calls.append((method, path, payload))
+            return {}
+
+        def jobs(self, run_id):
+            return _failed_execution_jobs()
+
+        def retryable_failure_streak(self, run_id, jobs):
+            return 1
+
+    monkeypatch.setattr(recovery, "GitHubActionsClient", FakeClient)
+    monkeypatch.setattr(recovery.time, "sleep", lambda seconds: None)
+    monkeypatch.setattr(recovery, "report", lambda *args, **kwargs: reports.append((args, kwargs)))
+
+    assert recovery.main() == 0
+    assert calls == []
+    assert reports[-1][0][0] == "Recovery not enabled"
+    assert "changed to scheduled during backoff" in reports[-1][0][1]

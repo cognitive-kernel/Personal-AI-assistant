@@ -11,6 +11,10 @@ import time
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+if not __package__:
+    sys.path.insert(0, str(ROOT))
+
 try:
     from .autonomous_engineering_command_runner import run_command
 except ImportError:  # Direct script execution from the scripts directory.
@@ -39,7 +43,6 @@ except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_checkpoint_lock import checkpoint_store_lock
     from autonomous_engineering_state_paths import execution_state_directory
 
-ROOT = Path(__file__).resolve().parents[1]
 POLL_SECONDS = 20
 CHECKPOINT_INDEX_NAME = "latest-worktree-checkpoint.json"
 

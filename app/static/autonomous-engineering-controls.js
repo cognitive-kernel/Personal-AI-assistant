@@ -18,6 +18,7 @@
     if (settingsSaving) return;
     settingsSaving = true;
     saveButton.disabled = true;
+    const submittedEdits = status.captureSettingsEdits();
     const customModel = $("custom-model").value.trim();
     const model = customModel || $("ollama-model").value;
     const intervalHours = Number($("interval-hours").value);
@@ -28,7 +29,7 @@
         method: "POST",
         body: JSON.stringify({model, interval_hours: intervalHours, execution_mode: executionMode})
       });
-      $("custom-model").value = "";
+      status.acknowledgeSettings(submittedEdits);
       await status.refresh(true);
       setMessage(result.message || "تنظیمات ذخیره شد.", "success");
     } catch (error) {
@@ -132,6 +133,55 @@
       pullModelButton.disabled = false;
     }
   });
+  const setupBrokerButton = $("setup-state-broker");
+  let brokerSetupActive = false;
+  setupBrokerButton.addEventListener("click", async () => {
+    if (brokerSetupActive || setupBrokerButton.disabled) return;
+    brokerSetupActive = true;
+    setupBrokerButton.disabled = true;
+    const nativeState = setupBrokerButton.dataset.nativeState === "true";
+    setupBrokerButton.textContent = nativeState ? "در حال بررسی فضای بومی…" : "در حال راه‌اندازی سرویس محلی…";
+    setMessage(nativeState ? "فضای بومی با حساب فعلی بررسی می‌شود؛ نیازی به نصب سرویس یا مجوز مدیر نیست." : "درخواست نصب/ترمیم Broker ارسال شد؛ در صورت نیاز، پنجرهٔ تأیید مدیر سیستم را تأیید کنید.");
+    try {
+      const result = await request("broker/setup", {
+        method: "POST",
+        timeoutMs: 300000
+      });
+      try { await status.refresh(true); } catch (_) {}
+      setMessage(result.message || "سرویس Broker آماده شد.", "success");
+    } catch (error) {
+      try { await status.refresh(true); } catch (_) {}
+      setMessage(error.message || "راه‌اندازی Broker ناموفق بود.", "error");
+      if (error.ambiguous || error.retryable) {
+        setupBrokerButton.disabled = true;
+      } else {
+        setupBrokerButton.disabled = false;
+      }
+    } finally {
+      brokerSetupActive = false;
+      setupBrokerButton.textContent = setupBrokerButton.dataset.nativeState === "true" ? "راه‌اندازی فضای وضعیت بومی" : "راه‌اندازی یا ترمیم فضای ثبت پیشرفت";
+    }
+  });
+
+  const migrationButton = $("stage-native-migration");
+  let migrationActive = false;
+  migrationButton.addEventListener("click", async () => {
+    if (migrationActive || migrationButton.disabled) return;
+    if (!window.confirm("نسخهٔ بررسی‌شده از وضعیت قدیمی ایجاد شود؟ مسیر فعال، سرویس و داده‌های قبلی تغییر نمی‌کنند.")) return;
+    migrationActive = true;
+    migrationButton.disabled = true;
+    setMessage("در حال بررسی توقف اجرا، مالکیت قفل‌ها و تهیهٔ نسخه مهاجرت…");
+    try {
+      const result = await request("state/migration/stage", {method: "POST", timeoutMs: 300000});
+      setMessage(result.message || "نسخهٔ مهاجرت آماده شد؛ فعال‌سازی هنوز انجام نشده است.", "success");
+    } catch (error) {
+      setMessage(error.message || "مهاجرت متوقف شد؛ وضعیت قبلی حفظ شده است.", "error");
+    } finally {
+      migrationActive = false;
+      try { await status.refresh(true); } catch (_) {}
+    }
+  });
+
   taskForm.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!status.canStartManualTask()) {
@@ -166,7 +216,7 @@
       await status.refresh(true);
       setMessage((result.message || "وظیفه برای عامل ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال وظیفه ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
@@ -187,7 +237,7 @@
       await status.refresh(true);
       setMessage((result.message || "درخواست ارسال شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ارسال درخواست ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
@@ -216,21 +266,29 @@
       await status.refresh(true);
       setMessage((result.message || "ادامهٔ صف درخواست شد.") + (result.correlation_id ? " · شناسهٔ پیگیری: " + result.correlation_id : ""), "success");
     } catch (error) {
-      if (error.ambiguous || error.retryable || error.status >= 500) status.lockDispatchVisibilityWindow();
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
       const detail = error.message || "ادامهٔ صف ثبت نشد.";
       await status.refresh(true);
       setMessage(detail, "error");
     }
   });
   cancelButton.addEventListener("click", async () => {
-    if (!window.confirm("اجرای فعال عامل در GitHub Actions لغو شود؟")) return;
+    const runId = status.getActiveRunId();
+    if (!Number.isSafeInteger(runId) || runId <= 0) {
+      setMessage("شناسهٔ اجرای فعال در snapshot معتبر نیست؛ ابتدا وضعیت را بازخوانی کنید.", "error");
+      return;
+    }
+    if (!window.confirm("فقط اجرای فعال #" + runId + " در GitHub Actions لغو شود؟")) return;
     cancelButton.disabled = true;
     try {
-      const result = await request("cancel", {method: "POST"});
+      const result = await request("cancel", {
+        method: "POST",
+        body: JSON.stringify({run_id: runId})
+      });
       await status.refresh(true);
-      setMessage(result.message || "درخواست لغو ارسال شد.", "success");
+      setMessage(result.message || ("درخواست لغو اجرای #" + runId + " ارسال شد."), "success");
     } catch (error) {
-      const detail = error.message || "لغو اجرای فعال ناموفق بود.";
+      const detail = error.message || "لغو اجرای انتخاب‌شده ناموفق بود.";
       await status.refresh(true);
       setMessage(detail, "error");
     }

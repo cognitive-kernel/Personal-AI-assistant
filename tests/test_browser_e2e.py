@@ -3755,7 +3755,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
     if not base_url:
         pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
 
-    state = {"model": "", "posted": None}
+    state = {"model": "", "posted": None, "interval_hours": 24, "execution_mode": "continuous"}
     installed_models = [
         "gpt-oss:20b",
         "qwen3:14b",
@@ -3792,8 +3792,8 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
             "model_capabilities": ["completion", "tools"] if selected_ready else [],
             "model_supports_tools": selected_ready,
             "model_metadata_error": None if selected_ready else "No Ollama model is saved in repository settings.",
-            "interval_hours": 24,
-            "execution_mode": "continuous",
+            "interval_hours": state["interval_hours"],
+            "execution_mode": state["execution_mode"],
             "paused": False,
             "github": {"recent_runs": [], "settings": {"model": selected}},
             "codex": {"installed": False, "version": None},
@@ -3803,7 +3803,7 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
     def save_settings(route):
         payload = route.request.post_data_json
         state["posted"] = payload
-        state["model"] = payload["model"]
+        state.update(payload)
         route.fulfill(status=200, json={"message": "تنظیمات ذخیره شد."})
 
     browser_errors = []
@@ -3843,6 +3843,15 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
         assert model_picker.locator("option[value='gpt-oss:20b-codex-ctx65536']").count() == 0
 
         model_picker.select_option("gpt-oss:20b")
+        page.locator("#execution-mode").select_option("scheduled")
+        page.locator("#interval-hours").select_option("6")
+        with page.expect_response("**/api/autonomous-engineering/status"):
+            page.locator("#refresh-agent").click()
+        page.wait_for_function("() => !document.querySelector('#refresh-agent').disabled")
+        assert model_picker.input_value() == "gpt-oss:20b"
+        assert page.locator("#execution-mode").input_value() == "scheduled"
+        assert page.locator("#interval-hours").input_value() == "6"
+
         page.locator("#save-agent-settings").click()
         page.wait_for_function(
             "() => document.querySelector('#model-detail')?.textContent.includes('مدل ذخیره‌شده: gpt-oss:20b')",
@@ -3851,8 +3860,8 @@ def test_autonomous_engineering_model_picker_requires_explicit_selection_and_sav
 
         assert state["posted"] == {
             "model": "gpt-oss:20b",
-            "interval_hours": 24,
-            "execution_mode": "continuous",
+            "interval_hours": 6,
+            "execution_mode": "scheduled",
         }
         assert model_picker.input_value() == "gpt-oss:20b"
         assert page.locator("#agent-message").inner_text() == "تنظیمات ذخیره شد."
@@ -5296,8 +5305,8 @@ def test_autonomous_run_history_discards_older_response_after_newer_refresh():
             page.wait_for_timeout(20)
         assert len(state["run_routes"]) >= 1, "Initial run-history request was not observed."
 
-        page.locator("#refresh-agent").click()
-        page.wait_for_function("() => document.querySelector('#refresh-agent')?.disabled === false")
+        page.locator("#refresh-runs").click()
+        page.wait_for_function("() => document.querySelector('#refresh-runs')?.disabled === false")
         page.wait_for_function("() => document.querySelector('#recent-runs')?.textContent.includes('Newer run')", timeout=10000)
         assert len(state["run_routes"]) >= 2, "The newer run-history request was not observed."
 
@@ -5668,7 +5677,7 @@ def test_autonomous_dispatch_error_exposes_code_and_correlation_id_after_status_
         message = page.locator("#agent-message").inner_text()
         assert "WORKFLOW_DISPATCH_LAUNCH_FAILED" in message
         assert "GitHub CLI could not be started." in message
-        assert page.locator("#dispatch-agent").is_disabled(), "Retryable dispatch failure must keep the visibility lock."
+        assert not page.locator("#dispatch-agent").is_disabled(), "A retryable failure must not impose the duplicate-dispatch visibility lock."
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -6431,3 +6440,182 @@ def test_autonomous_engineering_custom_request_timeout_and_trace_artifact():
                 diagnostics["trace_error"] = str(exc)
             diagnostics_path.write_text(json.dumps(diagnostics, ensure_ascii=False, indent=2), encoding="utf-8")
             browser.close()
+
+
+def test_autonomous_engineering_broker_setup_requires_explicit_ui_action_and_refreshes_readiness():
+    base_url = os.environ.get("E2E_BASE_URL")
+    if not base_url:
+        pytest.fail("E2E_BASE_URL must be configured by the browser-e2e workflow.")
+    state = {"broker_ready": False, "setup_calls": 0}
+    browser_errors = []
+    status_payload = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {
+            "ollama_online": False, "model_installed": False, "model_selectable": False,
+            "model_context_metadata_available": False, "model_context_supported": False,
+            "model_supports_tools": False, "model_tools_metadata_available": False,
+            "model_is_codex_context_variant": False, "codex_installed": False,
+            "runner_running": False, "github_cli_authenticated": False,
+            "github_runs_available": False, "progress_storage_accessible": False,
+        },
+        "model": "", "models": [], "selectable_models": [],
+        "model_context_length": None, "model_recommended_context_length": None,
+        "model_tools_verification_method": "probe_required",
+        "interval_hours": 24, "execution_mode": "continuous", "paused": False,
+        "pending_work": {
+            "available": False, "blocked": True,
+            "markers": {"pending_task": False, "pending_owner": False, "pending_pr": False, "cleanup_in_progress": False},
+            "checkpoint": {"available": False, "verified": True},
+            "reason": "State Broker is not ready.",
+        },
+        "github": {"recent_runs": [], "settings": {"model": ""}},
+        "codex": {"installed": False, "version": None},
+        "local_only_inference": True,
+    }
+
+    def status(route):
+        payload = dict(status_payload)
+        payload["checks"] = dict(status_payload["checks"])
+        payload["checks"]["progress_storage_accessible"] = state["broker_ready"]
+        payload["pending_work"] = dict(status_payload["pending_work"])
+        payload["pending_work"]["available"] = state["broker_ready"]
+        payload["pending_work"]["blocked"] = not state["broker_ready"]
+        payload["pending_work"]["reason"] = None if state["broker_ready"] else "State Broker is not ready."
+        route.fulfill(status=200, json=payload)
+
+    def setup(route):
+        state["setup_calls"] += 1
+        assert route.request.method == "POST"
+        state["broker_ready"] = True
+        route.fulfill(status=200, json={
+            "ready": True,
+            "already_ready": False,
+            "message": "Broker ready",
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("pageerror", lambda error: browser_errors.append(str(error)))
+        page.route("**/api/autonomous-engineering/status", status)
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(status=200, json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(
+            status=200,
+            json={"current": None, "history": [], "latest_snapshot": None, "events": [], "storage_configured": False},
+        ))
+        page.route("**/api/autonomous-engineering/broker/setup", setup)
+
+        response = page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        assert response is not None and response.status == 200
+        page.wait_for_function(
+            "() => document.querySelector('#setup-state-broker')?.hidden === false",
+            timeout=10000,
+        )
+        assert state["setup_calls"] == 0, "Broker provisioning must never run automatically during UI startup."
+        page.locator("#setup-state-broker").click()
+        page.wait_for_function(
+            "() => document.querySelector('#setup-state-broker')?.hidden === true",
+            timeout=10000,
+        )
+        assert state["setup_calls"] == 1
+        assert "Broker ready" in page.locator("#agent-message").inner_text()
+        assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
+        browser.close()
+
+
+def test_autonomous_engineering_incomplete_probe_preserves_confirmed_configuration():
+    base_url = os.environ["E2E_BASE_URL"]
+    healthy = {
+        "ready": True,
+        "can_dispatch": False,
+        "checks": {"progress_storage_accessible": True, "ollama_online": True},
+        "pending_work": {"available": True, "blocked": False},
+        "model": "qwen:latest",
+        "selectable_models": ["qwen:latest"],
+        "execution_mode": "scheduled",
+        "interval_hours": 6,
+        "paused": True,
+        "github": {"recent_runs": [{"id": 123, "status": "in_progress"}]},
+    }
+    incomplete = {
+        "ready": False,
+        "can_dispatch": False,
+        "checks": {},
+        "pending_work": {"available": False, "blocked": True},
+        "model": "",
+        "selectable_models": [],
+        "execution_mode": "continuous",
+        "interval_hours": 24,
+        "paused": False,
+        "github": {"recent_runs": []},
+        "status_probe_unavailable": ["storage"],
+        "status_probe_timeouts": ["github"],
+        "status_probe_errors": ["ollama"],
+        "correlation_id": "f" * 32,
+    }
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        responses = iter([healthy, incomplete])
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(
+            json=next(responses, {**healthy, "can_dispatch": True, "paused": False, "github": {"recent_runs": []}}),
+        ))
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(json={"history": []}))
+        page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        cancel = page.locator("#cancel-agent")
+        resume = page.locator("#resume-agent")
+        cancel.wait_for()
+        page.wait_for_function("() => !document.querySelector('#cancel-agent').disabled")
+
+        refresh = page.locator("#refresh-agent")
+        refresh.click()
+        page.get_by_text("آمادگی اجرا تأیید نشده", exact=True).wait_for()
+        assert page.locator("#agent-status-message").inner_text().endswith("f" * 32)
+        assert page.locator("#storage-detail").inner_text() == "ظرفیت بررسی وضعیت موقتاً پر است."
+        assert page.locator("#github-detail").inner_text() == "بررسی وضعیت در مهلت مقرر پاسخ نداد."
+        assert page.locator("#ollama-detail").inner_text() == "بررسی وضعیت با خطا مواجه شد."
+        assert page.locator("#execution-mode").input_value() == "scheduled"
+        assert page.locator("#interval-hours").input_value() == "6"
+        assert page.locator("#ollama-model").input_value() == "qwen:latest"
+        assert page.locator("#setup-state-broker").is_hidden()
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert cancel.is_enabled()
+        assert resume.is_enabled()
+
+        refresh.click()
+        page.wait_for_function("() => !document.querySelector('#dispatch-agent').disabled")
+        assert cancel.is_disabled()
+        assert resume.is_disabled()
+        browser.close()
+
+
+def test_autonomous_engineering_native_runner_ownership_does_not_imply_dispatch():
+    base_url = os.environ["E2E_BASE_URL"]
+    state = {"ownership": "verified"}
+
+    def status(route):
+        route.fulfill(json={
+            "ready": False, "can_dispatch": False, "paused": True, "state_backend": "native",
+            "checks": {"runner_running": True, "native_runner_workflow_compatible": False},
+            "runner": {"local_ownership": state["ownership"]},
+            "github": {"recent_runs": []},
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/autonomous-engineering/status", status)
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(json={"history": []}))
+        page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        page.get_by_text("مالکیت محلی تأیید شد", exact=True).wait_for()
+        assert page.locator("#runner-detail").inner_text() == "ارسال Workflow در حالت بومی غیرفعال است."
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert page.locator("#resume-agent").is_disabled()
+        state["ownership"] = "ambiguous"
+        page.locator("#refresh-agent").click()
+        page.get_by_text("چند Runner بومی شناسایی شد", exact=True).wait_for()
+        assert page.locator("#send-agent-task").is_disabled()
+        browser.close()

@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.ComponentModel;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -218,7 +219,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             ? rawBody as Dictionary<string, object> : null;
         bool taskEndpoint = path == "/v1/tasks/pending" || path == "/v1/tasks/archived" ||
             path == "/v1/tasks/archive" || path == "/v1/tasks/restore";
-        if (request.ContainsKey("body") && (!taskEndpoint || body == null))
+        bool dispatchAdmissionEndpoint = path == "/v1/dispatch-admission/acquire" ||
+            path == "/v1/dispatch-admission/complete";
+        if (request.ContainsKey("body") && ((!taskEndpoint && !dispatchAdmissionEndpoint) || body == null))
         {
             WriteResponse(pipe, 400, Error("request_body_not_supported"));
             return;
@@ -229,6 +232,14 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             int taskStatus;
             HandlePendingTaskRequest(method, path, body, out taskStatus, out taskResult);
             WriteResponse(pipe, taskStatus, taskResult);
+            return;
+        }
+        if (dispatchAdmissionEndpoint)
+        {
+            object admissionResult;
+            int admissionStatus;
+            HandleDispatchAdmission(method, path, body, out admissionStatus, out admissionResult);
+            WriteResponse(pipe, admissionStatus, admissionResult);
             return;
         }
 
@@ -272,11 +283,28 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         }
         if (method == "POST" && path == "/v1/cleanup")
         {
-            Dictionary<string, object> cleanup = CleanupProgress() as Dictionary<string, object>;
-            object conflict;
-            int status = cleanup != null && cleanup.TryGetValue("conflict", out conflict) &&
-                conflict is Boolean && (Boolean)conflict ? 409 : 200;
-            WriteResponse(pipe, status, cleanup ?? Error("cleanup_failed"));
+            try
+            {
+                Dictionary<string, object> cleanup = CleanupProgress() as Dictionary<string, object>;
+                object conflict;
+                int status = cleanup != null && cleanup.TryGetValue("conflict", out conflict) &&
+                    conflict is Boolean && (Boolean)conflict ? 409 : 200;
+                WriteResponse(pipe, status, cleanup ?? Error("cleanup_failed"));
+            }
+            catch (Exception exception)
+            {
+                string code = CleanupFailureCode(exception);
+                LogWorkerException(exception);
+                try
+                {
+                    EventLog.WriteEntry(
+                        "PersonalAIAssistantStateBroker cleanup failed: " + code,
+                        EventLogEntryType.Warning
+                    );
+                }
+                catch { }
+                WriteResponse(pipe, 503, Error(code));
+            }
             return;
         }
 
@@ -1409,20 +1437,349 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
         catch { return null; }
     }
 
+    private static bool TryFiniteNumber(object value, out double number)
+    {
+        number = 0;
+        if (value == null || value is Boolean) return false;
+        try { number = Convert.ToDouble(value, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return false; }
+        return !Double.IsNaN(number) && !Double.IsInfinity(number) && number >= 0;
+    }
+
+    private static double UtcUnixSeconds()
+    {
+        return (DateTime.UtcNow - new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+    }
+
+    private void HandleDispatchAdmission(
+        string method, string path, Dictionary<string, object> body,
+        out int status, out object result)
+    {
+        status = 400;
+        result = Error("invalid_dispatch_admission_request");
+        if (!String.Equals(method, "POST", StringComparison.OrdinalIgnoreCase) || body == null) return;
+        string[] expected = path == "/v1/dispatch-admission/acquire"
+            ? new[] { "request_id" }
+            : path == "/v1/dispatch-admission/complete"
+                ? new[] { "request_id", "accepted" }
+                : new string[0];
+        if (expected.Length == 0 || body.Count != expected.Length || expected.Any(key => !body.ContainsKey(key))) return;
+        string requestId = body["request_id"] as string;
+        if (String.IsNullOrEmpty(requestId) || requestId.Length != 32 ||
+            requestId.Any(ch => !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')))) return;
+        bool accepted = false;
+        if (path.EndsWith("/complete", StringComparison.Ordinal))
+        {
+            if (!(body["accepted"] is Boolean)) return;
+            accepted = (Boolean)body["accepted"];
+        }
+
+        int responseStatus = 200;
+        try
+        {
+            result = WithStateLock(delegate
+            {
+                string statePath = Path.Combine(_stateDirectory, "workflow-dispatch-admission.json");
+                Dictionary<string, object> state = null;
+                if (SafeFileExists(statePath))
+                {
+                    state = ReadJsonFile("workflow-dispatch-admission.json", 4096) as Dictionary<string, object>;
+                    if (state == null) return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                }
+                if (state == null)
+                    state = new Dictionary<string, object> {
+                        { "schema_version", 1 }, { "last_accepted_at", 0.0 }, { "pending", null }
+                    };
+                object rawSchema, rawLast, rawPending;
+                double lastAccepted;
+                if (state.Count != 3 || !state.TryGetValue("schema_version", out rawSchema) || Convert.ToInt32(rawSchema) != 1 ||
+                    !state.TryGetValue("last_accepted_at", out rawLast) || !TryFiniteNumber(rawLast, out lastAccepted) ||
+                    !state.TryGetValue("pending", out rawPending))
+                    return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                Dictionary<string, object> pending = rawPending as Dictionary<string, object>;
+                if (rawPending != null && pending == null)
+                    return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+
+                double now = UtcUnixSeconds();
+                if (path.EndsWith("/acquire", StringComparison.Ordinal))
+                {
+                    if (pending != null)
+                    {
+                        double createdAt, expiresAt;
+                        object rawCreated, rawExpires, rawId;
+                        if (pending.Count != 3 ||
+                            !pending.TryGetValue("request_id", out rawId) ||
+                            !pending.TryGetValue("created_at", out rawCreated) || !TryFiniteNumber(rawCreated, out createdAt) ||
+                            !pending.TryGetValue("lease_expires_at", out rawExpires) || !TryFiniteNumber(rawExpires, out expiresAt) ||
+                            !(rawId is string) || ((string)rawId).Length != 32 ||
+                            ((string)rawId).Any(ch => !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f'))) ||
+                            expiresAt <= createdAt)
+                            return new Dictionary<string, object> { { "error", "dispatch_admission_state_invalid" } };
+                        if (now < expiresAt)
+                        {
+                            responseStatus = 409;
+                            return new Dictionary<string, object> {
+                                { "conflict", true }, { "message", "dispatch_admission_conflict" },
+                                { "blockers", new[] { "dispatch_reservation_active" } }
+                            };
+                        }
+                        // An expired caller may have dispatched before it died.
+                        // Start a fresh grace interval from lease recovery.
+                        lastAccepted = Math.Max(lastAccepted, now);
+                        pending = null;
+                        WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(new Dictionary<string, object> {
+                            { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
+                        })));
+                    }
+                    if (lastAccepted > 0 && (now < lastAccepted || now - lastAccepted < 30.0))
+                    {
+                        responseStatus = 409;
+                        return new Dictionary<string, object> {
+                            { "conflict", true }, { "message", "dispatch_admission_conflict" },
+                            { "blockers", new[] { "dispatch_recently_accepted" } }
+                        };
+                    }
+                    Dictionary<string, object> next = new Dictionary<string, object> {
+                        { "schema_version", 1 },
+                        { "last_accepted_at", lastAccepted },
+                        { "pending", new Dictionary<string, object> {
+                            { "request_id", requestId }, { "created_at", now }, { "lease_expires_at", now + 120.0 }
+                        } }
+                    };
+                    WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(next)));
+                    responseStatus = 200;
+                    return new Dictionary<string, object> { { "acquired", true }, { "last_accepted_at", lastAccepted }, { "lease_seconds", 120 } };
+                }
+
+                if (pending == null || !String.Equals(Convert.ToString(pending.ContainsKey("request_id") ? pending["request_id"] : null), requestId, StringComparison.Ordinal))
+                {
+                    responseStatus = 409;
+                    return new Dictionary<string, object> {
+                        { "conflict", true }, { "message", "dispatch_admission_lease_not_owned" },
+                        { "blockers", new[] { "dispatch_admission_lease_not_owned" } }
+                    };
+                }
+                if (accepted) lastAccepted = now;
+                Dictionary<string, object> completed = new Dictionary<string, object> {
+                    { "schema_version", 1 }, { "last_accepted_at", lastAccepted }, { "pending", null }
+                };
+                WriteAtomic(statePath, Encoding.UTF8.GetBytes(_json.Serialize(completed)));
+                responseStatus = 200;
+                return new Dictionary<string, object> { { "completed", true }, { "last_accepted_at", lastAccepted } };
+            }, 2000);
+            status = responseStatus;
+            if (result is Dictionary<string, object>)
+            {
+                Dictionary<string, object> response = (Dictionary<string, object>)result;
+                if (response.ContainsKey("error"))
+                {
+                    status = 503;
+                }
+                else if (response.ContainsKey("conflict") && Convert.ToBoolean(response["conflict"]))
+                {
+                    status = 409;
+                }
+            }
+        }
+        catch (System.TimeoutException)
+        {
+            status = 409;
+            result = new Dictionary<string, object> {
+                { "conflict", true }, { "message", "dispatch_admission_state_busy" },
+                { "blockers", new[] { "dispatch_admission_state_busy" } }
+            };
+        }
+        catch (Exception)
+        {
+            status = 503;
+            result = Error("dispatch_admission_state_unavailable");
+        }
+    }
+
+    private static string CleanupFailureCode(Exception exception)
+    {
+        if (exception is UnauthorizedAccessException ||
+            exception is System.Security.SecurityException)
+            return "cleanup_access_denied";
+        if (exception is DirectoryNotFoundException)
+            return "state_directory_missing";
+        if (exception is InvalidDataException)
+            return "durable_state_unverified";
+        if (exception is System.TimeoutException)
+            return "cleanup_lock_timeout";
+        if (exception is IOException)
+            return "cleanup_io_failed";
+        return "cleanup_failed";
+    }
+
+    private Dictionary<string, object> ReadRepositoryExecutionOwner()
+    {
+        string lockPath = Path.Combine(_stateDirectory, "repository-execution.lock");
+        if (!SafeFileExists(lockPath)) return null;
+        try
+        {
+            using (FileStream stream = new FileStream(
+                lockPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+            {
+                // Byte zero is held by this Broker while cleanup runs. Windows
+                // byte-range locking permits reading the owner record after byte zero.
+                if (stream.Length <= 1) return null;
+                stream.Position = 1;
+                using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 1024, true))
+                {
+                    return _json.DeserializeObject(reader.ReadToEnd()) as Dictionary<string, object>;
+                }
+            }
+        }
+        catch { return null; }
+    }
+
+    private string InspectRepositoryOwnerProcess(Dictionary<string, object> owner)
+    {
+        if (owner == null) return "unknown";
+        int pid;
+        try { pid = Convert.ToInt32(owner["pid"], System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return "unknown"; }
+        if (pid <= 0) return "unknown";
+
+        Process process = null;
+        try
+        {
+            process = Process.GetProcessById(pid);
+            if (process.HasExited) return "missing";
+            object rawStartedAt;
+            if (!owner.TryGetValue("process_started_at", out rawStartedAt))
+                return "unknown"; // Legacy PID-only metadata cannot rule out PID reuse.
+            double recordedStartedAt = Convert.ToDouble(
+                rawStartedAt, System.Globalization.CultureInfo.InvariantCulture);
+            double actualStartedAt = (process.StartTime.ToUniversalTime() -
+                new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc)).TotalSeconds;
+            if (Double.IsNaN(recordedStartedAt) || Double.IsInfinity(recordedStartedAt) ||
+                recordedStartedAt <= 0 || Double.IsNaN(actualStartedAt) || Double.IsInfinity(actualStartedAt))
+                return "unknown";
+            return Math.Abs(actualStartedAt - recordedStartedAt) <= 0.02 ? "alive" : "reused";
+        }
+        catch (ArgumentException) { return "missing"; }
+        catch (InvalidOperationException) { return "missing"; }
+        catch (Win32Exception) { return "unknown"; }
+        catch (NotSupportedException) { return "unknown"; }
+        catch (Exception) { return "unknown"; }
+        finally { if (process != null) process.Dispose(); }
+    }
+
+    private bool RecoverStaleProgress(Dictionary<string, object> current, out string recoveredRunId)
+    {
+        recoveredRunId = null;
+        if (current == null) return false;
+        object rawStatus;
+        string status = current.TryGetValue("status", out rawStatus)
+            ? Convert.ToString(rawStatus).Trim().ToLowerInvariant() : "";
+        string[] terminal = {
+            "completed", "succeeded", "success", "complete", "failed",
+            "cancelled", "skipped", "blocked", "interrupted"
+        };
+        if (Array.Exists(terminal, item => String.Equals(item, status, StringComparison.Ordinal)))
+            return true;
+
+        string runId = Convert.ToString(current.ContainsKey("run_id") ? current["run_id"] : "");
+        string attempt = Convert.ToString(current.ContainsKey("run_attempt") ? current["run_attempt"] : "1");
+        if (String.IsNullOrWhiteSpace(runId) || String.IsNullOrWhiteSpace(attempt))
+            return false;
+
+        Dictionary<string, object> owner = ReadRepositoryExecutionOwner();
+        if (owner == null ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("run_id") ? owner["run_id"] : ""), runId, StringComparison.Ordinal) ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("run_attempt") ? owner["run_attempt"] : ""), attempt, StringComparison.Ordinal) ||
+            !String.Equals(Convert.ToString(owner.ContainsKey("host") ? owner["host"] : ""), Environment.MachineName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        object rawOwnerToken, rawCurrentToken;
+        bool ownerHasToken = owner.TryGetValue("owner_token", out rawOwnerToken);
+        bool currentHasToken = current.TryGetValue("execution_owner_token", out rawCurrentToken);
+        if (ownerHasToken != currentHasToken)
+            return false;
+        if (ownerHasToken)
+        {
+            string ownerToken = Convert.ToString(rawOwnerToken);
+            string currentToken = Convert.ToString(rawCurrentToken);
+            if (ownerToken.Length != 64 || !String.Equals(ownerToken, currentToken, StringComparison.Ordinal))
+                return false;
+        }
+
+        string processState = InspectRepositoryOwnerProcess(owner);
+        if (processState != "missing" && processState != "reused")
+            return false;
+
+        double processStartedAt = 0;
+        try
+        {
+            if (owner.ContainsKey("process_started_at"))
+                processStartedAt = Convert.ToDouble(owner["process_started_at"], System.Globalization.CultureInfo.InvariantCulture);
+        }
+        catch { return false; }
+        string eventId = Sha256(Encoding.UTF8.GetBytes(
+            runId + "|" + attempt + "|" + Convert.ToString(owner["pid"]) + "|" +
+            processStartedAt.ToString("R", System.Globalization.CultureInfo.InvariantCulture)
+        ));
+        Dictionary<string, object> recoveryEvent = new Dictionary<string, object> {
+            { "type", "progress_recovery" }, { "event_id", eventId },
+            { "run_id", runId }, { "run_attempt", attempt },
+            { "status", "interrupted" }, { "reason", "owner_process_exited" },
+            { "recorded_at", DateTimeOffset.UtcNow.ToString("o") }
+        };
+        string eventsPath = Path.Combine(_stateDirectory, "events.jsonl");
+        try
+        {
+            bool eventAlreadyRecorded = false;
+            if (SafeFileExists(eventsPath))
+            {
+                FileInfo eventsInfo = new FileInfo(eventsPath);
+                if (eventsInfo.Length <= 4 * 1024 * 1024)
+                {
+                    string existingEvents = File.ReadAllText(eventsPath, Encoding.UTF8);
+                    eventAlreadyRecorded = existingEvents.IndexOf(eventId, StringComparison.Ordinal) >= 0;
+                }
+            }
+            if (!eventAlreadyRecorded)
+            {
+                byte[] eventBytes = Encoding.UTF8.GetBytes(_json.Serialize(recoveryEvent) + "\n");
+                using (FileStream stream = new FileStream(eventsPath, FileMode.Append, FileAccess.Write, FileShare.Read))
+                {
+                    stream.Write(eventBytes, 0, eventBytes.Length);
+                    stream.Flush(true);
+                }
+            }
+            current["status"] = "interrupted";
+            current["phase"] = "recovery";
+            current["phase_label"] = "اجرای قبلی متوقف شده";
+            current["activity"] = "اجرای قبلی متوقف شده بود؛ وضعیت آن بازیابی شد";
+            current["recovery_reason"] = "owner_process_exited";
+            current["recovery_event_id"] = eventId;
+            current["updated_at"] = DateTimeOffset.UtcNow.ToString("o");
+            WriteAtomic(Path.Combine(_stateDirectory, "current.json"),
+                Encoding.UTF8.GetBytes(_json.Serialize(current) + "\n"));
+            recoveredRunId = runId;
+            return true;
+        }
+        catch { return false; }
+    }
+
     private object CleanupProgress()
     {
         try
         {
             // Lock order matches the Runner: repository -> durable state -> checkpoint store.
-            // The broker enforces this itself because local pipe clients can call cleanup
-            // without passing through the dashboard's GitHub active-run preflight.
+            // The checkpoint-store lock proves that no watcher is mutating checkpoint
+            // state; a verified checkpoint itself remains recovery material and is preserved.
             return WithRepositoryExecutionLock(delegate
             {
-                return WithStateLock(delegate
+                try
                 {
-                    try
+                    return WithStateLock(delegate
                     {
-                        return WithCheckpointStoreLock(delegate
+                        try
+                        {
+                            return WithCheckpointStoreLock(delegate
                         {
                             string[] markerNames = {
                                 "pending-manual-task.txt",
@@ -1434,36 +1791,28 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             foreach (string name in markerNames)
                                 if (SafeFileExists(Path.Combine(_stateDirectory, name))) blockers.Add(name);
                             Dictionary<string, object> checkpoint = ReadCheckpointSummary() as Dictionary<string, object>;
-                            if (checkpoint == null || Convert.ToBoolean(checkpoint["available"]) ||
-                                (checkpoint.ContainsKey("verified") && !Convert.ToBoolean(checkpoint["verified"])))
+                            if (checkpoint == null || !checkpoint.ContainsKey("verified") ||
+                                !Convert.ToBoolean(checkpoint["verified"]))
                                 blockers.Add("latest-worktree-checkpoint");
 
-                            // The workflow writes current.json before the run-scoped
-                            // repository lock is acquired. Treat a live or unknown
-                            // progress state as a blocker even when the lock is free.
+                            string recoveredRunId = null;
                             string currentProgressPath = Path.Combine(_stateDirectory, "current.json");
                             if (SafeFileExists(currentProgressPath))
                             {
                                 Dictionary<string, object> current = ReadJsonFile("current.json", 256000) as Dictionary<string, object>;
-                                object rawStatus;
-                                string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
-                                    ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
-                                    : "";
-                                string[] terminalProgressStates = { "completed", "succeeded", "success", "complete", "failed", "cancelled", "skipped", "blocked" };
-                                if (current == null || !Array.Exists(terminalProgressStates, item =>
-                                    String.Equals(item, progressStatus, StringComparison.Ordinal)))
+                                if (!RecoverStaleProgress(current, out recoveredRunId))
                                     blockers.Add("active_progress_run");
                             }
 
                             if (blockers.Count > 0)
                                 return new Dictionary<string, object> {
                                     { "conflict", true }, { "blockers", blockers.ToArray() },
-                                    { "message", "Durable task/checkpoint state is pending; cleanup was refused." }
+                                    { "message", "Durable task/checkpoint state is pending or ownership is unknown; cleanup was refused." }
                                 };
 
+                            // The authoritative progress projection and event history are
+                            // durable recovery records. Cleanup removes only expendable temp files.
                             string[] cleanupNames = {
-                                "events.jsonl",
-                                "current.json",
                                 "events.jsonl.tmp",
                                 "current.json.tmp",
                                 "history.jsonl.tmp",
@@ -1493,43 +1842,6 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                     cleanupHandles.Add(handle);
                                     cleanupPaths.Add(filePath);
                                     existedBefore.Add(existed);
-                                }
-
-                                int currentIndex = Array.IndexOf(cleanupNames, "current.json");
-                                FileStream currentHandle = cleanupHandles[currentIndex];
-                                if (currentHandle.Length > 0)
-                                {
-                                    currentHandle.Position = 0;
-                                    string currentRaw;
-                                    using (StreamReader reader = new StreamReader(
-                                        currentHandle, Encoding.UTF8, true, 1024, true))
-                                    {
-                                        currentRaw = reader.ReadToEnd();
-                                    }
-                                    Dictionary<string, object> current =
-                                        _json.DeserializeObject(currentRaw) as Dictionary<string, object>;
-                                    object rawStatus;
-                                    string progressStatus = current != null && current.TryGetValue("status", out rawStatus)
-                                        ? Convert.ToString(rawStatus).Trim().ToLowerInvariant()
-                                        : "";
-                                    string[] terminalProgressStates = { "completed", "failed", "cancelled", "skipped", "blocked" };
-                                    if (current == null || !Array.Exists(terminalProgressStates, item =>
-                                        String.Equals(item, progressStatus, StringComparison.Ordinal)))
-                                    {
-                                        return new Dictionary<string, object> {
-                                            { "conflict", true },
-                                            { "blockers", new[] { "active_progress_run" } },
-                                            { "message", "The current progress state is active or unknown; cleanup was refused." }
-                                        };
-                                    }
-                                }
-                                else if (existedBefore[currentIndex])
-                                {
-                                    return new Dictionary<string, object> {
-                                        { "conflict", true },
-                                        { "blockers", new[] { "active_progress_run" } },
-                                        { "message", "The current progress file is empty or incomplete; cleanup was refused." }
-                                    };
                                 }
 
                                 for (int i = 0; i < cleanupNames.Length; i++)
@@ -1585,7 +1897,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                                 { "bytes_removed", removedBytes },
                                 { "bytes_cleared", removedBytes },
                                 { "failed_files", failed.ToArray() },
-                                { "preserved", new[] { "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } }
+                                { "preserved", new[] { "current.json", "events.jsonl", "history.jsonl", "scorecard-baseline.json", "checkpoint files", "pending task/PR markers" } },
+                                { "recovered_run_id", recoveredRunId },
+                                { "recovery_state", recoveredRunId == null ? "unchanged" : "interrupted" }
                             };
                         }, 250);
                     }
@@ -1596,8 +1910,17 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
                             { "blockers", new[] { "checkpoint_writer_active" } },
                             { "message", "A checkpoint watcher owns the durable checkpoint store; cleanup was refused." }
                         };
-                    }
-                }, 2000);
+                        }
+                    }, 2000);
+                }
+                catch (System.TimeoutException)
+                {
+                    return new Dictionary<string, object> {
+                        { "conflict", true },
+                        { "blockers", new[] { "durable_state_lock_active" } },
+                        { "message", "A durable-state writer owns the shared state lock; cleanup was refused." }
+                    };
+                }
             }, 250);
         }
         catch (System.TimeoutException)

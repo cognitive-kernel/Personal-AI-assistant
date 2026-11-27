@@ -48,14 +48,31 @@ class GitHubActionsClient:
             "X-GitHub-Api-Version": "2022-11-28",
             "Content-Type": "application/json",
         }
+        self.settings_headers: dict[str, str] | None = None
 
-    def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+    def set_settings_token(self, token: str) -> None:
+        if not token.strip():
+            raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is missing.")
+        self.settings_headers = {
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token.strip()}",
+            "X-GitHub-Api-Version": "2022-11-28",
+            "Content-Type": "application/json",
+        }
+
+    def _request_with_headers(
+        self,
+        method: str,
+        path: str,
+        payload: dict[str, Any] | None,
+        headers: dict[str, str],
+    ) -> Any:
         body = json.dumps(payload).encode("utf-8") if payload is not None else None
         request = urllib.request.Request(
             self.base_url + path,
             data=body,
             method=method,
-            headers=self.headers,
+            headers=headers,
         )
         try:
             with urllib.request.urlopen(request, timeout=25) as response:
@@ -70,6 +87,16 @@ class GitHubActionsClient:
             raise RuntimeError(
                 f"GitHub Actions API request failed: {type(exc).__name__}: {exc}"
             ) from exc
+
+    def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        return self._request_with_headers(method, path, payload, self.headers)
+
+    def request_settings(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
+        if method.upper() != "GET":
+            raise RuntimeError("The repository Variables credential is read-only; only GET requests are allowed.")
+        if self.settings_headers is None:
+            raise RuntimeError("The read-only repository Variables credential is not configured.")
+        return self._request_with_headers(method, path, payload, self.settings_headers)
 
     def jobs(self, run_id: int) -> list[dict[str, Any]]:
         jobs: list[dict[str, Any]] = []
@@ -155,28 +182,118 @@ def report(title: str, message: str, *, error: bool = False) -> None:
             summary.write(f"## {title}\n\n{message}\n")
 
 
-def main() -> int:
-    mode = os.getenv("EXECUTION_MODE", "continuous").strip().lower()
-    paused = os.getenv("PAUSED", "false").strip().lower() == "true"
-    if mode != "continuous":
-        report("Recovery not enabled", "Scheduled mode does not automatically retry failed runs.")
-        return 0
-    if paused:
-        report("Recovery paused", "The durable Pause setting is active; no run was dispatched.")
-        return 0
 
+def _settings_request(client: GitHubActionsClient, method: str, path: str) -> Any:
+    request_settings = getattr(client, "request_settings", None)
+    if callable(request_settings):
+        return request_settings(method, path)
+    # Lightweight fake clients in unit tests may expose only request().
+    return client.request(method, path)
+
+
+def _verify_repository_access(client: GitHubActionsClient, expected_repository: str) -> None:
+    try:
+        metadata = _settings_request(client, "GET", "/")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "The GitHub token could not verify the configured repository; recovery fails closed."
+        ) from exc
+    if not isinstance(metadata, dict):
+        raise RuntimeError("GitHub returned invalid repository metadata; recovery fails closed.")
+    actual_repository = str(metadata.get("full_name") or "").strip()
+    if actual_repository.casefold() != expected_repository.casefold():
+        raise RuntimeError("The GitHub token could not verify the configured repository; recovery fails closed.")
+
+
+def _verify_variables_read_access(client: GitHubActionsClient) -> None:
+    """Prove Variables: read access before a named-variable 404 can mean absence."""
+    try:
+        inventory = _settings_request(client, "GET", "/actions/variables?per_page=1")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "The GitHub token could not verify repository Variables read permission; recovery fails closed."
+        ) from exc
+    total_count = inventory.get("total_count") if isinstance(inventory, dict) else None
+    variables = inventory.get("variables") if isinstance(inventory, dict) else None
+    if (
+        isinstance(total_count, bool)
+        or not isinstance(total_count, int)
+        or total_count < 0
+        or not isinstance(variables, list)
+    ):
+        raise RuntimeError(
+            "GitHub returned an invalid repository Variables inventory; recovery fails closed."
+        )
+
+
+
+def _live_pause_enabled(client: GitHubActionsClient) -> bool:
+    try:
+        setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            _verify_variables_read_access(client)
+            return False
+        raise RuntimeError(
+            "Could not verify the live durable Pause setting; recovery fails closed."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid durable Pause setting; recovery fails closed.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"true", "false"}:
+        raise RuntimeError("GitHub returned an invalid durable Pause value; recovery fails closed.")
+    return value == "true"
+
+
+def _live_execution_mode(client: GitHubActionsClient) -> str:
+    try:
+        setting = _settings_request(client, "GET", "/actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        if "HTTP 404" in str(exc):
+            _verify_variables_read_access(client)
+            return "continuous"
+        raise RuntimeError(
+            "Could not verify the live execution mode; automatic recovery fails closed."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid execution mode; automatic recovery fails closed.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"continuous", "scheduled"}:
+        raise RuntimeError("GitHub returned an invalid execution mode; automatic recovery fails closed.")
+    return value
+
+
+def main() -> int:
     repository = os.environ.get("GH_REPO", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
+    settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
     try:
         failed_run_id = int(os.environ.get("FAILED_RUN_ID", ""))
     except ValueError:
         failed_run_id = 0
-    if not repository or "/" not in repository or not token or failed_run_id < 1:
-        report("Recovery configuration invalid", "Repository, token, or triggering run ID is invalid.", error=True)
+    if not repository or "/" not in repository or not token or not settings_token or failed_run_id < 1:
+        report(
+            "Recovery configuration invalid",
+            "Repository, workflow token, read-only Variables credential, or triggering run ID is invalid.",
+            error=True,
+        )
         return 1
 
     try:
         client = GitHubActionsClient(repository, token)
+        set_settings_token = getattr(client, "set_settings_token", None)
+        if callable(set_settings_token):
+            set_settings_token(settings_token)
+        # Verify repository access before interpreting a variable-endpoint 404
+        # as an intentionally unset variable; private-repo authorization failures
+        # can otherwise look identical to a missing repository variable.
+        _verify_repository_access(client, repository)
+        if _live_execution_mode(client) != "continuous":
+            report("Recovery not enabled", "The live execution mode is scheduled; automatic recovery is disabled.")
+            return 0
+        if _live_pause_enabled(client):
+            report("Recovery paused", "The live durable Pause setting is active; no run was dispatched.")
+            return 0
         current_jobs = client.jobs(failed_run_id)
         current_classification = classify_failed_run(current_jobs)
         if current_classification == UNKNOWN:
@@ -228,8 +345,16 @@ def main() -> int:
             f"Observed {streak} consecutive task-execution failure(s); retrying after {delay_seconds} seconds.",
         )
         time.sleep(delay_seconds)
-        # Re-check ownership after backoff; a newer run may have superseded this event.
+        # Re-check ownership and the live Pause flag after backoff; either may
+        # have changed while this recovery job was sleeping.
         client.retryable_failure_streak(failed_run_id, current_jobs)
+        _verify_repository_access(client, repository)
+        if _live_execution_mode(client) != "continuous":
+            report("Recovery not enabled", "The live execution mode changed to scheduled during backoff; no run was dispatched.")
+            return 0
+        if _live_pause_enabled(client):
+            report("Recovery paused", "The live durable Pause setting became active during backoff; no run was dispatched.")
+            return 0
         client.request(
             "POST",
             f"/actions/workflows/{WORKFLOW_FILE}/dispatches",

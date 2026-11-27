@@ -22,6 +22,11 @@ except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_state_paths import execution_state_directory
 
 try:
+    from .autonomous_engineering_state_lock import durable_state_lock
+except ImportError:  # Direct script execution from the scripts directory.
+    from autonomous_engineering_state_lock import durable_state_lock
+
+try:
     from .autonomous_engineering_process_job import WindowsProcessJob
 except ImportError:  # Direct script execution from the scripts directory.
     from autonomous_engineering_process_job import WindowsProcessJob
@@ -77,6 +82,9 @@ def _with_run_correlation(record: dict[str, Any]) -> dict[str, Any]:
     correlation_id = os.getenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", "").strip().lower()
     if re.fullmatch(r"[a-f0-9]{32}", correlation_id):
         payload.setdefault("correlation_id", correlation_id)
+    owner_token = os.getenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", "").strip().lower()
+    if re.fullmatch(r"[a-f0-9]{64}", owner_token):
+        payload.setdefault("execution_owner_token", owner_token)
     job = os.getenv("GITHUB_JOB", "").strip()
     if job:
         payload.setdefault("job", job)
@@ -125,17 +133,18 @@ def persist(record: dict[str, Any]) -> bool:
     directory = store_dir()
     try:
         directory.mkdir(parents=True, exist_ok=True)
-        payload = {**_with_run_correlation(record), "updated_at": now()}
-        temporary = directory / "current.json.tmp"
-        temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
-        temporary.replace(directory / "current.json")
-    except OSError as exc:
+        # Coordinate progress replacement with Broker cleanup/recovery and the
+        # durable task store. The lock order remains repository -> durable state
+        # -> checkpoint store; progress writers acquire only durable state.
+        with durable_state_lock(directory, timeout_seconds=5):
+            payload = {**_with_run_correlation(record), "updated_at": now()}
+            temporary = directory / "current.json.tmp"
+            temporary.write_text(json.dumps(payload, ensure_ascii=False) + "\n", encoding="utf-8")
+            temporary.replace(directory / "current.json")
+            append_event({"type": "progress_event", **payload})
+    except (OSError, RuntimeError, TimeoutError) as exc:
         print(f"Progress telemetry unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
         return False
-    try:
-        append_event({"type": "progress_event", **payload})
-    except OSError as exc:
-        print(f"Progress event log unavailable: {type(exc).__name__}: {exc}", file=sys.stderr)
     return True
 
 
@@ -244,7 +253,12 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
-_CODEX_COMPLETION_MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\s*`{1,3})?[.!]?\s*$")
+_CODEX_TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)", re.IGNORECASE)
+
+
+def _has_terminal_completion_marker(value: str) -> bool:
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    return bool(lines and _CODEX_TERMINAL_MARKER.fullmatch(lines[-1]))
 
 
 def recover_final_agent_message_report(
@@ -254,21 +268,19 @@ def recover_final_agent_message_report(
     turn_completed: bool,
     turn_failed: bool,
 ) -> bool:
-    """Recover a missing or invalid report from a successful JSONL final message."""
+    """Persist the final agent message even when its terminal marker is missing."""
     if not turn_completed or turn_failed or not isinstance(final_agent_message, str):
         return False
     message = final_agent_message.strip()
-    if len(_CODEX_COMPLETION_MARKERS.findall(message)) != 1:
+    if not message:
         return False
     report = Path(report_path)
     try:
         try:
             existing = report.read_text(encoding="utf-8-sig") if report.is_file() else ""
         except UnicodeError:
-            # A corrupt temporary report is invalid, not a reason to discard
-            # the independently validated final message from the JSONL turn.
             existing = ""
-        if len(_CODEX_COMPLETION_MARKERS.findall(existing)) == 1:
+        if _has_terminal_completion_marker(existing):
             return False
         report.write_text(message + "\n", encoding="utf-8")
     except OSError:
@@ -284,6 +296,7 @@ def run_codex(args: argparse.Namespace) -> int:
     arguments = codex_arguments(args.model, args.report)
     command = codex_command(
         executable, arguments,
+        timeout_seconds=getattr(args, "timeout_seconds", None),
         parent_job_managed=os.name == "nt",
         parent_group_managed=os.name != "nt",
     )
@@ -489,6 +502,24 @@ def run_codex(args: argparse.Namespace) -> int:
             "plan_completed": completed, "plan_total": total,
             "plan_percent": plan_percentage(completed, total),
         })
+        attempt_status = {
+            "schema_version": 1,
+            "final_agent_message_present": bool(final_agent_message and final_agent_message.strip()),
+            "missing_message_reason": (
+                "turn_failed_or_tool_error" if final_turn_failed
+                else "turn_incomplete_or_tool_call_pending" if not final_turn_completed
+                else "turn_completed_without_agent_message"
+            ) if not (final_agent_message and final_agent_message.strip()) else None,
+            "turn_completed": final_turn_completed,
+            "turn_failed": final_turn_failed,
+            "jsonl_event_count": event_count,
+            "process_exit_code": return_code,
+        }
+        status_path = Path(args.report).with_suffix(Path(args.report).suffix + ".status.json")
+        try:
+            status_path.write_text(json.dumps(attempt_status, separators=(",", ":")) + "\n", encoding="utf-8")
+        except OSError as exc:
+            print(f"Could not persist non-content Codex attempt status: {type(exc).__name__}", file=sys.stderr)
         return return_code
     finally:
         try:
@@ -633,6 +664,7 @@ def main() -> int:
     codex.add_argument("--model", required=True)
     codex.add_argument("--prompt", required=True)
     codex.add_argument("--report", required=True)
+    codex.add_argument("--timeout-seconds", type=int)
     codex.add_argument("--require-command-output")
     codex.add_argument("--expected-agent-message")
     codex.add_argument("--events-report")

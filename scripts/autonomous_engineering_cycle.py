@@ -245,7 +245,10 @@ _MAX_RUN_DIAGNOSTIC_CHARS = 12000
 def _sanitize_run_diagnostic_text(value: str) -> str:
     value = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", str(value))
     value = re.sub(r"(?i)(authorization\s*:\s*bearer\s+)\S+", r"\1[REDACTED]", value)
+    value = re.sub(r"(?i)(authorization\s*:\s*basic\s+)\S+", r"\1[REDACTED]", value)
     value = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", value)
+    value = re.sub(r"\bsk-[A-Za-z0-9_-]{16,}\b", "[REDACTED]", value)
+    value = re.sub(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b", "[REDACTED]", value)
     value = re.sub(
         r"(?i)\b(?:gh[pousr]_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})\b",
         "[REDACTED]",
@@ -462,11 +465,17 @@ def publish_command(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=False))
     return 0
 
-def run_cycle(args: argparse.Namespace) -> int:
+def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> int:
     token = os.environ.pop("GH_TOKEN", "")
+    if settings_token is None:
+        settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
+    else:
+        settings_token = settings_token.strip()
     repo = os.environ.get("GH_REPO", "")
     if not token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
         raise RuntimeError("A valid workflow token and repository are required.")
+    if not settings_token:
+        raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is required; no task will start.")
 
     state_dir = _autonomous_state_dir()
     with durable_state_lock(state_dir):
@@ -499,11 +508,16 @@ def run_cycle(args: argparse.Namespace) -> int:
                 status="completed",
             )
             snapshot(args.run_id, args.run_attempt)
-            if args.mode == "continuous":
-                api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-                    "ref": "main",
-                    "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
-                })
+            if _dispatch_next_cycle_if_enabled(token, repo, args, settings_token=settings_token):
+                print(
+                    f"Recovered owner-merged PR #{recovered['number']}; "
+                    "next cycle dispatched after live Pause/mode verification."
+                )
+            else:
+                print(
+                    f"Recovered owner-merged PR #{recovered['number']}; "
+                    "no next cycle was dispatched because live mode/Pause blocked it or could not be verified."
+                )
             return 0
         if current_pending.get("state") == "open":
             record(
@@ -547,6 +561,7 @@ def run_cycle(args: argparse.Namespace) -> int:
     attempt = 0
     codex_elapsed_seconds = 0.0
     failure_feedback = ""
+    failure_kind = None
     trusted_head = base_sha
     published_pr: dict[str, Any] | None = None
 
@@ -581,10 +596,13 @@ def run_cycle(args: argparse.Namespace) -> int:
             )
         attempt += 1
         active_prompt = Path(args.prompt)
+        report_only_retry = failure_kind in {
+            _cycle_workspace.TaskReportFailureKind.MISSING_TERMINAL_MARKER,
+            _cycle_workspace.TaskReportFailureKind.MARKER_NOT_FINAL_LINE,
+        }
         if failure_feedback:
             active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
             original = Path(args.prompt).read_text(encoding="utf-8")
-            report_only_retry = "did not contain exactly one valid completion marker" in failure_feedback
             repair_instruction = (
                 "This is a report-finalization repair. Inspect the existing plan, diff, and report; do not repeat completed implementation or rerun broad tests. "
                 "If verification evidence already exists, write the concise final report and its single required marker.\n"
@@ -593,7 +611,8 @@ def run_cycle(args: argparse.Namespace) -> int:
             )
             active_prompt.write_text(
                 original + "\n\n## Required repair after failed verification\n"
-                + "This is a fresh session for the SAME task. Do not select or start another task.\n"
+                + "This is a fresh session for the SAME task. Do not select or start another task. "
+                "do not reset or discard the existing worktree/checkpoint; inspect and preserve all prior task state.\n"
                 + failure_feedback + "\n" + repair_instruction,
                 encoding="utf-8",
             )
@@ -606,6 +625,8 @@ def run_cycle(args: argparse.Namespace) -> int:
                 encoding="utf-8",
             )
         report.unlink(missing_ok=True)
+        attempt_status_path = report.with_suffix(report.suffix + ".status.json")
+        attempt_status_path.unlink(missing_ok=True)
         record(
             args.run_id, args.run_attempt, "coding",
             f"وظیفهٔ {task}؛ تلاش {attempt}",
@@ -619,52 +640,121 @@ def run_cycle(args: argparse.Namespace) -> int:
             remaining = min(task_remaining, codex_remaining)
             if remaining <= 0:
                 raise RuntimeError("Codex or task execution budget expired before Codex could start; preserving the current task state.")
+            attempt_timeout_seconds = min(600, int(remaining)) if report_only_retry else CODEX_TASK_TIMEOUT_SECONDS
+            command = [
+                sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
+                "--run-id", args.run_id, "--run-attempt", args.run_attempt,
+                "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
+            ]
+            if report_only_retry:
+                command.extend(["--timeout-seconds", str(max(1, attempt_timeout_seconds))])
             with timed_stage(f"codex_attempt_{attempt}"):
-                result = run([
-                    sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
-                    "--run-id", args.run_id, "--run-attempt", args.run_attempt,
-                    "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
-                ], timeout_seconds=min(CODEX_TASK_TIMEOUT_SECONDS + 30, remaining))
+                result = run(
+                    command,
+                    capture=True,
+                    timeout_seconds=min(attempt_timeout_seconds + 30, remaining),
+                )
         finally:
             stop_checkpoint_watcher(watcher, base_sha, args.run_id, task)
             codex_elapsed_seconds += time.monotonic() - codex_attempt_started
+        captured_output = _sanitize_run_diagnostic_text(result.stdout or "")
+        captured_error = _sanitize_run_diagnostic_text(result.stderr or "")
+        if captured_output:
+            print(captured_output[-_MAX_RUN_DIAGNOSTIC_CHARS:], flush=True)
+        if captured_error:
+            print(captured_error[-_MAX_RUN_DIAGNOSTIC_CHARS:], file=sys.stderr, flush=True)
+        attempt_status: dict[str, Any] = {}
+        try:
+            status_payload = json.loads(attempt_status_path.read_text(encoding="utf-8"))
+            if isinstance(status_payload, dict) and status_payload.get("schema_version") == 1:
+                attempt_status = status_payload
+        except (OSError, ValueError):
+            attempt_status = {}
+        if attempt_status and attempt_status.get("final_agent_message_present") is False:
+            turn_completed = attempt_status.get("turn_completed") is True
+            turn_failed = attempt_status.get("turn_failed") is True
+            event_count = attempt_status.get("jsonl_event_count")
+            missing_reason = str(attempt_status.get("missing_message_reason") or (
+                "turn_failed_or_tool_error" if turn_failed
+                else "turn_incomplete_or_tool_call_pending" if not turn_completed
+                else "turn_completed_without_agent_message"
+            ))
+            summary = (
+                "Codex emitted no final agent message; "
+                f"reason={missing_reason}, turn_completed={turn_completed}, turn_failed={turn_failed}, "
+                f"jsonl_event_count={event_count if isinstance(event_count, int) else 'unknown'}."
+            )
+            detail = captured_error or captured_output
+            persist_run_diagnostic(
+                args.run_id, args.run_attempt, task=task, attempt=attempt,
+                stage="codex_terminal_event", category="no_last_agent_message",
+                summary=summary,
+                detail=detail,
+            )
+            record(
+                args.run_id, args.run_attempt, "retry",
+                f"وظیفهٔ {task} برای بازیابی نگه داشته شد",
+                "Codex پیام نهایی عامل را تولید نکرد؛ علت رویدادهای پایانی ثبت شد و checkpoint حفظ شد",
+                status="failed",
+            )
+            raise RuntimeError(
+                summary + " The task/checkpoint is preserved; inspect context exhaustion, incomplete tool calls, and terminal JSONL events before retrying."
+            )
         if result.returncode:
             report_detail = _read_report_diagnostic(report)
+            diagnostic_detail = _sanitize_run_diagnostic_text(
+                "\n".join(part for part in (report_detail, captured_error, captured_output) if part)
+            )
+            diagnostic_summary = f"Codex process exited with code {result.returncode}."
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
                 stage="codex", category="process_exit",
-                summary=f"Codex process exited with code {result.returncode}.",
-                detail=report_detail or _sanitize_run_diagnostic_text(
-                    (result.stderr or result.stdout or "")[-_MAX_RUN_DIAGNOSTIC_CHARS:]
-                ),
+                summary=diagnostic_summary,
+                detail=diagnostic_detail,
             )
+            failure_kind = None
             failure_feedback = (
-                f"Attempt {attempt}: Codex exited with code {result.returncode}. "
-                "Inspect the current worktree and repair the same task.\n"
+                f"Attempt {attempt}: {diagnostic_summary}\n"
+                "Sanitized diagnostic from the failed Codex attempt follows; use it to diagnose and repair the SAME task.\n"
+                + (diagnostic_detail[-6000:] if diagnostic_detail else "No report or process diagnostic was captured.") + "\n"
+                "Inspect the existing worktree and checkpoint before changing files.\n"
             )
             continue
 
         try:
             marker = task_marker(report)
-        except RuntimeError as exc:
-            print(f"Codex final report validation failed: {exc}", file=sys.stderr)
+        except _cycle_workspace.TaskReportError as exc:
+            print(f"Codex final report validation failed ({exc.kind.value}): {exc}", file=sys.stderr)
+            detail = _read_report_diagnostic(report)
             persist_run_diagnostic(
                 args.run_id, args.run_attempt, task=task, attempt=attempt,
-                stage="report_validation", category="invalid_final_report",
-                summary=str(exc), detail=_read_report_diagnostic(report),
+                stage="report_validation", category=exc.kind.value,
+                summary=str(exc),
+                detail=detail,
             )
+            if exc.kind == _cycle_workspace.TaskReportFailureKind.NO_LAST_AGENT_MESSAGE:
+                record(
+                    args.run_id, args.run_attempt, "retry",
+                    f"وظیفهٔ {task} برای بازیابی نگه داشته شد",
+                    "Codex پیام نهایی عامل را تولید نکرد؛ اجرای کورکورانه تکرار نشد و checkpoint حفظ شد",
+                    status="failed",
+                )
+                raise RuntimeError(
+                    "Codex produced no final agent message. The task/checkpoint is preserved; inspect the turn's context limit, incomplete tool call, and terminal JSONL events before retrying."
+                ) from exc
+            failure_kind = exc.kind
             failure_feedback = (
-                f"Attempt {attempt}: {exc}\n"
-                "The Codex --output-last-message report did not contain exactly one valid completion marker. "
-                "Continue the SAME task; do not reset or discard the existing worktree/checkpoint and do not choose another task.\n"
-                "First inspect .agent-progress.json, the current git diff, and the existing report. If the implementation and plan are already complete, do not repeat implementation or rerun broad tests; write a concise evidence report and add the required terminal marker. If anything is incomplete, finish only the remaining plan item.\n"
-                "Write your final report through the supplied --output-last-message file. End that report with exactly one of these plain-text markers on its own final line, without a Markdown code fence or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
-                "Use TASK_COMPLETE only after the selected task, required regression tests, and engineering documentation are complete; use TASK_BLOCKED only with a concrete blocker; use QUEUE_EMPTY only when no actionable task remains and there is no unfinished checkpoint.\n"
+                f"Attempt {attempt}: report validation failed ({exc.kind.value}): {exc}\n"
+                "This is a report-finalization repair for the SAME task, not a new implementation attempt.\n"
+                "Inspect the existing plan, diff, and report. Do not repeat completed implementation or broad tests.\n"
+                "If evidence is complete, write a concise final report whose last non-empty line is exactly one plain marker with no Markdown, quote, or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
+                "If work is incomplete, finish only the remaining plan item and verify it.\n"
+                + (detail[-4000:] if detail else "The report had no additional diagnostic text.") + "\n"
             )
             record(
                 args.run_id, args.run_attempt, "retry",
                 f"اصلاح گزارش نهایی وظیفهٔ {task}",
-                "گزارش Codex نشانگر پایان معتبر نداشت؛ همان وظیفه با دستور اصلاحی دوباره اجرا می‌شود",
+                "گزارش نهایی نشانگر پایانی معتبر نداشت؛ نشست اصلاح گزارش با مهلت کوتاه اجرا می‌شود",
             )
             continue
 
@@ -848,14 +938,13 @@ def run_cycle(args: argparse.Namespace) -> int:
         )
         snapshot(args.run_id, args.run_attempt)
         request_file.unlink(missing_ok=True)
-        if args.mode == "continuous":
-            api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
-                "ref": "main",
-                "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
-            })
+        if _dispatch_next_cycle_if_enabled(token, repo, args, settings_token=settings_token):
             print(f"Owner-merged task {task} accepted as PR #{pr_number}; next cycle dispatched from main: {pr_url}")
         else:
-            print(f"Owner-merged task {task} accepted as PR #{pr_number}; scheduled mode resumes at its next interval: {pr_url}")
+            print(
+                f"Owner-merged task {task} accepted as PR #{pr_number}; no next cycle was dispatched "
+                f"because live mode/Pause blocked it or could not be verified: {pr_url}"
+            )
         return 0
     if published_pr.get("validated") is not True or published_pr.get("merged") is not False:
         raise RuntimeError("The candidate PR did not complete exact-head validation and durable owner-review handoff.")
@@ -867,6 +956,116 @@ def run_cycle(args: argparse.Namespace) -> int:
     snapshot(args.run_id, args.run_attempt)
     print(f"Task {task} passed exact-head checks and is awaiting owner review; no automatic merge or queue advance: {pr_url}")
     return 0
+
+
+def _settings_api(settings_token: str, repo: str, path: str) -> Any:
+    if not settings_token:
+        raise RuntimeError("The read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN is required.")
+    return api(settings_token, repo, "GET", path)
+
+
+def _verify_repository_access(settings_token: str, repo: str) -> None:
+    try:
+        metadata = _settings_api(settings_token, repo, "")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Could not verify repository access; no automatic task will start."
+        ) from exc
+    if not isinstance(metadata, dict):
+        raise RuntimeError("GitHub returned invalid repository metadata; no automatic task will start.")
+    actual_repository = str(metadata.get("full_name") or "").strip()
+    if actual_repository.casefold() != repo.casefold():
+        raise RuntimeError("The GitHub token could not verify the configured repository; no automatic task will start.")
+
+
+def _verify_variables_read_access(settings_token: str, repo: str) -> None:
+    """Prove Variables: read access before interpreting a named-variable 404 as absence."""
+    try:
+        inventory = _settings_api(settings_token, repo, "actions/variables?per_page=1")
+    except RuntimeError as exc:
+        raise RuntimeError(
+            "Could not verify repository Variables read permission; no automatic task will start."
+        ) from exc
+    total_count = inventory.get("total_count") if isinstance(inventory, dict) else None
+    variables = inventory.get("variables") if isinstance(inventory, dict) else None
+    if (
+        isinstance(total_count, bool)
+        or not isinstance(total_count, int)
+        or total_count < 0
+        or not isinstance(variables, list)
+    ):
+        raise RuntimeError(
+            "GitHub returned an invalid repository Variables inventory; no automatic task will start."
+        )
+
+
+
+def _live_pause_enabled(settings_token: str, repo: str) -> bool:
+    if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid read-only Variables token and repository are required to verify the live Pause setting.")
+    _verify_repository_access(settings_token, repo)
+    try:
+        setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED")
+    except RuntimeError as exc:
+        if "failed (404)" in str(exc):
+            _verify_variables_read_access(settings_token, repo)
+            return False
+        raise RuntimeError(
+            "Could not verify the live durable Pause setting; no new task will start."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid durable Pause setting; no new task will start.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"true", "false"}:
+        raise RuntimeError("GitHub returned an invalid durable Pause value; no new task will start.")
+    return value == "true"
+
+
+def _live_execution_mode(settings_token: str, repo: str) -> str:
+    if not settings_token or not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repo):
+        raise RuntimeError("A valid read-only Variables token and repository are required to verify the live execution mode.")
+    _verify_repository_access(settings_token, repo)
+    try:
+        setting = _settings_api(settings_token, repo, "actions/variables/AUTONOMOUS_ENGINEERING_MODE")
+    except RuntimeError as exc:
+        if "failed (404)" in str(exc):
+            _verify_variables_read_access(settings_token, repo)
+            return "continuous"
+        raise RuntimeError(
+            "Could not verify the live execution mode; no automatic task will start."
+        ) from exc
+    if not isinstance(setting, dict):
+        raise RuntimeError("GitHub returned an invalid execution mode; no automatic task will start.")
+    value = str(setting.get("value") or "").strip().lower()
+    if value not in {"continuous", "scheduled"}:
+        raise RuntimeError("GitHub returned an invalid execution mode; no automatic task will start.")
+    return value
+
+
+def _dispatch_next_cycle_if_enabled(
+    token: str,
+    repo: str,
+    args: Any,
+    *,
+    settings_token: str | None = None,
+) -> bool:
+    # The live repository setting, not the workflow-start snapshot, is the
+    # authority for whether a completed owner-merged task may chain.
+    settings_token = (settings_token or os.environ.get("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")).strip()
+    try:
+        if _live_execution_mode(settings_token, repo) != "continuous":
+            return False
+        if _live_pause_enabled(settings_token, repo):
+            return False
+    except RuntimeError as exc:
+        print(f"Live mode/Pause could not be verified; suppressing next-cycle dispatch: {exc}")
+        return False
+    api(token, repo, "POST", "actions/workflows/autonomous-codex-engineering.yml/dispatches", {
+        "ref": "main",
+        "inputs": {"manual_task": "", "correlation_id": getattr(args, "correlation_id", "")},
+    })
+    return True
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -894,7 +1093,31 @@ def main() -> int:
     with repository_execution_lock(args.run_id, args.run_attempt):
         with timed_stage("cycle_total"):
             try:
-                return run_cycle(args)
+                token = os.environ.get("GH_TOKEN", "").strip()
+                settings_token = os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "").strip()
+                repo = os.environ.get("GH_REPO", "").strip()
+                if _live_pause_enabled(settings_token, repo):
+                    print("Safe pause became active after repository execution admission; no task was started.")
+                    return 0
+                live_mode = _live_execution_mode(settings_token, repo)
+                event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip().lower()
+                try:
+                    recovery_attempt = int(os.environ.get("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0"))
+                except ValueError as exc:
+                    raise RuntimeError("Recovery attempt metadata is invalid; no task will start.") from exc
+                if recovery_attempt < 0:
+                    raise RuntimeError("Recovery attempt metadata is invalid; no task will start.")
+                manual_task = os.environ.get("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "").strip()
+                resume_once = os.environ.get("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false").strip().lower() == "true"
+                unmarked_empty_dispatch = (
+                    event_name == "workflow_dispatch" and not manual_task and not resume_once
+                )
+                if live_mode == "scheduled" and (
+                    event_name in {"push", "schedule"} or recovery_attempt > 0 or unmarked_empty_dispatch
+                ):
+                    print("Live execution mode is scheduled; this automatic/recovery trigger will not start a task.")
+                    return 0
+                return run_cycle(args, settings_token=settings_token)
             except Exception as exc:
                 persist_run_diagnostic(
                     args.run_id, args.run_attempt, task=1, attempt=None,

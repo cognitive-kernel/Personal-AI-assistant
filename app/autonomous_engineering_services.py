@@ -12,6 +12,7 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from .autonomous_engineering_contracts import ACTIVE_RUN_STATES
 from .ollama_context import OllamaModelMetadataError, resolve_model_architecture
 
 
@@ -278,6 +279,21 @@ def runner_status(process_iter) -> dict[str, Any]:
     return {"running": found, "process_detected": found}
 
 
+def _repository_variable_values(raw: str) -> dict[str, str]:
+    rows = json.loads(raw)
+    if not isinstance(rows, list):
+        raise ValueError("Expected a repository-variable list.")
+    values: dict[str, str] = {}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("Invalid repository-variable row.")
+        name, value = row.get("name"), row.get("value")
+        if not isinstance(name, str) or not name or name in values or not isinstance(value, str):
+            raise ValueError("Invalid repository-variable name or value.")
+        values[name] = value
+    return values
+
+
 def github_snapshot(*, run_command, which, repository, workflow, default_interval_hours, allowed_interval_hours, model_pattern) -> dict[str, Any]:
     gh = which("gh")
     if not gh:
@@ -291,6 +307,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
     authenticated = bool(auth and auth.returncode == 0)
     recent_runs: list[dict[str, Any]] = []
     runs_available = False
+    settings_available = False
     settings = {"model": "", "interval_hours": default_interval_hours, "execution_mode": "continuous", "paused": False}
     if authenticated:
         # The run inventory and repository settings are independent reads.
@@ -331,32 +348,27 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
                     ]
                     recent_runs = mapped_runs[:5]
                     visible_ids = {item["id"] for item in recent_runs}
-                    active_states = {"queued", "in_progress", "waiting", "requested", "pending"}
                     recent_runs.extend(
                         item for item in mapped_runs[5:]
-                        if item.get("status") in active_states and item.get("id") not in visible_ids
+                        if item.get("status") in ACTIVE_RUN_STATES and item.get("id") not in visible_ids
                     )
                     runs_available = True
             except ValueError:
                 recent_runs = []
         if variables and variables.returncode == 0:
             try:
-                values = json.loads(variables.stdout)
-                if isinstance(values, list):
-                    configured = {
-                        str(item.get("name")): str(item.get("value", ""))
-                        for item in values if isinstance(item, dict)
-                    }
-                    candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
-                    candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
-                    candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
-                    settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
-                    if model_pattern.fullmatch(candidate_model):
-                        settings["model"] = candidate_model
-                    if candidate_interval.isdigit() and int(candidate_interval) in allowed_interval_hours:
-                        settings["interval_hours"] = int(candidate_interval)
-                    if candidate_mode in {"scheduled", "continuous"}:
-                        settings["execution_mode"] = candidate_mode
+                configured = _repository_variable_values(variables.stdout)
+                candidate_model = configured.get("AUTONOMOUS_ENGINEERING_MODEL", "")
+                candidate_interval = configured.get("AUTONOMOUS_ENGINEERING_INTERVAL_HOURS", "")
+                candidate_mode = configured.get("AUTONOMOUS_ENGINEERING_MODE", "continuous")
+                settings["paused"] = configured.get("AUTONOMOUS_ENGINEERING_PAUSED", "false").lower() == "true"
+                if model_pattern.fullmatch(candidate_model):
+                    settings["model"] = candidate_model
+                if candidate_interval.isdigit() and int(candidate_interval) in allowed_interval_hours:
+                    settings["interval_hours"] = int(candidate_interval)
+                if candidate_mode in {"scheduled", "continuous"}:
+                    settings["execution_mode"] = candidate_mode
+                settings_available = True
             except (ValueError, TypeError):
                 pass
     return {
@@ -365,6 +377,7 @@ def github_snapshot(*, run_command, which, repository, workflow, default_interva
         "recent_runs": recent_runs,
         "runs_available": runs_available,
         "settings": settings,
+        "settings_available": settings_available,
     }
 
 
@@ -380,22 +393,12 @@ def save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...], *, 
             detail="Could not snapshot existing GitHub repository settings; no settings were changed.",
         )
     try:
-        current_values = json.loads(listing.stdout)
+        previous = _repository_variable_values(listing.stdout)
     except (TypeError, ValueError) as exc:
         raise HTTPException(
             status_code=502,
             detail="GitHub returned invalid repository-variable state; no settings were changed.",
         ) from exc
-    if not isinstance(current_values, list):
-        raise HTTPException(
-            status_code=502,
-            detail="GitHub returned an invalid repository-variable list; no settings were changed.",
-        )
-    previous = {
-        str(item.get("name")): str(item.get("value", ""))
-        for item in current_values
-        if isinstance(item, dict) and isinstance(item.get("name"), str)
-    }
     applied: list[str] = []
     for name, value in updates:
         result = run_command(
@@ -426,14 +429,12 @@ def save_repository_variables(gh: str, updates: tuple[tuple[str, str], ...], *, 
                     timeout=12,
                 )
                 try:
-                    observed = json.loads(verification.stdout) if verification and verification.returncode == 0 else None
+                    observed_values = (
+                        _repository_variable_values(verification.stdout)
+                        if verification and verification.returncode == 0 else None
+                    )
                 except (TypeError, ValueError):
-                    observed = None
-                observed_values = {
-                    str(item.get("name")): str(item.get("value", ""))
-                    for item in observed
-                    if isinstance(item, dict) and isinstance(item.get("name"), str)
-                } if isinstance(observed, list) else None
+                    observed_values = None
                 restored = (
                     observed_values is not None
                     and (

@@ -43,6 +43,7 @@
 <a class="button-link" href="https://github.com/cognitive-kernel/Personal-AI-assistant/actions/workflows/autonomous-codex-engineering.yml" target="_blank" rel="noopener noreferrer">مشاهده اجراها در GitHub Actions</a>
 </div>
 <p id="agent-message" role="status" aria-live="polite">در حال بررسی اجزای محلی…</p>
+<p id="agent-status-message" class="hint" role="status" aria-live="polite">وضعیت سرویس هنوز دریافت نشده است.</p>
 </header>
 
 <section aria-labelledby="agent-status-title">
@@ -56,7 +57,7 @@
 <article class="status-card"><span class="status-label">Codex CLI در حساب برنامه</span><strong id="codex-state">—</strong><p id="codex-detail">نصب و نسخه بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub Runner</span><strong id="runner-state">—</strong><p id="runner-detail">فرایند Runner.Listener بررسی نشده است.</p></article>
 <article class="status-card"><span class="status-label">GitHub CLI</span><strong id="github-state">—</strong><p id="github-detail">احراز هویت محلی بررسی نشده است.</p></article>
-<article class="status-card"><span class="status-label">فضای ثبت پیشرفت</span><strong id="storage-state">—</strong><p id="storage-detail">دسترسی پوشهٔ مشترک بررسی نشده است.</p></article>
+<article class="status-card"><span class="status-label">فضای ثبت پیشرفت / سرویس Broker</span><strong id="storage-state">—</strong><p id="storage-detail">دسترسی پوشهٔ مشترک بررسی نشده است.</p><button id="setup-state-broker" class="secondary" type="button" hidden>راه‌اندازی یا ترمیم فضای ثبت پیشرفت</button><button id="stage-native-migration" class="secondary" type="button" hidden>آماده‌سازی نسخه مهاجرت (بدون تغییر مسیر فعال)</button></article>
 <article class="status-card"><span class="status-label">وظیفهٔ ذخیره‌شده / Checkpoint</span><strong id="checkpoint-state">—</strong><p id="checkpoint-detail">وضعیت بازیابی وظیفه هنوز بررسی نشده است.</p></article>
 </div>
 <form id="agent-settings-form" class="settings-form">
@@ -183,7 +184,8 @@
 <ol class="setup-list">
 <li><strong>سرویس Ollama را نصب و اجرا کنید.</strong><p>دانلود و نصب خود Ollama هنوز به راه‌اندازی سیستم‌عامل میزبان نیاز دارد. پس از فعال‌شدن سرویس، مدل انتخابی را از بخش تنظیمات همین صفحه دریافت کنید؛ وضعیت و درصد دانلود در UI نمایش داده می‌شود.</p></li>
 <li><strong>GitHub CLI را نصب و احراز هویت کنید.</strong><p>Node.js 22 و Python 3.11 در ابتدای هر Job به‌صورت خودکار در محیط همان Workflow دریافت می‌شوند؛ نصب system-wide آن‌ها لازم نیست. GitHub CLI باید برای حساب برنامه احراز هویت شده باشد:</p><code>gh auth login --web</code></li>
-<li><strong>Runner و فضای وضعیت مشترک را بررسی و راه‌اندازی کنید.</strong><p>در نصب موجود، اسکریپت سرویس Runner، حساب اجرایی و مسیر نصب واقعی را از ویندوز کشف می‌کند؛ نام کاربر یا مسیر ثابت لازم نیست. اگر Runner وجود نداشته باشد، نام حساب سرویس غیرمدیر به‌صورت یکتا ساخته می‌شود. سرویس Broker با هویت محدود سیستم نصب می‌شود و فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند؛ حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند. اجرای مجدد ثبت Runner را حذف یا تکرار نمی‌کند. فرمان زیر را در PowerShell مدیر اجرا کنید؛ در صورت وجود چند Runner، فقط در آن حالت مسیر موردنظر را با پارامتر اختیاری مشخص کنید.</p><code>powershell -ExecutionPolicy Bypass -File .\\scripts\\provision_autonomous_runner.ps1 -Repository "cognitive-kernel/Personal-AI-assistant"</code></li>
+<li><strong>فضای وضعیت پایدار (Broker) را در صورت نیاز فعال کنید.</strong><p>شروع برنامه فقط سلامت Broker را بدون تغییر سیستم بررسی می‌کند و هیچ UAC یا نصب خودکاری در زمان شروع انجام نمی‌شود. اگر کارت «فضای ثبت پیشرفت» آماده نبود، دکمهٔ «راه‌اندازی یا ترمیم فضای ثبت پیشرفت» را بزنید و فقط در صورت درخواست، مجوز مدیر را تأیید کنید. نصب Broker به Runner وابسته نیست؛ Runner فقط قابلیت اجرای Workflow را فراهم می‌کند.</p></li>
+<li><strong>GitHub Runner را جداگانه، فقط برای اجرای Workflow مهندسی، راه‌اندازی کنید.</strong><p>این مرحله به مجوز مدیر ویندوز و ورود تعاملی رمز حساب سرویس نیاز دارد؛ بنابراین از درخواست HTTP صفحه اجرا نمی‌شود. طبق بخش «One-time Windows setup» در مستندات عملیات مخزن، آن را یک‌بار از PowerShell مدیر راه‌اندازی کنید. اسکریپت، حساب و مسیر نصب موجود را کشف می‌کند و ثبت Runner را تکرار نمی‌کند. تا زمان راه‌اندازی Runner، داشبورد محلی و Broker قابل استفاده‌اند اما اجرای Workflow غیرفعال می‌ماند.</p></li>
 <li><strong>آمادگی را از هر دو زمینه بررسی کنید.</strong><p>بررسی برنامه را از هر حساب Windows که برنامه را اجرا می‌کند و بررسی Runner را از حساب سرویس Runner اجرا کنید:</p><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_agent.ps1</code><code>powershell -ExecutionPolicy Bypass -File .\scripts\check_autonomous_runner.ps1</code></li>
 </ol>
 </section>
@@ -205,6 +207,7 @@
 <p class="eyebrow">SECURITY BOUNDARIES</p>
 <h2 id="safety-title">مرزهای امنیتی و محدودیت‌ها</h2>
 <ul>
+<li>فقط Runner و Broker به فایل‌های محافظت‌شده دسترسی مستقیم دارند؛ حساب‌های برنامه از کانال محلی محدود استفاده می‌کنند.</li>
 <li>عامل فقط از شاخهٔ اصلی اجرا می‌شود؛ کد Pull Requestهای ناشناس روی Runner شخصی اجرا نمی‌شود.</li>
 <li>Codex توکن GitHub را دریافت نمی‌کند. کنترلر مورداعتماد با مجوز محدود Workflow، branch و PR می‌سازد و پس از موفقیت آزمون‌ها و تطبیق SHA دقیق، PR را برای بازبینی مالک آماده می‌کند؛ کنترلر هرگز ادغام خودکار انجام نمی‌دهد.</li>
 <li>قوانین حفاظت شاخه و بررسی‌های اجباری دور زده نمی‌شوند؛ ادغام فقط با اقدام دستی مالک و مطابق سیاست‌های مخزن انجام می‌شود.</li>

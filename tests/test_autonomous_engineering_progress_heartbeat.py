@@ -72,6 +72,48 @@ def test_codex_heartbeat_console_line_reports_received_events():
 
 
 
+
+def test_final_agent_message_report_preserves_markerless_text_for_typed_validation(tmp_path):
+    report = tmp_path / "report.md"
+    assert progress.recover_final_agent_message_report(
+        report,
+        "The implementation is complete but the marker was omitted.",
+        turn_completed=True,
+        turn_failed=False,
+    )
+    assert report.read_text(encoding="utf-8") == "The implementation is complete but the marker was omitted.\n"
+    assert progress._has_terminal_completion_marker(report.read_text(encoding="utf-8")) is False
+
+
+def test_final_agent_message_recovery_accepts_only_a_plain_terminal_marker(tmp_path):
+    report = tmp_path / "report.md"
+    assert progress.recover_final_agent_message_report(
+        report,
+        "Evidence\n- quoted marker: TASK_COMPLETE\nTASK_COMPLETE",
+        turn_completed=True,
+        turn_failed=False,
+    )
+    assert progress._has_terminal_completion_marker(report.read_text(encoding="utf-8")) is True
+    assert not progress.recover_final_agent_message_report(
+        report,
+        "A later answer without a marker",
+        turn_completed=True,
+        turn_failed=False,
+    )
+
+
+def test_final_agent_message_recovery_does_not_fabricate_missing_turn_messages(tmp_path):
+    report = tmp_path / "report.md"
+    assert not progress.recover_final_agent_message_report(
+        report,
+        None,
+        turn_completed=True,
+        turn_failed=False,
+    )
+    assert not report.exists()
+
+
+
 def test_progress_records_include_workflow_correlation_and_job(monkeypatch):
     correlation_id = "b" * 32
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CORRELATION_ID", correlation_id)

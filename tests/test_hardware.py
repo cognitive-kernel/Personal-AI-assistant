@@ -287,6 +287,7 @@ def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatc
             {"Path": r"\\GPU Adapter Memory(*)\\Shared Limit", "InstanceName": "luid_0x00000000_0x0000_phys_0", "CookedValue": 4294967296},
         ],
     }
+    monkeypatch.setattr(hardware, "_windows_powershell_candidates", lambda: ["powershell.exe"])
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     result = hardware._detect_windows_gpus()
     assert len(result) == 1
@@ -464,6 +465,7 @@ def test_windows_gpu_shared_memory_is_capped_by_host_ram_available(monkeypatch):
         ],
     }
     monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(hardware, "_windows_powershell_candidates", lambda: ["powershell.exe"])
     monkeypatch.setattr(hardware, "_run_gpu_command", lambda *args, **kwargs: json.dumps(payload))
     monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
         virtual_memory=lambda: SimpleNamespace(available=1024 * 1024**2),
@@ -484,3 +486,31 @@ def test_runtime_limits_fail_closed_when_no_context_is_configured_or_model_deriv
             {"ollama_num_thread": 4},
             {"logical_cpu_count": 8, "total_ram_gb": 32, "available_ram_gb": 25},
         )
+
+
+def test_windows_gpu_telemetry_falls_back_to_another_available_powershell(monkeypatch):
+    import json
+
+    payload = {
+        "Adapters": [{"Name": "Intel UHD", "PNPDeviceID": "PCI\\\\VEN_8086", "AdapterRAM": 1073741824}],
+        "Counters": [],
+    }
+    calls = []
+    monkeypatch.setattr(hardware.os, "name", "nt")
+    monkeypatch.setattr(
+        hardware,
+        "_windows_powershell_candidates",
+        lambda: ["broken-pwsh.exe", "powershell.exe"],
+    )
+
+    def run(command, **kwargs):
+        calls.append(command[0])
+        return None if len(calls) == 1 else json.dumps(payload)
+
+    monkeypatch.setattr(hardware, "_run_gpu_command", run)
+
+    devices = hardware._detect_windows_gpus()
+
+    assert calls == ["broken-pwsh.exe", "powershell.exe"]
+    assert len(devices) == 1
+    assert devices[0]["vendor"] == "Intel"

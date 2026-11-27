@@ -34,6 +34,11 @@ on:
         required: false
         type: number
         default: 0
+      resume_once:
+        description: "Allow one explicit empty-task resume while scheduled mode is active"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -57,17 +62,22 @@ jobs:
           GH_REPO: ${{ github.repository }}
           CURRENT_RUN_ID: ${{ github.run_id }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          RESUME_ONCE: ${{ inputs.resume_once || false }}
         shell: bash
         run: |
           set -euo pipefail
           if [[ "$PAUSED" == "true" ]]; then
-            if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
-              echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
-              exit 1
+            if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then
+              echo "Explicit one-shot Resume bypasses only the stale workflow-context Pause snapshot; the live gate after concurrency admission remains authoritative."
+            else
+              if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
+                echo "A manual task was not accepted because autonomous engineering is paused; no durable state was changed." >&2
+                exit 1
+              fi
+              echo "run_now=false" >> "$GITHUB_OUTPUT"
+              echo "Autonomous engineering is safely paused; no new task will start."
+              exit 0
             fi
-            echo "run_now=false" >> "$GITHUB_OUTPUT"
-            echo "Autonomous engineering is safely paused; no new task will start."
-            exit 0
           fi
           active_state=$(python - <<'PY'
           import json, os, urllib.request
@@ -151,6 +161,9 @@ jobs:
       AUTONOMOUS_ENGINEERING_MODE: ${{ vars.AUTONOMOUS_ENGINEERING_MODE || 'continuous' }}
       AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR: 'true'
       AUTONOMOUS_ENGINEERING_CORRELATION_ID: ${{ inputs.correlation_id || '' }}
+      AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
+      AUTONOMOUS_ENGINEERING_RESUME_ONCE: ${{ inputs.resume_once || false }}
+      AUTONOMOUS_ENGINEERING_MANUAL_TASK: ${{ inputs.manual_task || '' }}
     steps:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
@@ -242,16 +255,6 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Persist manual task under the controller's runner and concurrency ownership
-        if: github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          MANUAL_TASK: ${{ inputs.manual_task || '' }}
-          REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && 'true' || 'false' }}
-        shell: powershell
-        run: |
-          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
       - name: Resolve managed Python runtime under the Runner service identity
         shell: powershell
@@ -294,7 +297,32 @@ jobs:
           }
           Write-Host "Python is accessible from the project-local managed runtime. Ollama is validated independently through its loopback API."
 
+      - name: Recheck live Pause and execution mode after concurrency admission
+        id: pause
+        env:
+          VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
+          RESUME_ONCE: ${{ inputs.resume_once || false }}
+        shell: python {0}
+        run: |
+          import runpy
+          runpy.run_path("scripts/autonomous_engineering_admission.py", run_name="__main__")
+
+      - name: Persist manual task under the controller's runner and concurrency ownership
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true' && github.event_name == 'workflow_dispatch' && inputs.manual_task != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          MANUAL_TASK: ${{ inputs.manual_task || '' }}
+          REPLACE_PENDING_TASK: ${{ inputs.replace_pending_task && 'true' || 'false' }}
+        shell: powershell
+        run: |
+          & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
+
       - name: Prepare Runner virtual environment and install runtime dependencies
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         env:
           PIP_TIMEOUT: "120"
           PIP_RETRIES: "10"
@@ -318,6 +346,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "The Runner managed virtual environment is not active." }
 
       - name: Recover only the latest owned checkpoint through the run-scoped controller
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -325,11 +354,13 @@ jobs:
           Write-Host "No workflow step may stop a watcher or edit checkpoint state through shared global filenames."
 
       - name: Record immutable base commit
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         id: base
         shell: powershell
         run: "echo \"sha=$(git rev-parse HEAD)\" >> $env:GITHUB_OUTPUT"
 
       - name: Initialize live progress before prerequisite checks
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           $progressArgs = @(
@@ -343,20 +374,21 @@ jobs:
           & python scripts/autonomous_engineering_progress.py @progressArgs
           if ($LASTEXITCODE -ne 0) { throw "Could not initialize engineering progress" }
       - name: Snapshot accepted scorecard from trusted main
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           python scripts/autonomous_engineering_progress.py snapshot --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT"
           if ($LASTEXITCODE -ne 0) { throw "Could not snapshot the accepted main-branch scorecard" }
 
       - name: Capture live GitHub state with the read-only workflow token
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           EVENT_NAME: ${{ github.event_name }}
-        shell: powershell
+        shell: python {0}
         run: |
-          @'
           import json, os, sys, urllib.error, urllib.request
           from pathlib import Path
 
@@ -537,55 +569,17 @@ jobs:
               json.dumps(request, ensure_ascii=False, indent=2) + "\n",
               encoding="utf-8",
           )
-          '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\capture_state.py"
-          python "$env:RUNNER_TEMP\capture_state.py"
+
 
       - name: Provision verified GitHub CLI for this Runner job
-        shell: powershell
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
+        shell: python {0}
         run: |
-          $ErrorActionPreference = "Stop"
-          $requiredGhVersion = "2.104.0"
-          $existingGh = Get-Command gh -ErrorAction SilentlyContinue
-          $existingVersion = ""
-          if ($existingGh) {
-            $existingVersion = (& $existingGh.Source --version 2>$null | Select-Object -First 1).Trim()
-          }
-          if ($existingVersion -notmatch [regex]::Escape($requiredGhVersion)) {
-            $archiveName = "gh_$($requiredGhVersion)_windows_amd64.zip"
-            $releaseBase = "https://github.com/cli/cli/releases/download/v$requiredGhVersion"
-            $downloadRoot = Join-Path $env:RUNNER_TEMP "autonomous-gh-$($env:GITHUB_RUN_ID)-$($env:GITHUB_RUN_ATTEMPT)"
-            $archivePath = Join-Path $downloadRoot $archiveName
-            $checksumsPath = Join-Path $downloadRoot "checksums.txt"
-            $extractRoot = Join-Path $downloadRoot "extracted"
-            New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-            Invoke-WebRequest -Uri "$releaseBase/$archiveName" -OutFile $archivePath -TimeoutSec 180
-            Invoke-WebRequest -Uri "$releaseBase/gh_$($requiredGhVersion)_checksums.txt" -OutFile $checksumsPath -TimeoutSec 60
-            $checksumLine = (Get-Content -LiteralPath $checksumsPath) | Where-Object { $_ -match ("\s" + [regex]::Escape($archiveName) + "$") } | Select-Object -First 1
-            if (-not $checksumLine -or $checksumLine -notmatch "^([0-9a-fA-F]{64})\s+") {
-              throw "The official GitHub CLI checksum file did not contain the expected Windows archive."
-            }
-            $expectedHash = $Matches[1].ToLowerInvariant()
-            $actualHash = (Get-FileHash -LiteralPath $archivePath -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($actualHash -ne $expectedHash) {
-              throw "The downloaded GitHub CLI archive failed SHA-256 verification."
-            }
-            Expand-Archive -LiteralPath $archivePath -DestinationPath $extractRoot -Force
-            $ghExecutable = Get-ChildItem -LiteralPath $extractRoot -Filter "gh.exe" -File -Recurse | Select-Object -First 1
-            if (-not $ghExecutable) { throw "The verified GitHub CLI archive did not contain gh.exe." }
-            $ghBin = Split-Path -Parent $ghExecutable.FullName
-          } else {
-            $ghBin = Split-Path -Parent $existingGh.Source
-          }
-          $ghBin | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-          $env:PATH = "$ghBin;$env:PATH"
-          $gh = Get-Command gh -ErrorAction Stop
-          $verifiedGhVersion = (& $gh.Source --version 2>&1 | Select-Object -First 1).Trim()
-          if ($LASTEXITCODE -ne 0 -or $verifiedGhVersion -notmatch [regex]::Escape($requiredGhVersion)) {
-            throw "Could not verify the pinned GitHub CLI version $requiredGhVersion."
-          }
-          Write-Host "GitHub CLI is ready in the current Runner job: $verifiedGhVersion"
+          import runpy
+          runpy.run_path("scripts/autonomous_engineering_prerequisites.py", run_name="__main__")
 
       - name: Ensure Codex CLI is installed for the Runner service account
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -621,6 +615,7 @@ jobs:
           }
 
       - name: Verify local Ollama and Codex prerequisites
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
@@ -644,6 +639,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Codex CLI is not executable in the Runner service account" }
 
       - name: Verify the selected model's allocated Ollama context
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         id: context_preflight
         timeout-minutes: 12
         shell: powershell
@@ -651,6 +647,7 @@ jobs:
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL"
 
       - name: Verify Ollama and a real workspace-confined Codex tool call
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         timeout-minutes: 15
         env:
           AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX: ${{ vars.AUTONOMOUS_ENGINEERING_ALLOW_UNELEVATED_SANDBOX || 'false' }}
@@ -729,19 +726,29 @@ jobs:
           Write-Host "Verified Windows Codex sandbox backend: $selectedBackend"
 
       - name: Install project dependencies for local test execution
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         env:
           PIP_TIMEOUT: "120"
           PIP_RETRIES: "10"
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $venvPython = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          if ([string]::IsNullOrWhiteSpace($env:PAA_VENV_DIR)) {
+            throw "PAA_VENV_DIR was not carried into the development dependency installation step."
+          }
+          $venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The selected managed Python virtual environment is missing before development dependency installation."
+          }
           & $venvPython --version
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime cannot execute." }
           & $venvPython -c "import sys; assert sys.version_info >= (3, 11)"
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime is below Python 3.11." }
           & $venvPython -m pip install --disable-pip-version-check --retries 10 --timeout 120 -e ".[dev]"
-          if ($LASTEXITCODE -ne 0) { throw "Could not install development dependencies into the prepared Runner environment." }
+          if ($LASTEXITCODE -ne 0) { throw "Could not install development dependencies into the selected managed Runner environment." }
 
       - name: Prepare bounded engineering instructions
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: powershell
         run: |
           @'
@@ -817,33 +824,53 @@ jobs:
           or complete for project progress until its PR is merged and post-merge evidence is recorded.
           '@ | Set-Content -Encoding utf8 "$env:RUNNER_TEMP\codex-prompt.md"
 
-      - name: Recheck durable pause state immediately before task start
-        id: pause
-        env:
-          PAUSED: ${{ vars.AUTONOMOUS_ENGINEERING_PAUSED || 'false' }}
-        shell: powershell
-        run: |
-          $paused = ([string]$env:PAUSED).ToLowerInvariant() -eq "true"
-          "paused=$($paused.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
-          if ($paused) { Write-Host "Safe pause is active; no new engineering task will start." }
-
       - name: Execute one isolated task, validate, and publish for owner review
         id: execute
-        if: steps.pause.outputs.paused != 'true'
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
+          AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
           GH_REPO: ${{ github.repository }}
           AUTONOMOUS_ENGINEERING_STEP_ID: autonomous-engineering-cycle
         shell: powershell
         run: |
           $ErrorActionPreference = "Stop"
-          $env:PATH = "$env:GITHUB_WORKSPACE\.venv\Scripts;$env:PATH"
-          python scripts/autonomous_engineering_cycle.py run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
+          if ([string]::IsNullOrWhiteSpace($env:PAA_VENV_DIR)) {
+            throw "PAA_VENV_DIR was not carried into the autonomous engineering execution step."
+          }
+          $venvPython = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $venvPython -PathType Leaf)) {
+            throw "The selected managed Python virtual environment is missing before autonomous engineering execution."
+          }
+          & $venvPython --version
+          if ($LASTEXITCODE -ne 0) { throw "The selected managed Python runtime cannot execute the autonomous engineering cycle." }
+          & $venvPython (Join-Path $env:GITHUB_WORKSPACE "scripts\autonomous_engineering_cycle.py") run --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --correlation-id "$env:AUTONOMOUS_ENGINEERING_CORRELATION_ID" --model "$env:AUTONOMOUS_ENGINEERING_MODEL" --prompt "$env:RUNNER_TEMP\codex-prompt.md" --mode "$env:AUTONOMOUS_ENGINEERING_MODE"
           if ($LASTEXITCODE -ne 0) { throw "Autonomous task, tests, exact-SHA validation, or PR publication failed" }
 
       - name: Verify persistent Ollama context after autonomous Codex task
-        if: always() && steps.pause.outputs.paused != 'true' && steps.context_preflight.outcome == 'success'
-        timeout-minutes: 2
+        if: steps.context_preflight.outcome == 'success' && steps.execute.outcome == 'success'
+        timeout-minutes: 5
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
           & "$env:GITHUB_WORKSPACE\scripts\verify_ollama_context.ps1" -Model "$env:AUTONOMOUS_ENGINEERING_MODEL" -VerifyOnly
+
+      - name: Unload and remove this run's temporary Ollama context model
+        if: always() && steps.context_preflight.outcome != 'skipped'
+        timeout-minutes: 3
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+          $model = [string]$env:AUTONOMOUS_ENGINEERING_TEMP_MODEL
+          if ([string]::IsNullOrWhiteSpace($model)) {
+            Write-Host "No run-scoped temporary Ollama context model was created; cleanup is a no-op."
+            exit 0
+          }
+          $python = Join-Path $env:PAA_VENV_DIR "Scripts\python.exe"
+          if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            throw "The managed Python runtime is unavailable for temporary Ollama model cleanup."
+          }
+          & $python "$env:GITHUB_WORKSPACE\scripts\ollama_temporary_context.py" --model "$model" --run-id "$env:GITHUB_RUN_ID" --run-attempt "$env:GITHUB_RUN_ATTEMPT" --context "$env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH"
+          if ($LASTEXITCODE -ne 0) {
+            throw "The run-owned temporary Ollama context model could not be safely unloaded and removed."
+          }

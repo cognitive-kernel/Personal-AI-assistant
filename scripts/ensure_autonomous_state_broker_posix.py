@@ -8,21 +8,33 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import io
 import json
 import os
 import plistlib
 import pwd
+import grp
 import shutil
 import stat
 import socket
 import subprocess
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 
 
 SERVICE_NAME = "personal-ai-assistant-state-broker"
 LAUNCHD_LABEL = "com.personal-ai-assistant.state-broker"
+_BROKER_MODULES = (
+    "autonomous_engineering_state.py",
+    "autonomous_engineering_native_config.py",
+    "autonomous_engineering_state_broker_config.py",
+    "autonomous_engineering_state_store.py",
+    "autonomous_engineering_state_broker_contract.py",
+    "autonomous_engineering_task_lifecycle.py",
+    "autonomous_engineering_task_owner.py",
+)
 
 
 def _run(command: list[str], *, timeout: int = 30) -> subprocess.CompletedProcess[str]:
@@ -191,7 +203,7 @@ def _select_service_python(service_uid: int, suggested: str) -> Path:
     )
 
 
-def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> None:
+def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0, owner_gid: int = -1) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.parent.is_symlink():
         raise RuntimeError(f"Refusing a symlinked machine configuration directory: {path.parent}")
@@ -203,12 +215,28 @@ def _write_atomic(path: Path, payload: bytes, mode: int, owner_uid: int = 0) -> 
             stream.flush()
             os.fsync(stream.fileno())
         os.chmod(temporary, mode)
-        os.chown(temporary, owner_uid, -1)
+        os.chown(temporary, owner_uid, owner_gid)
         os.replace(temporary, path)
         os.chmod(path, mode)
-        os.chown(path, owner_uid, -1)
+        os.chown(path, owner_uid, owner_gid)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _build_broker_archive(source: Path) -> bytes:
+    if source.is_symlink() or not source.is_file():
+        raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
+    app_source = source.parents[1] / "app"
+    payload = io.BytesIO()
+    with zipfile.ZipFile(payload, "w") as archive:
+        archive.writestr(zipfile.ZipInfo("__main__.py"), source.read_bytes())
+        archive.writestr(zipfile.ZipInfo("app/__init__.py"), b"")
+        for module in _BROKER_MODULES:
+            module_source = app_source / module
+            if module_source.is_symlink() or not module_source.is_file():
+                raise RuntimeError("Broker state implementation is missing or unsafe.")
+            archive.writestr(zipfile.ZipInfo(f"app/{module}"), module_source.read_bytes())
+    return payload.getvalue()
 
 
 def _acquire_lock(path: Path, *, owner_uid: int | None = None, owner_gid: int | None = None):
@@ -251,14 +279,12 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
         raise RuntimeError("Legacy state was previously migrated to another target.")
 
     lock_names = (
-        "autonomous-durable-state.lock",
         "repository-execution.lock",
+        "autonomous-durable-state.lock",
         "autonomous-checkpoint-store.lock",
     )
-    lock_paths = sorted(
-        [legacy / name for name in lock_names] + [state_dir / name for name in lock_names],
-        key=lambda value: str(value.resolve()),
-    )
+    roots = sorted((legacy, state_dir), key=lambda value: str(value.resolve()))
+    lock_paths = [root / name for name in lock_names for root in roots]
     descriptors = []
     try:
         for lock_path in lock_paths:
@@ -345,12 +371,32 @@ def _migrate_legacy_state(state_dir: Path, legacy_home: Path | None, service_uid
                 os.close(descriptor)
 
 
+def _prepare_service_socket_directory(path: Path, service_uid: int, client_gid: int) -> None:
+    """Prepare and protect the macOS broker directory on explicit setup."""
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        info = os.fstat(fd)
+        if info.st_uid not in {0, service_uid} or info.st_mode & 0o022:
+            raise RuntimeError("The broker socket directory owner or permissions are unsafe.")
+        os.fchown(fd, service_uid, client_gid)
+        # Access to the socket requires traversal, not directory enumeration.
+        os.fchmod(fd, 0o710)
+    finally:
+        os.close(fd)
+
+
 def _systemd_unit(
     service_user: str,
     python: Path,
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> str:
     def quote(value: str) -> str:
         return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
@@ -358,6 +404,7 @@ def _systemd_unit(
     args = " ".join(quote(value) for value in (
         str(python), "-I", "-S", str(service_script),
         "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+        "--client-uid", str(client_uid),
     ))
     user_line = "" if service_user == "root" else f"User={service_user}\n"
     return (
@@ -368,6 +415,7 @@ def _systemd_unit(
         "[Service]\n"
         "Type=simple\n"
         f"{user_line}"
+        f"Group={service_group}\n"
         f"ExecStart={args}\n"
         "Restart=on-failure\n"
         "RestartSec=2\n"
@@ -382,8 +430,10 @@ def _systemd_unit(
         "MemoryDenyWriteExecute=true\n"
         "CapabilityBoundingSet=\n"
         "AmbientCapabilities=\n"
-        "UMask=000\n"
-        f"ReadWritePaths={quote(str(state_dir))} {quote(str(socket_path.parent))}\n\n"
+        "UMask=027\n"
+        f"RuntimeDirectory={socket_path.parent.name}\n"
+        "RuntimeDirectoryMode=0710\n"
+        f"ReadWritePaths={quote(str(state_dir))}\n\n"
         "[Install]\n"
         "WantedBy=multi-user.target\n"
     )
@@ -395,12 +445,13 @@ def _install_systemd(
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> None:
     systemctl = shutil.which("systemctl")
     if not systemctl or not Path("/run/systemd/system").is_dir():
         raise RuntimeError("This Linux host is not running systemd; automatic POSIX broker service setup is not supported here.")
     unit_path = Path("/etc/systemd/system") / f"{SERVICE_NAME}.service"
-    unit_data = _systemd_unit(service_user, python, service_script, state_dir, socket_path).encode("utf-8")
+    unit_data = _systemd_unit(service_user, python, service_script, state_dir, socket_path, client_uid=client_uid, service_group=service_group).encode("utf-8")
     _write_atomic(unit_path, unit_data, 0o644)
     for command in (
         [systemctl, "daemon-reload"],
@@ -419,6 +470,7 @@ def _install_launchd(
     service_script: Path,
     state_dir: Path,
     socket_path: Path,
+    *, client_uid: int, service_group: str,
 ) -> None:
     launchctl = shutil.which("launchctl")
     if not launchctl:
@@ -427,6 +479,7 @@ def _install_launchd(
     arguments = [
         str(python), "-I", "-S", str(service_script),
         "--state-dir", str(state_dir), "--socket-path", str(socket_path),
+        "--client-uid", str(client_uid),
     ]
     plist: dict[str, object] = {
         "Label": LAUNCHD_LABEL,
@@ -434,7 +487,8 @@ def _install_launchd(
         "RunAtLoad": True,
         "KeepAlive": True,
         "ProcessType": "Background",
-        "Umask": 0,
+        "Umask": 0o027,
+        "GroupName": service_group,
     }
     if service_user != "root":
         plist["UserName"] = service_user
@@ -518,19 +572,23 @@ def _elevated_setup(
     os.chown(config_dir, 0, -1)
     os.chmod(config_dir, 0o755)
     source = Path(__file__).resolve().parent / "autonomous_state_broker_service_posix.py"
-    if source.is_symlink() or not source.is_file():
-        raise RuntimeError("POSIX state-broker service source is missing or unsafe.")
-    service_script = config_dir / "state_broker_service.py"
-    _write_atomic(service_script, source.read_bytes(), 0o644)
+    archive = _build_broker_archive(source)
+    # Keep a running broker's imports tied to the exact archive it started with.
+    service_script = config_dir / f"state_broker-{hashlib.sha256(archive).hexdigest()}.pyz"
+    client_gid = pwd.getpwuid(installer_uid).pw_gid
+    service_group = grp.getgrgid(client_gid).gr_name
+    _write_atomic(service_script, archive, 0o640, owner_gid=client_gid)
     socket_hash = hashlib.sha256(str(state_dir.resolve()).encode("utf-8")).hexdigest()[:16]
-    socket_dir = Path("/tmp") / f"paa-state-broker-{socket_hash}"
-    socket_path = socket_dir / "broker.sock"
-
+    socket_name = f"paa-state-broker-{socket_hash}"
     system = sys.platform
     if system.startswith("linux"):
-        _install_systemd(service_user, python, service_script, state_dir, socket_path)
+        socket_path = Path("/run") / socket_name / "broker.sock"
+        _install_systemd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     elif system == "darwin":
-        _install_launchd(service_user, python, service_script, state_dir, socket_path)
+        socket_dir = Path("/tmp") / socket_name
+        _prepare_service_socket_directory(socket_dir, service_uid, client_gid)
+        socket_path = socket_dir / "broker.sock"
+        _install_launchd(service_user, python, service_script, state_dir, socket_path, client_uid=installer_uid, service_group=service_group)
     else:
         raise RuntimeError(f"Automatic broker service setup is not implemented for {system}.")
 

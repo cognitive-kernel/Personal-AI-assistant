@@ -89,7 +89,7 @@ function Get-AutomaticContext {
     $runningMatches = @($runtime.models | Where-Object {
         $_ -and $_.name -and (
             ([string]$_.name).Equals($ModelName, [System.StringComparison]::OrdinalIgnoreCase) -or
-            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx(?:[0-9]+)?$")
+            ([string]$_.name) -match ("(?i)^" + [regex]::Escape($ModelName) + "-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$")
         )
     })
     if ($runningMatches.Count -gt 1) {
@@ -174,27 +174,26 @@ function Get-AllocatedContext {
 }
 
 
-function Invoke-LegacyCodexContextCleanup {
+function Invoke-LegacyCodexContextAudit {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][ValidateNotNullOrEmpty()][string]$CurrentModel
     )
 
-    # Numeric aliases were created by older versions for multiple base models.
-    # The helper audits the complete Ollama catalog and only deletes aliases
-    # whose numeric suffix matches a persisted positive num_ctx marker.
+    # Legacy aliases have no run-ownership marker. Audit them, but never delete
+    # user-visible tags automatically during a new task preflight.
     $cleanupScript = Join-Path $PSScriptRoot "ollama_legacy_cleanup.py"
     if (-not (Test-Path -LiteralPath $cleanupScript -PathType Leaf)) {
         throw "The Ollama legacy context cleanup helper is missing: $cleanupScript"
     }
 
-    $cleanupOutput = & python $cleanupScript --current-model $CurrentModel 2>&1
+    $cleanupOutput = & python $cleanupScript --current-model $CurrentModel --audit-only 2>&1
     $cleanupExitCode = $LASTEXITCODE
     foreach ($line in @($cleanupOutput)) {
         if ($null -ne $line) { Write-Host ([string]$line) }
     }
     if ($cleanupExitCode -ne 0) {
-        throw "Ollama legacy context alias cleanup failed (exit code $cleanupExitCode)."
+        throw "Ollama legacy context alias audit failed (exit code $cleanupExitCode)."
     }
 }
 
@@ -219,9 +218,9 @@ if ($VerifyOnly) {
     }
 } else {
     if ($Model -notmatch '^[A-Za-z0-9][A-Za-z0-9._/-]*(?::[A-Za-z0-9._-]+)?$') {
-        throw "Model name contains unsupported characters; refusing to construct a persistent Codex model variant."
+        throw "Model name contains unsupported characters; refusing to construct a temporary Codex model variant."
     }
-    if ($Model -match '(?i)-codex-ctx(?:[0-9]+)?$') {
+    if ($Model -match "(?i)-codex-ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?$") {
         throw "The selected model is an internal Codex context variant. Select the original Ollama model to prevent nested variants."
     }
 
@@ -264,29 +263,48 @@ if ($VerifyOnly) {
     }
     Write-Host "Final context: min(requested, model maximum, safe hardware capacity, Codex catalog maximum) = $selectedContext tokens"
 
-    $codexModel = "$baseModel-codex-ctx"
-    $existingInfo = $null
-    try {
-        $existingInfo = Get-ModelInfo -ModelName $codexModel
-    } catch { }
-    $existingContext = [regex]::Match(
-        [string]$existingInfo.modelfile,
-        '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
-    )
-    $existingMatch = $existingContext.Success -and [int64]$existingContext.Groups[1].Value -eq $selectedContext
+    $runId = [string]$env:GITHUB_RUN_ID
+    $runAttempt = [string]$env:GITHUB_RUN_ATTEMPT
+    if ($runId -notmatch '^[0-9]{1,24}$' -or $runAttempt -notmatch '^[0-9]{1,6}$') {
+        throw "A valid GitHub run ID and attempt are required to create a run-owned temporary Ollama context model."
+    }
+    $nonce = [guid]::NewGuid().ToString("N").Substring(0, 12)
+    $codexModel = "$baseModel-codex-ctx$selectedContext-paa-$runId-$runAttempt-$nonce"
+    if ($codexModel.Length -gt 200) {
+        throw "The generated temporary Ollama model tag exceeds the supported name bound."
+    }
 
-    if (-not $existingMatch) {
-        $createBody = @{
-            model = $codexModel
-            from = $baseModel
-            parameters = @{ num_ctx = $selectedContext }
-            stream = $false
-        } | ConvertTo-Json -Depth 5 -Compress
-        try {
-            $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
-        } catch {
-            throw "Ollama could not create persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
-        }
+    try {
+        $catalog = Invoke-RestMethod -Uri "$baseUrl/api/tags" -Method Get -TimeoutSec 10 -MaximumRedirection 0
+    } catch {
+        throw "Could not inspect Ollama tags before creating the temporary Codex model. $($_.Exception.Message)"
+    }
+    $existingNames = @($catalog.models | ForEach-Object { [string]$_.name })
+    if ($existingNames -contains $codexModel) {
+        throw "The generated temporary model tag already exists; refusing to overwrite an existing Ollama model."
+    }
+
+    # Persist the exact cleanup identity before creation so the always() cleanup
+    # step can recover even if this preflight fails after /api/create begins.
+    if ($env:GITHUB_ENV) {
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_TEMP_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_MODEL=$codexModel" -Encoding utf8
+        Add-Content -LiteralPath $env:GITHUB_ENV -Value "AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH=$selectedContext" -Encoding utf8
+    }
+    $env:AUTONOMOUS_ENGINEERING_TEMP_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_MODEL = $codexModel
+    $env:AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH = [string]$selectedContext
+
+    $createBody = @{
+        model = $codexModel
+        from = $baseModel
+        parameters = @{ num_ctx = $selectedContext }
+        stream = $false
+    } | ConvertTo-Json -Depth 5 -Compress
+    try {
+        $null = Invoke-RestMethod -Uri "$baseUrl/api/create" -Method Post -ContentType "application/json" -Body $createBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
+    } catch {
+        throw "Ollama could not create temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
     }
 
     $modelInfo = Get-ModelInfo -ModelName $codexModel
@@ -296,7 +314,7 @@ if ($VerifyOnly) {
         '(?im)^\s*PARAMETER\s+num_ctx\s+(\d+)\s*$'
     )
     if (-not $savedContext.Success -or [int64]$savedContext.Groups[1].Value -ne $selectedContext) {
-        throw "Persistent model '$codexModel' does not declare the selected num_ctx $selectedContext."
+        throw "Temporary model '$codexModel' does not declare the selected num_ctx $selectedContext."
     }
 
     if ($env:GITHUB_ENV) {
@@ -318,12 +336,12 @@ $warmupBody = @{
 try {
     $null = Invoke-RestMethod -Uri "$baseUrl/api/generate" -Method Post -ContentType "application/json" -Body $warmupBody -TimeoutSec $TimeoutSeconds -MaximumRedirection 0
 } catch {
-    throw "Ollama could not load persistent Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
+    throw "Ollama could not load temporary Codex model '$codexModel' at context $selectedContext. $($_.Exception.Message)"
 }
 
 $allocated = Get-AllocatedContext -ModelName $codexModel
 Write-Host "Ollama model passed to Codex: $codexModel"
-Write-Host "Persistent Codex model: $codexModel"
+Write-Host "Temporary Codex model: $codexModel"
 Write-Host "Model maximum context: $maximum tokens"
 Write-Host "Selected Codex context: $selectedContext tokens"
 Write-Host "Ollama allocated runtime context: $allocated tokens"
@@ -331,6 +349,6 @@ if ($allocated -ne $selectedContext) {
     throw "Ollama allocated $allocated tokens for '$codexModel', but the verified selection is exactly $selectedContext. No Codex task may proceed."
 }
 if (-not $VerifyOnly) {
-    Invoke-LegacyCodexContextCleanup -CurrentModel $codexModel
+    Invoke-LegacyCodexContextAudit -CurrentModel $codexModel
 }
 Write-Host "OLLAMA_RUNTIME_CONTEXT_OK"

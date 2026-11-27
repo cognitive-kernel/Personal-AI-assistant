@@ -133,13 +133,18 @@ def test_learning_children_cascade_when_job_is_deleted(tmp_path, monkeypatch):
 def test_database_initialization_is_idempotent_and_preserves_user_settings(
     tmp_path, monkeypatch
 ):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
     _init_stores(tmp_path, monkeypatch)
-    db.update_settings({"ollama_model": "user-selected-model"})
+    db.update_settings({
+        "ollama_model": "user-selected-model",
+        "chat_ollama_model": "custom-chat-model:latest",
+    })
 
     db.init_databases()
     task_manager.initialize_task_store()
 
     assert db.get_settings()["ollama_model"] == "user-selected-model"
+    assert db.get_settings()["chat_ollama_model"] == "custom-chat-model:latest"
     with db.learning_connection() as conn:
         assert conn.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
 
@@ -179,3 +184,49 @@ def test_spaced_repetition_history_cascades_when_topic_is_deleted(tmp_path, monk
         assert conn.execute(
             "SELECT COUNT(*) FROM learning_review_events WHERE topic_id=?", (topic_id,)
         ).fetchone()[0] == 0
+
+
+def test_existing_temporary_codex_chat_model_is_normalized_to_its_base_tag(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
+    _init_stores(tmp_path, monkeypatch)
+    db.update_settings({
+        "ollama_model": "legacy-model-choice",
+        "chat_ollama_model": "qwen2.5:7b-codex-ctx2048",
+        "programming_ollama_model": "gpt-oss:20b",
+    })
+
+    db.init_databases()
+
+    settings = db.get_settings()
+    assert settings["chat_ollama_model"] == "qwen2.5:7b"
+    assert settings["ollama_model"] == "legacy-model-choice"
+    assert settings["programming_ollama_model"] == "gpt-oss:20b"
+
+
+def test_temporary_chat_model_is_normalized_even_without_legacy_generic_model_key(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
+    _init_stores(tmp_path, monkeypatch)
+    with db.settings_connection() as conn:
+        conn.execute("DELETE FROM settings WHERE key='ollama_model'")
+    db.update_settings({"chat_ollama_model": "qwen2.5:7b-codex-ctx2048"})
+
+    db.init_databases()
+
+    assert db.get_settings()["chat_ollama_model"] == "qwen2.5:7b"
+
+
+def test_ephemeral_chat_model_is_normalized_even_when_environment_model_is_set(
+    tmp_path, monkeypatch
+):
+    monkeypatch.delenv("CHAT_OLLAMA_MODEL", raising=False)
+    _init_stores(tmp_path, monkeypatch)
+    db.update_settings({"chat_ollama_model": "qwen2.5:7b-codex-ctx2048"})
+    monkeypatch.setenv("CHAT_OLLAMA_MODEL", "operator-selected:latest")
+
+    db.init_databases()
+
+    assert db.get_settings()["chat_ollama_model"] == "qwen2.5:7b"

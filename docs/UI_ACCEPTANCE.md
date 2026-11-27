@@ -101,3 +101,110 @@ Browser E2E از APIهای deterministic/stubbed استفاده می‌کند و
 - PR #846 Draft می‌ماند تا Gateهای میزبان واقعی تأیید شوند؛ PR #847 mirror بسته شده و branch آن حفظ شده است.
 
 ---
+
+
+## 2026-11-24 — current Autonomous Engineering first-module acceptance snapshot
+
+- PR [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864), exact head `8303afa5d44f104c6e9a5d569868f3db248023b0), completed all repository CI successfully:
+  - Linux suite: 2,576 passed, 14 skipped, 79 deselected.
+  - Windows suite: 2,571 passed, 19 skipped, 79 deselected.
+  - Windows storage regressions, Browser E2E, CodeQL, dependency audit, and managed Python bootstrap on Windows/Ubuntu/macOS passed.
+  - Browser E2E run: [45274156612](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45274156612); tests run: [45274156477](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45274156477).
+- PR #864 adds serialization for post-mutation status refreshes. It remains Draft and is not merged.
+- Additional safety fixes are under exact-head validation:
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865): machine-wide mutex held by the elevated State Broker child, addressing parent-timeout/orphan-child overlap; stacked on PR #863.
+  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866): live repository Pause-variable read after workflow concurrency admission, rather than relying on a stale workflow-context snapshot.
+  - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867): cancellation prefers an executing workflow over a newer queued workflow.
+- PR #863 remains Draft; the elevated-child timeout finding is separately recorded in its review. PRs #865–#867 remain Draft; their CI must be evaluated against their latest exact heads, not earlier commits.
+- Repository CI is not target-host acceptance. Windows non-admin UI startup, UAC, actual Runner identity/ACL, real Ollama/Codex execution, pause/resume/cancel, parent-timeout/elevated-child behavior, crash/restart, checkpoint preservation, keyboard/screen-reader and visual accessibility review, and owner acceptance remain pending.
+- No PR was merged and no local service, ACL, Runner registration, task, checkpoint, database, or durable state was changed during this validation work.
+
+
+
+### Live Pause and execution-mode admission hardening — 2026-11-24
+
+- The pre-task workflow gate now reads live Pause and execution-mode variables after concurrency admission; the cycle controller repeats both checks after acquiring the repository execution lock and again before dispatching the next continuous cycle after an owner merge.
+- Automatic recovery no longer trusts workflow-context PAUSED or EXECUTION_MODE snapshots. It reads live mode/Pause before retry classification and again after backoff immediately before dispatch.
+- Missing Pause variable (404) means false; missing mode variable means continuous. API errors and malformed values fail closed. Scheduled mode suppresses queued automatic and recovery runs, while explicit manual tasks and one-shot resume remain allowed.
+- ADR-024 records the admission and one-shot Resume contract. PR #866 contains the implementation. Its exact-head CI is pending; no real task/recovery workflow was dispatched for this validation.
+
+## 2026-11-24 — وضعیت پذیرش ماژول Autonomous Engineering
+
+- [x] Refresh وضعیت پس از چند mutation هم‌زمان سریالی شده است؛ regression مرورگر در PR #864 روی exact head موفق شد.
+- [x] Cancel اجرای واقعی Codex را از jobهای صرفاً preflight/concurrency تفکیک می‌کند؛ regressionهای queued/in-progress و bound بررسی job روی exact head PR #867 موفق شدند.
+- [x] شاخهٔ State Broker، regressionهای UI و broker را حفظ می‌کند؛ شاخهٔ live Pause/Mode، resume یک‌باره در حالت scheduled را نگه می‌دارد.
+- [ ] exact-head CI برای head نهایی PRهای #863/#869 و #866/#870 پس از آخرین اصلاحات.
+- [ ] پذیرش روی Windows واقعی: non-admin/UAC، Broker، Runner موجود با .runner محافظت‌شده، حالت بدون Runner، ACL و restart.
+- [ ] اجرای واقعی Ollama/Codex، dispatch، Pause/Resume/Cancel، timeout، crash/restart و حفظ checkpoint.
+- [ ] بازبینی دستی keyboard/screen-reader و تأیید نهایی مالک.
+- [ ] secret خواندن Variables برای workflowهای #870 باید توسط مالک ایجاد و روی Runner هدف آزمایش شود؛ تا آن زمان این مسیر عملیاتی پذیرفته نیست.- [x] Resume و manual dispatch از reservation دو مرحله‌ای مشترک و پایدار در State Broker استفاده می‌کنند؛ در صورت وجود run فعال فقط Pause برداشته می‌شود و workflow تکراری dispatch نمی‌شود. Pause برای dispatch جدید فقط پس از پذیرش GitHub برداشته می‌شود؛ نتیجهٔ نامشخص reservation را محافظه‌کارانه نگه می‌دارد.
+
+- [x] Cancel بر اساس run_id snapshot UI، با lookup مستقیم همان run، بررسی workflow/job Codex و همان lock مشترک انجام می‌شود؛ لغو run دیگری از فهرست مجاز نیست.
+- [ ] اجرای این regressionها روی exact headهای نهایی #863/#869 و #866/#870 و تأیید CI.
+
+
+## 2026-11-24 — پذیرش یافته‌های backend و Codex/UI
+
+- [x] gh workflow dispatch از --raw-field برای manual_task و correlation_id و resume_once استفاده می‌کند؛ مستند رسمی GitHub CLI تفاوت raw-field با field و @ syntax را مشخص کرده است.
+- [x] diagnostics اجرا فقط برای runهای ناموفق صفحهٔ جاری خوانده می‌شود و تأیید run ID با یک API lookup مستقیم انجام می‌شود.
+- [x] Codex retry، typed report failure، نبود پیام نهایی بدون retry کور، timeout کوتاه report-only و marker در آخرین خط غیرخالی پوشش داده شده‌اند.
+- [x] UI sticky message، keyed log panels، poll failure safety controls، retryable، cleanup partial failure، invalid date، interval fallback و response-body timeout اصلاح شده‌اند.
+- [ ] exact-head CI روی آخرین SHA و هر دو سیستم‌عامل.
+- [ ] build و integration واقعی Windows State Broker، سپس پذیرش Windows target-host و browser E2E.
+- [ ] اجرای واقعی workflow/Codex و تأیید نهایی مالک.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.
+
+## 2026-11-25 — harden read-only Variables permission verification
+
+- GitHub may return HTTP 404 both for an absent repository variable and for a token that cannot access the variable endpoint. Repository metadata access alone does not prove the fine-grained token has Variables: read.
+- The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
+- This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
+- Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
+
+
+## 2026-11-25 — یکپارچه‌سازی ماژول مهندسی و CI دقیق
+
+- شاخهٔ integration: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ head کد `583f482af18b2921225ce91ae1d3ebdc5d765aec`؛ مبنای `main` برابر `8b7c20c50ef4fd9346e924d212a35f36ff646515` است. مقایسهٔ زندهٔ GitHub وضعیت `ahead` با `behind=0` و 69 فایل تغییرکرده را نشان می‌دهد.
+- PR اصلی: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، همچنان Draft و باز؛ هیچ merge انجام نشده است.
+- چهار workflow روی exact head موفق‌اند:
+  - Tests شامل Linux/Windows، Windows storage/Broker integration و managed Python bootstrap: [run 45595886385](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886385).
+  - Browser E2E: [run 45595886850](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886850).
+  - CodeQL: [run 45595886382](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886382).
+  - Dependency audit: [run 45595886307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886307).
+- در Windows storage job، build/attestation بستهٔ Broker، LocalService و Named Pipe، ACL، PowerShell Desktop/Core، identity portability، checkpoint/recovery، process lock و SQLite restore موفق شدند.
+- اصلاحات اصلی: `--raw-field` برای workflow inputs؛ durable cross-process dispatch admission؛ Resume یک‌باره با live Pause/Mode gate؛ exact-run Cancel؛ Broker setup صریح و startup فقط‌خواندنی؛ Broker package قابل‌راستی‌آزمایی؛ Codex report/retry diagnostics؛ UI state/polling hardening.
+- بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
+- گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
+- نتیجهٔ تاریخی: Gateهای repository CI و Browser E2E روی SHA قبلی موفق بودند؛ این نتایج برای code head جدید evidence محسوب نمی‌شوند. ماژول هنوز operationally accepted یا ready-to-merge نیست و PR تا تکمیل گیت‌های فعلی و میزبان Draft می‌ماند.
+
+
+## 2026-11-25 — current integrated acceptance gates
+
+- [x] Startup checks are read-only: no implicit Broker UAC/setup, no automatic Ollama server start, and no automatic model pull.
+- [x] Broker setup is a separate explicit dashboard/API action; missing Broker limits the dependent capability rather than silently mutating Windows services or ACLs.
+- [x] PowerShell host selection is capability-based; Security module import is isolated to the active host's `$PSHOME\Modules` path and a Windows CI integration test verifies behavior with inherited PowerShell 7 module paths.
+- [x] Ollama Context is calculated from installed base-model metadata and currently available hardware memory.
+- [x] Each autonomous run creates a unique temporary context tag containing context, run ID, attempt, and nonce; the exact tag is recorded before model creation.
+- [x] Main and diagnostic workflows have an `always()` cleanup step that unloads and deletes only the exact run-owned temporary tag and verifies its absence.
+- [x] Base model is required to remain installed; unrelated model tags are never deleted by temporary cleanup.
+- [x] Legacy numeric context aliases are audit-only by default; deletion requires explicit `--delete-confirmed-legacy`.
+- [x] UI/API model selectors reject internal context variants, including run-scoped temporary tags, as base-model choices.
+- [x] Legacy settings migration seeds a missing chat profile from the base tag and repairs an existing chat profile only when it contains a reserved ephemeral Codex context tag; valid user model choices are preserved, and the reserved suffix is normalized regardless of whether it came from legacy settings or an environment-seeded default.
+- [x] Regression tests cover migration of an existing temporary chat tag, preservation of ordinary existing chat models, normalization when an environment-seeded default contains an ephemeral tag, and behavior when the legacy generic model key is absent (`tests/test_db_schema.py` and `tests/test_core.py`).
+- [ ] Exact-head Linux/Windows tests, Windows storage/Broker integration, Browser E2E, CodeQL, and dependency audit must all complete successfully on the final SHA.
+- [ ] Windows target-host acceptance: reproduce the prior PowerShell 5.1 duplicate-TypeData failure and verify the corrected import, Broker health/setup, Runner identity/ACL, and restart behavior.
+- [ ] Exact-head Windows CI must pass PowerShell 5.1 regressions for clean import, repeated -Force import, and reuse of a preloaded Security module with inherited PowerShell 7 module paths; owner-host verification must confirm the previously failing module load and Broker health.
+- [ ] Live Ollama/Codex acceptance: verify available-RAM context selection, real tool call, successful-task cleanup, failed-task cleanup, and preservation of the base model.
+- [ ] End-to-end UI acceptance: dispatch a harmless task, observe progress/logs/PR/exact-SHA checks, then test Pause/Resume/Cancel and crash/restart checkpoint preservation.
+- [ ] Keyboard, screen-reader, contrast, and owner visual acceptance.
+- No merge is permitted while any required gate above remains open. CI success is not a substitute for target-host or owner acceptance.
+

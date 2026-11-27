@@ -2,10 +2,16 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   const message = $("agent-message");
+  const statusMessage = $("agent-status-message");
   function setMessage(text, kind) {
     if (!message) return;
     message.textContent = text;
     message.dataset.kind = kind || "";
+  }
+  function setStatusMessage(text, kind) {
+    if (!statusMessage) return;
+    statusMessage.textContent = text;
+    statusMessage.dataset.kind = kind || "";
   }
   function createCorrelationId() {
     const cryptoApi = window.crypto;
@@ -25,7 +31,7 @@
     const defaultTimeoutMs = path === "status" ? 40000 : path.startsWith("progress") ? 20000 : 120000;
     const requestedTimeoutMs = options && options.timeoutMs;
     if (requestedTimeoutMs !== undefined &&
-        (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1 || requestedTimeoutMs > 120000)) {
+        (!Number.isSafeInteger(requestedTimeoutMs) || requestedTimeoutMs < 1 || requestedTimeoutMs > 300000)) {
       throw new RangeError("Invalid autonomous-engineering request timeout.");
     }
     const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs;
@@ -45,8 +51,23 @@
         headers: requestHeaders,
         signal: controller.signal
       });
+      const responseText = await response.text();
       let payload = {};
-      try { payload = await response.json(); } catch (_) {}
+      if (responseText.trim()) {
+        try {
+          payload = JSON.parse(responseText);
+        } catch (_) {
+          const invalid = new Error("پاسخ سرویس JSON معتبر نیست؛ نتیجهٔ درخواست قابل تأیید نیست.");
+          invalid.status = response.ok ? 502 : response.status;
+          invalid.code = "AUTONOMOUS_ENGINEERING_INVALID_RESPONSE";
+          throw invalid;
+        }
+      } else if (response.ok) {
+        const empty = new Error("پاسخ سرویس خالی بود؛ نتیجهٔ درخواست قابل تأیید نیست.");
+        empty.status = 502;
+        empty.code = "AUTONOMOUS_ENGINEERING_EMPTY_RESPONSE";
+        throw empty;
+      }
       if (!response.ok) {
         const detail = typeof payload.detail === "string"
           ? payload.detail
@@ -156,6 +177,6 @@
   }
 
   window.autonomousEngineeringCore = Object.freeze({
-    version: 1, $, request, setMessage, startPolling
+    version: 1, $, request, setMessage, setStatusMessage, startPolling
   });
 })();

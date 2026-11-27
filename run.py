@@ -926,253 +926,190 @@ def _ensure_ollama_server(
     )
 
 
-def _ensure_ollama() -> None:
-    active_providers = [
-        _configured_llm_provider(name)
-        for name in ("chat", "research_plan", "learning", "programming", "embedding")
-    ]
-    factual_review_model = _read_saved_setting("factual_review_ollama_model", "")
-    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
-        active_providers.append("ollama")
-    if "ollama" not in active_providers:
-        print("همهٔ مسیرهای LLM و embedding روی provider جایگزین تنظیم شده‌اند؛ نصب و اجرای Ollama لازم نیست.", flush=True)
-        return
-    system = platform.system()
-    # Detect an existing installation before downloading anything. The installer
-    # is only needed when Ollama cannot be found on this machine.
-    executable = _find_ollama()
-    installer: Path | None = None
-    release: dict[str, Any] | None = None
-    if not executable:
-        asset_name = {
-            "Windows": "OllamaSetup.exe",
-            "Linux": "install.sh",
-            "Darwin": "Ollama-darwin.zip",
-        }.get(system)
-        if asset_name is None:
-            raise RuntimeError(f"نصب خودکار Ollama برای سیستم‌عامل {system} پشتیبانی نمی‌شود.")
-        release = _latest_ollama_release_assets()
-        if system == "Linux":
-            machine = platform.machine().lower()
-            architecture = {"x86_64": "amd64", "aarch64": "arm64", "arm64": "arm64"}.get(machine)
-            if architecture is None:
-                raise RuntimeError(f"معماری Linux پشتیبانی نمی‌شود: {machine}")
-            base_asset = f"ollama-linux-{architecture}.tar.zst"
-            if base_asset not in release["assets"]:
-                raise RuntimeError(
-                    f"انتشار {release['tag']} بستهٔ Linux تأییدپذیر {base_asset} را ندارد."
-                )
-        asset = release["assets"].get(asset_name)
-        if asset is None:
-            raise RuntimeError(
-                f"نسخهٔ {release['tag']} دارایی نصب {asset_name} را ندارد؛ نصب متوقف شد."
-            )
-        installer_name = {
-            "Windows": "OllamaSetup.exe",
-            "Linux": "ollama-install.sh",
-            "Darwin": "Ollama-darwin.zip",
-        }[system]
-        installer = _download_once(
-            asset["url"],
-            INSTALLERS / installer_name,
-            expected_sha256=asset["sha256"],
-            expected_size=asset["size"],
-            opener=_ollama_asset_opener(),
-        )
-        print(
-            f"دارایی رسمی Ollama {release['tag']} با SHA-256 تأیید شد.",
-            flush=True,
-        )
-    if not executable and installer:
-        print("Ollama نصب نیست؛ اجرای نصب‌کننده ذخیره‌شده در prerequisites/installers ...", flush=True)
-        if system == "Windows":
-            result = _run([str(installer)])
-        elif system == "Linux":
-            if release is None:
-                raise RuntimeError("اطلاعات انتشار تأییدشده برای نصب Linux موجود نیست.")
-            verified_installer = _patch_linux_install_script(installer)
-            install_env = os.environ.copy()
-            install_env.update({
-                "OLLAMA_VERSION": release["tag"].lstrip("v"),
-                "OLLAMA_VERIFIED_RELEASE_ASSETS_JSON": json.dumps(
-                    release, ensure_ascii=True, separators=(",", ":")
-                ),
-                "OLLAMA_VERIFIED_ASSET_DIR": str(INSTALLERS / "ollama-release-assets"),
-                "OLLAMA_VERIFIED_PYTHON": sys.executable,
-                "OLLAMA_VERIFIED_RUNNER": str(Path(__file__).resolve()),
-            })
-            result = _run(["sh", str(verified_installer)], env=install_env)
-        else:
-            # macOS app installation is intentionally left interactive; opening the
-            # cached archive lets the user complete the signed app installation.
-            _run(["open", str(installer)])
-            raise RuntimeError(
-                "بسته رسمی Ollama در prerequisites/installers ذخیره و باز شد. نصب برنامه را کامل کنید و دوباره run.py را اجرا کنید."
-            )
-        if result.returncode != 0:
-            raise RuntimeError("نصب خودکار Ollama ناموفق بود؛ نصب‌کننده در prerequisites/installers باقی مانده است.")
-        executable = _find_ollama()
-    if not executable:
-        raise RuntimeError("Ollama در PATH یا مسیرهای نصب متداول پیدا نشد؛ نصب‌کننده در prerequisites/installers قرار دارد.")
+_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(r"-codex-(?:ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?|64k)$", re.IGNORECASE)
 
-    listed = _ensure_ollama_server(executable)
-    if listed.stdout:
-        print(listed.stdout, end="" if listed.stdout.endswith("\n") else "\n", flush=True)
-    if listed.stderr:
-        print(listed.stderr, file=sys.stderr, flush=True)
+
+def _internal_codex_context_base_model(model: str) -> str | None:
+    """Return the base tag for an app-generated Codex model variant, if any."""
+    match = _INTERNAL_CODEX_CONTEXT_VARIANT.search(model.strip())
+    if not match:
+        return None
+    return model.strip()[:match.start()]
+
+
+def _ensure_ollama() -> list[str]:
+    """Read-only, purpose-scoped Ollama preflight; never installs, starts, or pulls."""
+    warnings: list[str] = []
+    purposes = ("chat", "research_plan", "learning", "programming", "embedding", "factual_review")
+    providers: dict[str, str] = {}
+    for purpose in purposes:
+        try:
+            providers[purpose] = _configured_llm_provider(purpose)
+        except RuntimeError as exc:
+            warnings.append(f"{purpose}: provider configuration is invalid ({type(exc).__name__}).")
+
+    ollama_purposes = [purpose for purpose, provider in providers.items() if provider == "ollama"]
+    if not ollama_purposes:
+        return warnings
+
+    executable = _find_ollama()
+    if not executable:
+        warnings.append(
+            "Ollama runtime: executable is unavailable; local inference capabilities remain unavailable. "
+            "Startup performs no installation or download."
+        )
+        return warnings
+
+    try:
+        listed = _ollama_list(executable)
+    except (OSError, subprocess.SubprocessError) as exc:
+        warnings.append(
+            f"Ollama runtime: local API could not be queried ({type(exc).__name__}); "
+            "only Ollama-backed capabilities are unavailable."
+        )
+        return warnings
+    if listed.returncode != 0:
+        warnings.append(
+            "Ollama runtime: local API is not ready; startup will not start or modify the service."
+        )
+        return warnings
+
     installed_models = {
-        line.split()[0] for line in (listed.stdout or "").splitlines()
+        line.split()[0]
+        for line in (listed.stdout or "").splitlines()
         if line.strip() and not line.lstrip().startswith("NAME ")
     }
     required_models: list[tuple[str, str]] = []
-    if _configured_llm_provider("chat") == "ollama":
-        required_models.append((
-            "مدل گفتگو",
-            _configured_model_setting(
-                "chat_ollama_model", "CHAT_OLLAMA_MODEL",
-                os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
-            ),
-        ))
-    if _configured_llm_provider("research_plan") == "ollama":
-        required_models.append((
-            "مدل برنامه‌ریزی پژوهش",
-            _configured_model_setting("research_plan_ollama_model", "RESEARCH_PLAN_OLLAMA_MODEL", DEFAULT_MODEL),
-        ))
-    if _configured_llm_provider("learning") == "ollama":
-        required_models.append(("مدل یادگیری", _configured_learning_model()))
-    if factual_review_model and _configured_llm_provider("factual_review") == "ollama":
-        required_models.append(("مدل بازبینی factual", factual_review_model))
-    missing_models: list[str] = []
-    for role, model in required_models:
-        if model in installed_models or model in missing_models:
-            continue
-        print(f"{role} {model} نصب نیست؛ دریافت مدل شروع می‌شود ...", flush=True)
-        pulled = _run([executable, "pull", model])
-        if pulled.returncode != 0:
-            raise RuntimeError(f"دریافت {role} {model} ناموفق بود؛ برنامه اجرا نشد.")
-        missing_models.append(model)
 
-    if missing_models:
-        verified = subprocess.run(
-            [executable, "list"], cwd=ROOT, text=True, capture_output=True, check=False
+    def add_model(role: str, resolver) -> None:
+        try:
+            model = resolver()
+        except (RuntimeError, ValueError) as exc:
+            warnings.append(f"{role}: model configuration is invalid ({type(exc).__name__}).")
+            return
+        if isinstance(model, str) and model.strip():
+            required_models.append((role, model.strip()))
+        else:
+            warnings.append(f"{role}: no model is configured for this capability.")
+
+    if providers.get("chat") == "ollama":
+        add_model("مدل گفتگو", lambda: _configured_model_setting(
+            "chat_ollama_model",
+            "CHAT_OLLAMA_MODEL",
+            os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip() or DEFAULT_MODEL,
+        ))
+    if providers.get("research_plan") == "ollama":
+        add_model("مدل برنامه‌ریزی پژوهش", lambda: _configured_model_setting(
+            "research_plan_ollama_model", "RESEARCH_PLAN_OLLAMA_MODEL", DEFAULT_MODEL
+        ))
+    if providers.get("learning") == "ollama":
+        add_model("مدل یادگیری", _configured_learning_model)
+    if providers.get("programming") == "ollama":
+        add_model("مدل برنامه‌نویسی", lambda: _configured_model_setting(
+            "programming_ollama_model", "PROGRAMMING_OLLAMA_MODEL", "qwen3:14b"
+        ))
+    if providers.get("embedding") == "ollama":
+        add_model("مدل embedding", lambda: _configured_model_setting(
+            "ollama_embedding_model", "OLLAMA_EMBEDDING_MODEL", "nomic-embed-text"
+        ))
+
+    if providers.get("factual_review") == "ollama":
+        configured_reviewer = _read_saved_setting(
+            "factual_review_ollama_model",
+            os.environ.get("FACTUAL_REVIEW_OLLAMA_MODEL", ""),
         )
-        if verified.returncode != 0:
-            raise RuntimeError("تأیید مدل‌های دریافت‌شده از Ollama ناموفق بود.")
-        verified_models = {
-            line.split()[0] for line in (verified.stdout or "").splitlines()
-            if line.strip() and not line.lstrip().startswith("NAME ")
-        }
-        absent = [model for model in missing_models if model not in verified_models]
-        if absent:
-            raise RuntimeError("مدل‌های موردنیاز پس از دریافت در Ollama دیده نشدند: " + ", ".join(absent))
+        if configured_reviewer is None or (
+            isinstance(configured_reviewer, str) and not configured_reviewer.strip()
+        ):
+            configured_reviewer = os.environ.get("FACTUAL_REVIEW_OLLAMA_MODEL", "")
+        if configured_reviewer:
+            if (
+                not isinstance(configured_reviewer, str)
+                or not configured_reviewer.strip()
+                or len(configured_reviewer.strip()) > 200
+            ):
+                warnings.append("مدل بازبینی factual: تنظیم مدل نامعتبر است.")
+            else:
+                required_models.append(("مدل بازبینی factual", configured_reviewer.strip()))
+
+    for role, model in required_models:
+        if model in installed_models:
+            continue
+        base_model = _internal_codex_context_base_model(model)
+        if base_model is not None:
+            if (
+                role == "مدل گفتگو"
+                and base_model in installed_models
+            ):
+                print(
+                    f"{role}: مقدار قدیمی به Codex context variant موقت اشاره می‌کند؛ "
+                    f"تنظیمات هنگام راه‌اندازی به مدل پایهٔ نصب‌شده {base_model} برمی‌گردد. هیچ pullای اجرا نمی‌شود.",
+                    flush=True,
+                )
+                continue
+            base_state = (
+                f"مدل پایهٔ {base_model} نصب است؛ آن را در تنظیمات انتخاب کنید."
+                if base_model in installed_models
+                else f"مدل پایهٔ {base_model} نیز نصب نیست؛ یک مدل پایهٔ نصب‌شده انتخاب کنید."
+            )
+            warnings.append(
+                f"{role}: مقدار ذخیره‌شده {model} یک variant داخلی Codex است، نه مدل قابل دریافت از رجیستری؛ "
+                f"تنظیم تغییر نکرد و pull اجرا نشد. {base_state}"
+            )
+        else:
+            warnings.append(
+                f"{role}: مدل انتخاب‌شده {model} نصب نیست؛ فقط همین قابلیت unavailable است. "
+                "مدل از UI و با اقدام صریح نصب شود؛ startup هیچ pullای اجرا نمی‌کند."
+            )
+    return warnings
+
+
+def _powershell_candidates() -> list[str]:
+    """Discover installed PowerShell engines without pinning a major version."""
+    from app.windows_powershell import windows_powershell_candidates
+
+    return windows_powershell_candidates(
+        system=platform.system(),
+        which=shutil.which,
+        environ=os.environ,
+    )
+
+
+def _find_compatible_powershell() -> tuple[str, str] | None:
+    """Return an installed PowerShell host after probing its real capabilities."""
+    from app.windows_powershell import find_compatible_powershell
+
+    return find_compatible_powershell(
+        _powershell_candidates(),
+        run=subprocess.run,
+        cwd=ROOT,
+    )
 
 
 def _ensure_state_broker() -> bool:
-    """Check/install the machine broker through the native platform adapter."""
-    system = platform.system()
-    from app.autonomous_engineering_state_broker import health, request
-
-    if health(timeout_ms=30000, verify=True):
-        return True
-
-    if system == "Windows":
-        script = ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"
-        if not script.is_file():
-            print(
-                "فضای پیشرفت مشترک در دسترس نیست؛ اسکریپت نصب Broker پیدا نشد.",
-                file=sys.stderr,
-                flush=True,
-            )
-            return False
-        powershell = shutil.which("powershell.exe") or shutil.which("powershell")
-        if not powershell:
-            windir = os.environ.get("WINDIR")
-            if windir:
-                candidate = Path(windir) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
-                if candidate.is_file():
-                    powershell = str(candidate)
-        if not powershell:
-            print("Windows PowerShell در دسترس نیست؛ Broker نصب نشد.", file=sys.stderr, flush=True)
-            return False
-        print(
-            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی امن با درخواست مجوز مدیر ...",
-            flush=True,
-        )
-        command = [
-            powershell, "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(script)
-        ]
-        capture_output = True
-    elif system in {"Linux", "Darwin"}:
-        script = ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"
-        if not script.is_file():
-            print("راه‌انداز Broker بومی POSIX پیدا نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-            return False
-        print(
-            "بررسی فضای پیشرفت مشترک: Broker آماده نیست؛ راه‌اندازی سرویس محلی با تأیید مدیر سیستم ...",
-            flush=True,
-        )
-        command = [sys.executable, str(script)]
-        # sudo may need to prompt in the terminal; do not capture or suppress it.
-        capture_output = False
-    else:
-        print(
-            f"Broker مشترک برای سیستم‌عامل {system} پیاده‌سازی نشده است؛ برنامه در حالت محدود اجرا می‌شود.",
-            file=sys.stderr,
-            flush=True,
-        )
-        return False
+    """Perform a read-only broker health check; never elevate or mutate at startup."""
+    from app.autonomous_engineering_state_broker import health
 
     try:
-        result = subprocess.run(
-            command,
-            cwd=ROOT,
-            text=True,
-            capture_output=capture_output,
-            timeout=300,
-            check=False,
-            shell=False,
-        )
-    except subprocess.TimeoutExpired:
-        print("راه‌اندازی Broker در مهلت ۵ دقیقه کامل نشد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-        return False
-    except OSError as exc:
-        print(f"اجرای راه‌انداز Broker ناموفق بود: {type(exc).__name__}؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
-        return False
-
-    if capture_output:
-        if result.stdout:
-            print(result.stdout, end="" if result.stdout.endswith("\n") else "\n", flush=True)
-        if result.stderr:
-            print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n", flush=True)
-    if result.returncode != 0:
-        if system == "Windows":
-            log_path = Path(os.environ.get("ProgramData", r"C:\ProgramData")) / "PersonalAIAssistant" / "Logs" / "state-broker-setup.log"
-            print(f"گزارش تشخیصی Broker (در صورت ایجادشدن): {log_path}", file=sys.stderr, flush=True)
+        ready = health(timeout_ms=30000, verify=True)
+    except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
         print(
-            "سرویس فضای پیشرفت مشترک نصب/ترمیم نشد؛ برنامه در حالت محدود اجرا می‌شود. "
-            "تأیید مجوز مدیر و گزارش راه‌انداز را بررسی کنید.",
+            f"فضای ثبت پیشرفت پایدار آماده نیست ({type(exc).__name__})؛ "
+            "رابط محلی در حالت محدود اجرا می‌شود. برای نصب/ترمیم، اقدام صریح را از صفحهٔ مهندسی اجرا کنید.",
             file=sys.stderr,
             flush=True,
         )
         return False
-    if not health(timeout_ms=30000, verify=True):
-        try:
-            detail = request("GET", "/v1/health/verify", timeout_ms=30000)
-            safe_fields = {
-                key: detail.get(key)
-                for key in ("ready", "storage_ready", "acl_ready", "acl_reason", "schema_version")
-                if isinstance(detail, dict) and key in detail
-            }
-            print(f"جزئیات سلامت Broker: {safe_fields}", file=sys.stderr, flush=True)
-        except (OSError, RuntimeError, TimeoutError, ValueError) as exc:
-            print(
-                f"Broker پس از نصب از Named Pipe پاسخ نداد: {type(exc).__name__}: {str(exc)[:240]}",
-                file=sys.stderr,
-                flush=True,
-            )
-        print("Broker پس از نصب از کانال محلی پاسخ سالم نداد؛ برنامه در حالت محدود اجرا می‌شود.", file=sys.stderr, flush=True)
+    if not ready:
+        print(
+            "سرویس Broker آماده نیست؛ هیچ نصب، تغییر ACL یا درخواست UAC در زمان شروع برنامه انجام نشد. "
+            "برای راه‌اندازی، از کنترل صریح صفحهٔ مهندسی استفاده کنید.",
+            file=sys.stderr,
+            flush=True,
+        )
         return False
     return True
+
 
 def main() -> int:
     if sys.version_info < MIN_PYTHON:
@@ -1226,10 +1163,13 @@ def main() -> int:
         print(f"فضای پیشرفت مشترک آماده نیست: {exc}", file=sys.stderr, flush=True)
 
     try:
-        _ensure_ollama()
+        ollama_warnings = _ensure_ollama()
+        unavailable_prerequisites.extend(ollama_warnings)
+        for warning in ollama_warnings:
+            print(warning, file=sys.stderr, flush=True)
     except (RuntimeError, OSError, urllib.error.URLError, subprocess.SubprocessError) as exc:
-        unavailable_prerequisites.append("Ollama")
-        print(f"Ollama آماده نیست: {exc}", file=sys.stderr, flush=True)
+        unavailable_prerequisites.append("Ollama runtime")
+        print(f"Ollama runtime آماده نیست: {type(exc).__name__}", file=sys.stderr, flush=True)
 
     if check_only:
         if unavailable_prerequisites:
@@ -1257,7 +1197,23 @@ def main() -> int:
     ]).returncode
 
 
+def _print_help() -> None:
+    print(
+        "Personal AI Assistant launcher\n"
+        "\n"
+        "Usage: python run.py [--dev] [--check-only] [--help]\n"
+        "\n"
+        "Options:\n"
+        "  --dev          Install development dependencies before startup.\n"
+        "  --check-only   Check prerequisites and exit without starting the web UI.\n"
+        "  -h, --help     Show this help without installing or starting anything.\n"
+    )
+
+
 if __name__ == "__main__":
+    if any(argument in {"-h", "--help"} for argument in sys.argv[1:]):
+        _print_help()
+        raise SystemExit(0)
     if sys.argv[1:2] == ["--download-ollama-asset"]:
         try:
             raise SystemExit(_download_ollama_asset_cli(sys.argv[2:]))

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import io
 import json
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
@@ -19,7 +19,12 @@ from app import main as main_module
 
 @pytest.fixture(autouse=True)
 def _stub_durable_pending_work_status(monkeypatch):
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+
+    @contextmanager
+    def fake_dispatch_admission_lock():
+        yield {"accepted": False, "last_accepted_at": 0.0}
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", fake_dispatch_admission_lock)
     monkeypatch.setattr(agent, "pending_work_status", lambda: {
         "available": True,
         "blocked": False,
@@ -33,6 +38,74 @@ def _stub_durable_pending_work_status(monkeypatch):
         "reason": None,
     })
 
+
+
+def test_dispatch_admission_context_uses_broker_reservation_and_commits_acceptance(monkeypatch):
+    from app import autonomous_engineering_dispatch_lock as dispatch_lock
+
+    calls = []
+    def fake_request(method, path, *, timeout_ms=3500, body=None):
+        calls.append((method, path, timeout_ms, body))
+        if path.endswith("/acquire"):
+            return {"acquired": True, "last_accepted_at": 0.0, "lease_seconds": 120}
+        return {"completed": True, "last_accepted_at": 1_800_000_000.0}
+
+    monkeypatch.setattr(dispatch_lock.state_broker, "request", fake_request)
+    with dispatch_lock.dispatch_admission_lock() as state:
+        assert state["accepted"] is False
+        state["accepted"] = True
+
+    assert [call[1] for call in calls] == [
+        "/v1/dispatch-admission/acquire",
+        "/v1/dispatch-admission/complete",
+    ]
+    assert calls[0][0] == calls[1][0] == "POST"
+    assert calls[0][3]["request_id"] == calls[1][3]["request_id"]
+    assert calls[1][3]["accepted"] is True
+    assert all(call[2] == 3500 for call in calls)
+
+
+def test_dispatch_admission_context_releases_unaccepted_reservation(monkeypatch):
+    from app import autonomous_engineering_dispatch_lock as dispatch_lock
+
+    calls = []
+    def fake_request(method, path, *, timeout_ms=3500, body=None):
+        calls.append((path, body))
+        return {"acquired": True} if path.endswith("/acquire") else {"completed": True}
+
+    monkeypatch.setattr(dispatch_lock.state_broker, "request", fake_request)
+    with pytest.raises(RuntimeError, match="intentional"):
+        with dispatch_lock.dispatch_admission_lock():
+            raise RuntimeError("intentional")
+    assert calls[-1][1]["accepted"] is False
+
+
+def test_dispatch_grace_window_is_shared_by_separate_requests(monkeypatch):
+    state = {"accepted": False}
+    calls = []
+    @contextmanager
+    def shared_lock():
+        if state["accepted"]:
+            raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
+        yield state
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: {
+        "ready": True, "paused": False,
+        "github": {"runs_available": True, "recent_runs": []},
+        "pending_work": {"available": True, "blocked": False, "checkpoint": {"available": False}},
+    })
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "[]", "")
+    ))
+    first = agent.dispatch_autonomous_engineering()
+    assert first["accepted"] is True
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+    assert sum(command[1:3] == ["workflow", "run"] for command in calls) == 1
 
 @pytest.mark.parametrize(
     ("status_code", "expected_code"),
@@ -184,8 +257,8 @@ def test_dispatch_uses_only_the_configured_workflow_and_main(monkeypatch):
     assert calls[1][1:] == [
         "workflow", "run", "autonomous-codex-engineering.yml",
         "--repo", "cognitive-kernel/Personal-AI-assistant", "--ref", "main",
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 
@@ -279,44 +352,142 @@ def test_pause_sets_durable_repository_variable(monkeypatch):
     ]
 
 
-def test_resume_clears_pause_and_dispatches_without_legacy_failure_counter(monkeypatch):
+def _paused_ready_snapshot(active_runs=None):
+    return {
+        "ready": True,
+        "paused": True,
+        "checks": {"durable_state_available": True},
+        "pending_work": {"available": True, "blocked": False, "checkpoint": {"available": False, "verified": True}},
+        "github": {"runs_available": True, "recent_runs": active_runs or []},
+    }
+
+
+def test_resume_uses_locked_dispatch_and_clears_pause_before_workflow_gate(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    monkeypatch.setattr(
-        agent, "_run",
-        lambda command, timeout=8, *, raise_os_error=False: (
-            calls.append((command, raise_os_error))
-            or subprocess.CompletedProcess(command, 0, "", "")
-        ),
-    )
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
 
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append((command, raise_os_error))
+        return subprocess.CompletedProcess(command, 0, "", "")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
     result = agent.resume_autonomous_engineering()
 
+    assert result["accepted"] is True
     assert result["paused"] is False
+    assert "در حالت زمان‌بندی‌شده این اجرا یک‌باره است" in result["message"]
     assert len(result["correlation_id"]) == 32
-    assert calls[1][0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
-    assert calls[2][0][1:3] == ["workflow", "run"]
-    assert "--field" in calls[2][0]
-    assert "correlation_id=" + result["correlation_id"] in calls[2][0]
-    assert calls[2][1] is True
+    workflow_call = next(call for call in calls if call[0][1:3] == ["workflow", "run"])
+    assert workflow_call[0].count("--raw-field") == 3
+    assert "correlation_id=" + result["correlation_id"] in workflow_call[0]
+    assert "manual_task=" in workflow_call[0]
+    assert "resume_once=true" in workflow_call[0]
+    assert workflow_call[1] is True
+    pause_update = next(call for call in calls if call[0][1:3] == ["variable", "set"])
+    assert pause_update[0][2:5] == ["set", "AUTONOMOUS_ENGINEERING_PAUSED", "--body"]
+    assert pause_update[0][5] == "false"
+    assert calls.index(pause_update) < calls.index(workflow_call)
     assert all("AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in call[0] for call in calls)
+
+
+def test_resume_unpauses_existing_active_run_without_dispatching_duplicate(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot([{"id": 999, "status": "in_progress"}]))
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    result = agent.resume_autonomous_engineering()
+    assert result["accepted"] is True
+    assert result["dispatch_status"] == "existing_run_active"
+    assert result["paused"] is False
+    assert not any(command[1:3] == ["workflow", "run"] for command in calls)
+    pause_update = next(command for command in calls if command[1:3] == ["variable", "set"])
+    assert pause_update[3:6] == ["AUTONOMOUS_ENGINEERING_PAUSED", "--body", "false"]
+
+
+def test_resume_rejects_unpaused_idle_queue_without_dispatch(monkeypatch):
+    snapshot = _paused_ready_snapshot()
+    snapshot["paused"] = False
+    monkeypatch.setattr(agent, "collect_status", lambda: snapshot)
+    monkeypatch.setattr(
+        agent, "_run",
+        lambda *args, **kwargs: pytest.fail("An idle, already-unpaused queue must not mutate GitHub or dispatch"),
+    )
+
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_NOT_PAUSED"
+    assert error.value.headers["X-Retryable"] == "false"
+
+
+def test_resume_lock_conflict_fails_before_github_or_pause_mutation(monkeypatch):
+    @contextmanager
+    def busy_lock():
+        raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
+        yield {"accepted": False}
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", busy_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("GitHub must not be called without admission"))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_RECENTLY_ACCEPTED"
+
+
+def test_resume_unexpected_preflight_error_fails_closed_without_pause_mutation(monkeypatch):
+    monkeypatch.setattr(agent, "collect_status", lambda: (_ for _ in ()).throw(RuntimeError("status unavailable")))
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("GitHub must not be called after failed preflight"))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 503
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_DISPATCH_PREFLIGHT_FAILED"
+    assert error.value.headers["X-Retryable"] == "false"
+
+
+def test_resume_acceptance_suppresses_following_manual_dispatch(monkeypatch):
+    state = {"accepted": False}
+    @contextmanager
+    def shared_lock():
+        if state["accepted"]:
+            raise agent.StateBrokerConflict("dispatch_admission_conflict", ["dispatch_reservation_active"])
+        yield state
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", shared_lock)
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    calls = []
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, "", "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+
+    resumed = agent.resume_autonomous_engineering()
+    assert resumed["accepted"] is True
+    assert state["accepted"] is True
+    with pytest.raises(HTTPException) as error:
+        agent.dispatch_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert sum(command[1:3] == ["workflow", "run"] for command in calls) == 1
 
 
 def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
     calls = []
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append((command, raise_os_error))
-        if command[1:3] == ["auth", "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["variable", "set"]:
+        if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         return None
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
     with pytest.raises(HTTPException) as error:
         agent.resume_autonomous_engineering()
 
@@ -325,21 +496,26 @@ def test_resume_dispatch_timeout_is_ambiguous_and_non_retryable(monkeypatch):
     assert error.value.headers["X-Retryable"] == "false"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
     assert "نامشخص" in error.value.detail
-    assert "تاریخچهٔ اجراها را بازخوانی کنید" in error.value.detail
+    assert "سوابق اجرا را بازخوانی کنید" in error.value.detail
     assert calls[-1][1] is True
+    pause_updates = [call[0] for call in calls if call[0][1:3] == ["variable", "set"]]
+    assert len(pause_updates) == 1
+    assert pause_updates[0][5] == "false"
 
 
 def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
 
+    calls = []
     def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
         if command[1:3] == ["auth", "status"] or command[1:3] == ["variable", "set"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         assert raise_os_error is True
         raise FileNotFoundError("gh executable disappeared")
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
     with pytest.raises(HTTPException) as error:
         agent.resume_autonomous_engineering()
 
@@ -347,6 +523,77 @@ def test_resume_dispatch_launch_failure_is_retryable(monkeypatch):
     assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
+    pause_updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in pause_updates] == ["false", "true"]
+
+
+def test_resume_pause_clear_ambiguity_rolls_back_before_any_dispatch(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "set"] and command[5] == "false":
+            return None
+        if command[1:3] == ["variable", "set"] and command[5] == "true":
+            return subprocess.CompletedProcess(command, 0, "", "")
+        pytest.fail("Workflow dispatch must not run until Pause=false is confirmed")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_STATE_UPDATE_FAILED"
+    updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in updates] == ["false", "true"]
+
+
+def test_resume_pause_clear_and_rollback_ambiguity_is_reported_explicitly(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] == ["auth", "status"]:
+            return subprocess.CompletedProcess(command, 0, "", "")
+        if command[1:3] == ["variable", "set"]:
+            return None
+        pytest.fail("Workflow dispatch must not run when Pause state is ambiguous")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_PAUSE_ROLLBACK_FAILED"
+    assert "فوراً بازخوانی کنید" in error.value.detail
+    assert len([command for command in calls if command[1:3] == ["variable", "set"]]) == 2
+
+
+def test_resume_definite_workflow_rejection_restores_pause(monkeypatch):
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    monkeypatch.setattr(agent, "collect_status", lambda: _paused_ready_snapshot())
+    calls = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False):
+        calls.append(command)
+        if command[1:3] in (["auth", "status"], ["variable", "set"]):
+            return subprocess.CompletedProcess(command, 0, "", "")
+        return subprocess.CompletedProcess(command, 1, "", "dispatch rejected")
+
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+
+    assert error.value.status_code == 502
+    assert error.value.headers["X-Error-Code"] == "WORKFLOW_RESUME_DISPATCH_FAILED"
+    pause_updates = [command for command in calls if command[1:3] == ["variable", "set"]]
+    assert [command[5] for command in pause_updates] == ["false", "true"]
 
 
 def test_autonomous_recovery_uses_the_durable_policy_module():
@@ -355,9 +602,11 @@ def test_autonomous_recovery_uses_the_durable_policy_module():
     policy = (root / "scripts" / "autonomous_engineering_recovery.py").read_text(encoding="utf-8")
 
     assert "workflow_run:" in recovery
-    assert "AUTONOMOUS_ENGINEERING_PAUSED" in recovery
+    assert "AUTONOMOUS_ENGINEERING_PAUSED" in policy
+    assert "PAUSED:" not in recovery
     assert "scripts/autonomous_engineering_recovery.py" in recovery
-    assert "EXECUTION_MODE:" in recovery
+    assert "EXECUTION_MODE:" not in recovery
+    assert "AUTONOMOUS_ENGINEERING_MODE" in policy
     assert "FAILED_RUN_ID:" in recovery
     assert "AUTONOMOUS_ENGINEERING_FAILURE_STREAK" not in policy
     assert "manual_task" in policy
@@ -585,7 +834,35 @@ def test_ollama_status_hides_generated_codex_context_variants_and_rejects_saved_
     assert "original Ollama model" in result["model_metadata_error"]
 
 
-def test_save_settings_rejects_generated_codex_context_variant_before_local_or_github_access(monkeypatch):
+def test_ollama_status_hides_run_scoped_codex_context_variants(monkeypatch):
+    model = "base-model:14b-codex-ctx65536-paa-123-2-a1b2c3d4e5f6"
+
+    class FakeOpener:
+        def open(self, request, timeout):
+            assert request.full_url == "http://127.0.0.1:11434/api/tags"
+            payload = (
+                '{"models":[{"name":"base-model:14b"},{"name":"' + model + '"}]}'
+            ).encode("utf-8")
+            return io.BytesIO(payload)
+
+    monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
+    result = agent._ollama_status(model)
+
+    assert result["online"] is True
+    assert result["model_installed"] is True
+    assert result["model_selectable"] is False
+    assert result["model_is_codex_context_variant"] is True
+    assert result["selectable_models"] == ["base-model:14b"]
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "base-model:14b-codex-ctx65536",
+        "base-model:14b-codex-ctx65536-paa-123-2-a1b2c3d4e5f6",
+    ],
+)
+def test_save_settings_rejects_generated_codex_context_variant_before_local_or_github_access(monkeypatch, model):
     def unexpected_model_lookup(model):
         raise AssertionError("Generated context variants must be rejected before Ollama access.")
 
@@ -595,7 +872,7 @@ def test_save_settings_rejects_generated_codex_context_variant_before_local_or_g
     with pytest.raises(HTTPException) as error:
         agent.save_autonomous_engineering_settings(
             agent.EngineeringSettings(
-                model="base-model:14b-codex-ctx65536",
+                model=model,
                 interval_hours=4,
                 execution_mode="continuous",
             )
@@ -1108,7 +1385,8 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "Omit justification, prefix_rule," in workflow
     assert "additional_permissions entirely" in workflow
     assert 'Never use "require_escalated"' in workflow
-    assert "scripts/autonomous_engineering_cycle.py run" in workflow
+    assert 'Join-Path $env:GITHUB_WORKSPACE "scripts\\autonomous_engineering_cycle.py"' in workflow
+    assert ') run --run-id' in workflow
     assert "contents: write" in workflow and "pull-requests: write" in workflow and "actions: write" in workflow
     assert "publish_pull_request" in cycle_controller and "dispatch_and_wait_all" in cycle_controller
     assert "save_pending_pr" in cycle_controller
@@ -1139,7 +1417,7 @@ def test_autonomous_engineering_progress_route_and_compact_dashboard_controls():
     assert "manual_task:" in workflow
     assert "inputs.manual_task" in workflow
     assert "pending-manual-task.txt" in workflow
-    assert "actions/variables" not in workflow
+    assert "scripts/autonomous_engineering_admission.py" in workflow
     assert "[string]$RunnerAccount" in acl_script
     assert "AppAccount" not in acl_script
     assert "ensure_autonomous_state_broker.ps1" in acl_script
@@ -1261,22 +1539,30 @@ def test_dispatch_forwards_manual_task_as_a_single_untrusted_field(monkeypatch):
     })
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
-    def fake_run(command, timeout=8, *, raise_os_error=False):
+    stdin_payloads = []
+
+    def fake_run(command, timeout=8, *, raise_os_error=False, input_text=None):
         calls.append(command)
         if command[1:2] == ["api"]:
             return subprocess.CompletedProcess(command, 0, "[]", "")
+        if input_text is not None:
+            stdin_payloads.append(input_text)
         return subprocess.CompletedProcess(command, 0, "", "")
 
     monkeypatch.setattr(agent, "_run", fake_run)
-    task = "بررسی Issue #52؛ عبارت ; gh secret list نباید اجرا شود"
+    task = r"بررسی فایل @C:\Users\ExampleUser\Desktop\spec.txt؛ عبارت ; gh secret list نباید اجرا شود"
 
     result = agent.dispatch_autonomous_engineering(agent.ManualTaskRequest(task=task))
 
     assert result["accepted"] is True
     assert len(result["correlation_id"]) == 32
-    assert calls[-1][-2:] == ["--field", "manual_task=" + task]
-    assert calls[-1][-4] == "--field"
-    assert calls[-1][-3] == "correlation_id=" + result["correlation_id"]
+    assert calls[-1][-1] == "--json"
+    assert task not in calls[-1]
+    assert len(stdin_payloads) == 1
+    assert json.loads(stdin_payloads[0]) == {
+        "correlation_id": result["correlation_id"],
+        "manual_task": task,
+    }
 
 
 def test_manual_task_rejects_null_byte_and_excessive_length():
@@ -1296,14 +1582,14 @@ def test_autonomous_cycle_requires_one_exact_completion_marker(tmp_path):
     assert cycle.task_marker(report) == "TASK_COMPLETE"
 
     report.write_text("Task evidence\n- `task_complete`.\n", encoding="utf-8")
-    assert cycle.task_marker(report) == "TASK_COMPLETE"
-
-    report.write_text("TASK_COMPLETE\nQUEUE_EMPTY\n", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="exactly one"):
+    with pytest.raises(RuntimeError, match="final non-empty report line"):
         cycle.task_marker(report)
 
-    report.write_text("TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="exactly one"):
+    report.write_text("- Example quote: TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
+    assert cycle.task_marker(report) == "TASK_COMPLETE"
+
+    report.write_text("TASK_COMPLETE\nAdditional prose after the marker\n", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="final non-empty report line"):
         cycle.task_marker(report)
 
 
@@ -1377,7 +1663,8 @@ def test_dispatch_rejects_safe_paused_state(monkeypatch):
     assert "توقف ایمن" in error.value.detail
 
 
-def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
+@pytest.mark.parametrize("active_status", ["queued", "suspended"])
+def test_github_snapshot_preserves_active_runs_outside_visible_history(monkeypatch, active_status):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
 
@@ -1394,7 +1681,7 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
     ]
     runs.append({
         "databaseId": 999,
-        "status": "queued",
+        "status": active_status,
         "conclusion": None,
         "createdAt": "2026-11-05T00:00:00Z",
         "url": "https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/999",
@@ -1417,43 +1704,137 @@ def test_github_snapshot_inspects_same_run_window_as_schedule_gate(monkeypatch):
     run_command = next(command for command in calls if command[1:3] == ["run", "list"])
     assert run_command[run_command.index("--limit") + 1] == "30"
     assert len(result["recent_runs"]) == 6
-    assert result["recent_runs"][-1]["status"] == "queued"
+    assert result["recent_runs"][-1]["status"] == active_status
 
 
-def test_cancel_finds_active_run_after_ten_newer_completed_runs(monkeypatch):
+def test_cancel_targets_only_the_run_id_confirmed_by_the_ui_snapshot(monkeypatch):
     calls = []
     monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    runs = [
-        {"databaseId": index + 1, "status": "completed"}
-        for index in range(30)
-    ]
-    runs[-1] = {"databaseId": 999, "status": "in_progress"}
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "id": 999,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    } if path == "actions/runs/999" else pytest.fail(f"Unexpected API path: {path}"))
 
     def fake_run(command, timeout=8, *, raise_os_error=False):
         calls.append(command)
         if command[1:3] == ["auth", "status"]:
             return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
         if command[1:3] == ["run", "view"]:
-            run_id = command[3]
-            state = "queued" if run_id == "222" else "in_progress"
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
-            )
+            return subprocess.CompletedProcess(command, 0, json.dumps({
+                "jobs": [{"name": "Codex", "status": "in_progress"}]
+            }), "")
         if command[1:3] == ["run", "cancel"]:
             return subprocess.CompletedProcess(command, 0, "", "")
         raise AssertionError(command)
 
     monkeypatch.setattr(agent, "_run", fake_run)
-
-    result = agent.cancel_autonomous_engineering()
-
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
     assert result["run_id"] == 999
-    list_command = next(command for command in calls if command[1:3] == ["run", "list"])
-    assert list_command[list_command.index("--limit") + 1] == "30"
     assert calls[-1][1:3] == ["run", "cancel"]
     assert calls[-1][3] == "999"
+
+
+def test_cancel_uses_same_local_mutation_lock_as_dispatch_and_resume(monkeypatch):
+    class BusyLock:
+        def acquire(self, blocking=False):
+            return False
+        def release(self):
+            pytest.fail("A lock not acquired must not be released")
+
+    monkeypatch.setattr(agent, "_DISPATCH_REQUEST_LOCK", BusyLock())
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: pytest.fail("GitHub must not be queried while mutation lock is busy"))
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1004))
+    assert error.value.status_code == 409
+    assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_CANCEL_IN_PROGRESS"
+
+
+def test_cancel_refuses_selected_run_without_active_codex_job(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda gh, path, timeout=15: {
+        "id": 1001,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    })
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "jobs": [{"name": "Codex", "status": "completed"}]
+        }), "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1001))
+    assert error.value.status_code == 409
+    assert not any(command[1:3] == ["run", "cancel"] for command in calls)
+
+
+def test_resume_preflight_failure_keeps_pause_enabled(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
+    snapshot = _paused_ready_snapshot()
+    snapshot["ready"] = False
+    monkeypatch.setattr(agent, "collect_status", lambda: snapshot)
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    with pytest.raises(HTTPException) as error:
+        agent.resume_autonomous_engineering()
+    assert error.value.status_code == 409
+    assert calls == []
+
+
+def test_cancel_fails_closed_when_selected_run_has_multiple_codex_jobs(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 1002,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "in_progress",
+    })
+    def fake_run(command, timeout=8, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({
+            "jobs": [
+                {"name": "Codex", "status": "in_progress"},
+                {"name": "Codex", "status": "queued"},
+            ]
+        }), "")
+    monkeypatch.setattr(agent, "_run", fake_run)
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1002))
+    assert error.value.status_code == 502
+    assert not any(command[1:3] == ["run", "cancel"] for command in calls)
+
+
+def test_cancel_can_cancel_the_exact_queued_snapshot_run(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 1003,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "queued",
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=1003))
+    assert result["run_id"] == 1003
+    assert calls[-1][1:4] == ["run", "cancel", "1003"]
+
+
+def test_cancel_rejects_snapshot_run_that_is_no_longer_active(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 999,
+        "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+        "status": "completed",
+    })
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("A completed run must not be cancelled"))
+    with pytest.raises(HTTPException) as error:
+        agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
+    assert error.value.status_code == 409
 
 
 def test_autonomous_workflows_fail_closed_when_ollama_runtime_context_is_below_codex_requirement():
@@ -1975,11 +2356,13 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     core = (static / "autonomous-engineering-core.js").read_text(encoding="utf-8")
     status = (static / "autonomous-engineering-status.js").read_text(encoding="utf-8")
     controls = (static / "autonomous-engineering-controls.js").read_text(encoding="utf-8")
+    runs = (static / "autonomous-engineering-runs.js").read_text(encoding="utf-8")
+    html = (static / "autonomous-engineering.html").read_text(encoding="utf-8")
     progress = (static / "autonomous-engineering-progress.js").read_text(encoding="utf-8")
 
     assert "new AbortController()" in core
     assert 'const defaultTimeoutMs = path === "status" ? 40000' in core
-    assert "requestedTimeoutMs > 120000" in core
+    assert "requestedTimeoutMs > 300000" in core
     assert "const timeoutMs = requestedTimeoutMs === undefined ? defaultTimeoutMs : requestedTimeoutMs" in core
     assert 'path.startsWith("progress") ? 20000 : 120000' in core
     assert "timeoutError.ambiguous = true" in core
@@ -2010,7 +2393,26 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert "refresh: () => progress.refresh()" in orchestrator
     assert "core.startPolling({" in orchestrator
     assert "window.setTimeout(refresh, 2500)" not in orchestrator + status + controls
+    assert "statusMutationRefreshPromise" in status
     assert "dispatchButton.disabled = false" not in controls
+    assert 'await response.text()' in core
+    assert 'try { payload = await response.json(); } catch (_) {}' not in core
+    assert 'setStatusMessage(paused ?' in status
+    assert 'setMessage(data.paused ?' not in status
+    assert 'addEventListener("click", () => refresh())' in status
+    assert "cancelButton.disabled = true" not in status
+    assert 'getActiveRunId: () => lastActiveRunId' in status
+    assert 'JSON.stringify({run_id: runId})' in controls
+    assert 'if (error.ambiguous || (error.status >= 500 && !error.retryable))' in controls
+    assert 'host.replaceChildren();' not in runs[:runs.index('let runsRequestSequence')]
+    assert 'const existing = new Map(' in runs
+    assert 'if (!panel.isConnected || item.dataset.runId !== runId) return;' in runs
+    assert 'result.cleaned === true ? "success" : "error"' in runs
+    assert 'updatedAtValid' in progress
+    assert 'window.addEventListener("autonomous-engineering:cleanup-completed", () => { void refreshProgress({queueIfBusy: true}); });' in progress
+    assert '[1, 2, 4, 6, 12, 24].includes(Number(data.interval_hours))' in status
+    assert 'agent-status-message' in html
+    assert "." + chr(92) * 2 + "scripts" + chr(92) * 2 + "provision_autonomous_runner.ps1" not in html
 
 
 def test_autonomous_run_administration_routes_are_registered():
@@ -2023,13 +2425,20 @@ def test_autonomous_run_administration_routes_are_registered():
 
 def test_workflow_log_sanitizer_redacts_common_credentials():
     source = (
-        "Authorization: Bearer bearer-secret-value\\n"
-        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\\n"
-        "password=hunter2 api_key=secret-value\\n"
+        "Authorization: Bearer bearer-secret-value\n"
+        "Authorization: Basic dXNlcjpwYXNzd29yZA==\n"
+        "github_pat_0123456789abcdefghijklmnopqrstuvwxyz\n"
+        "sk-proj-0123456789abcdefghijklmnopqrstuv\n"
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken\n"
+        "password=hunter2 api_key=secret-value\n"
     )
     result = agent._sanitize_workflow_log(source)
     assert "bearer-secret-value" not in result
+    assert "dXNlcjpwYXNzd29yZA==" not in result
     assert "github_pat_0123456789abcdefghijklmnopqrstuvwxyz" not in result
+    assert "sk-proj-0123456789abcdefghijklmnopqrstuv" not in result
+    assert "eyJhbGciOiJIUzI1NiJ9" not in result
+    assert "signaturelongtoken" not in result
     assert "hunter2" not in result
     assert "secret-value" not in result
     assert "[REDACTED]" in result
@@ -2060,6 +2469,30 @@ def test_workflow_run_list_uses_fixed_server_selected_limit(monkeypatch):
     assert runs[0]["workflow_path"] == ".github/workflows/autonomous-codex-engineering.yml"
 
 
+def test_workflow_run_list_reads_diagnostics_only_for_failed_runs_and_caches_polls(monkeypatch):
+    monkeypatch.setattr(agent, "_RUN_DIAGNOSTICS_CACHE", {})
+    diagnostic_reads = []
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "workflow_runs": [
+            {"id": 1, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "in_progress"},
+            {"id": 2, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "completed", "conclusion": "success"},
+            {"id": 3, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main", "status": "completed", "conclusion": "failure"},
+        ]
+    })
+    monkeypatch.setattr(agent, "_read_run_diagnostics", lambda run_id: (
+        diagnostic_reads.append(run_id) or {"diagnostics": [{"summary": "root cause"}]}
+    ))
+    runs = agent._workflow_runs("gh")
+    second_poll = agent._workflow_runs("gh")
+    assert [run["id"] for run in runs] == [1, 2, 3]
+    assert [run["id"] for run in second_poll] == [1, 2, 3]
+    assert diagnostic_reads == [3]
+    assert runs[0]["failure_summary"] is None
+    assert runs[1]["failure_summary"] is None
+    assert runs[2]["failure_summary"] == "root cause"
+    assert second_poll[2]["failure_summary"] == "root cause"
+
+
 def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
@@ -2070,12 +2503,22 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
     def api_json(gh, path, timeout=15):
         api_paths.append(path)
-        return {
-            "jobs": [{
-                "name": "codex", "status": "completed", "conclusion": "failure",
-                "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
-            }]
-        }
+        if path == "actions/runs/123":
+            return {
+                "id": 123,
+                "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+                "status": "completed",
+                "conclusion": "failure",
+                "html_url": "https://github.com/example/run/123",
+            }
+        if path == "actions/runs/123/jobs?per_page=100":
+            return {
+                "jobs": [{
+                    "name": "codex", "status": "completed", "conclusion": "failure",
+                    "steps": [{"name": "Install dependencies", "conclusion": "failure"}],
+                }]
+            }
+        raise AssertionError(path)
 
     commands = []
     monkeypatch.setattr(agent, "_github_api_json", api_json)
@@ -2087,7 +2530,7 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
     result = agent.autonomous_engineering_run_logs(123)
 
-    assert api_paths == ["actions/runs/123/jobs?per_page=100"]
+    assert api_paths == ["actions/runs/123", "actions/runs/123/jobs?per_page=100"]
     assert commands[0][1:] == ["run", "view", "123", "--log", "--repo", agent._repository()]
     assert result["run"]["id"] == 123
     assert result["run"]["url"] == "https://github.com/example/run/123"
@@ -2101,20 +2544,44 @@ def test_run_logs_include_failed_job_and_step_reasons(monkeypatch):
 
 def test_verified_workflow_run_rejects_invalid_ids_before_lookup(monkeypatch):
     calls = []
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: calls.append(gh) or [])
-
-    for invalid_id in (0, -1, True):
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: calls.append(args) or {})
+    for invalid_id in (0, -1, True, "123", 10**20):
         with pytest.raises(HTTPException) as error:
             agent._verified_workflow_run("gh", invalid_id)
         assert error.value.status_code == 422
-
     assert calls == []
 
 
+def test_verified_workflow_run_rejects_noncanonical_api_ids(monkeypatch):
+    for api_id in (True, 0, -1, "123", 124):
+        monkeypatch.setattr(agent, "_github_api_json", lambda *args, api_id=api_id, **kwargs: {
+            "id": api_id,
+            "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
+            "status": "queued",
+        })
+        with pytest.raises(HTTPException) as error:
+            agent._verified_workflow_run("gh", 123)
+        assert error.value.status_code == 404
+
+
+def test_cancel_uses_only_the_verified_api_run_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_verified_workflow_run", lambda gh, run_id: {
+        "id": 777, "status": "queued",
+    })
+    monkeypatch.setattr(agent, "_run", lambda command, timeout=8, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "", "")
+    ))
+    result = agent.cancel_autonomous_engineering(agent.CancelRequest(run_id=999))
+    assert result["run_id"] == 777
+    assert calls[-1][1:4] == ["run", "cancel", "777"]
+
+
 def test_run_logs_reject_non_agent_workflow(monkeypatch):
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/another.yml",
-    }])
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/another.yml@refs/heads/main", "status": "completed",
+    })
     with pytest.raises(HTTPException) as error:
         agent._verified_workflow_run("gh", 123)
     assert error.value.status_code == 404
@@ -2122,10 +2589,10 @@ def test_run_logs_reject_non_agent_workflow(monkeypatch):
 
 def test_delete_run_refuses_active_workflow_run(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
         "status": "in_progress",
-    }])
+    })
     calls = []
     monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: calls.append(args) or None)
 
@@ -2138,10 +2605,10 @@ def test_delete_run_refuses_active_workflow_run(monkeypatch):
 
 def test_delete_completed_run_calls_workflow_run_delete_api(monkeypatch):
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
-    monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [{
-        "id": 123, "workflow_path": ".github/workflows/autonomous-codex-engineering.yml",
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "id": 123, "path": ".github/workflows/autonomous-codex-engineering.yml@refs/heads/main",
         "status": "completed",
-    }])
+    })
     calls = []
     monkeypatch.setattr(agent, "_run", lambda command, timeout=8: calls.append(command) or subprocess.CompletedProcess(
         command, 0, "", ""
@@ -2175,15 +2642,31 @@ def test_cleanup_removes_only_ephemeral_progress_files_and_preserves_durable_sta
     result = agent.cleanup_autonomous_engineering_temporary_data()
 
     assert result["cleaned"] is True
-    assert result["files_removed"] == 5
-    assert not (tmp_path / "events.jsonl").exists()
-    assert not (tmp_path / "current.json").exists()
+    assert result["files_removed"] == 3
+    assert (tmp_path / "events.jsonl").is_file()
+    assert (tmp_path / "current.json").is_file()
+    assert {"current.json", "events.jsonl"} <= set(result["preserved"])
     assert not (runtime_dir / ".agent-request.json").exists()
     assert not (runtime_dir / ".agent-github-state.json").exists()
     assert not (runtime_dir / ".agent-progress.json").exists()
     assert (tmp_path / "history.jsonl").is_file()
     assert (tmp_path / "scorecard-baseline.json").is_file()
     assert (tmp_path / "worktree-checkpoint-123-1.patch").is_file()
+
+
+def test_cleanup_failure_paths_are_reduced_to_logical_filenames(monkeypatch):
+    monkeypatch.setattr(agent, "_is_windows", lambda: True)
+    monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: {
+        "cleaned": False,
+        "files_removed": 0,
+        "bytes_removed": 0,
+        "failed_files": [r"C:\\Users\\ExampleUser\\AppData\\Local\\state\\events.jsonl"],
+        "preserved": [],
+    })
+    result = agent._cleanup_autonomous_engineering_temporary_data_locked()
+    assert result["cleaned"] is False
+    assert result["failed_files"] == ["events.jsonl"]
+    assert "ExampleUser" not in json.dumps(result)
 
 
 def test_cleanup_refuses_active_run_or_pending_task(monkeypatch, tmp_path):
@@ -2404,7 +2887,7 @@ def test_empty_dispatch_resumes_verified_checkpoint(monkeypatch):
 
     assert result["accepted"] is True
     assert result["manual_task_submitted"] is False
-    assert calls[-1][-2:] == ["--field", "manual_task="]
+    assert calls[-1][-2:] == ["--raw-field", "manual_task="]
 
 
 def test_dispatch_fails_closed_when_checkpoint_integrity_is_unverified(monkeypatch):
@@ -2483,7 +2966,8 @@ def test_dispatch_launch_error_is_definitive_and_retryable(monkeypatch):
     assert error.value.headers["X-Error-Code"] == "WORKFLOW_DISPATCH_LAUNCH_FAILED"
     assert error.value.headers["X-Retryable"] == "true"
     assert error.value.headers["X-Correlation-ID"] in error.value.detail
-    assert "می‌توانید دوباره تلاش کنید" in error.value.detail
+    assert "شناسهٔ پیگیری" in error.value.detail
+    assert error.value.headers["X-Retryable"] == "true"
     assert "ممکن است GitHub درخواست را دریافت کرده باشد" not in error.value.detail
 
 def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(monkeypatch):
@@ -2515,7 +2999,6 @@ def test_dispatch_timeout_reports_ambiguous_outcome_without_encouraging_retry(mo
 def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatch):
     correlation_id = "d" * 32
     calls = []
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
         "github": {"runs_available": True, "recent_runs": []},
@@ -2538,8 +3021,8 @@ def test_successful_dispatch_correlates_ui_request_and_workflow_input(monkeypatc
     assert response.headers["X-Correlation-ID"] == correlation_id
     assert response.json()["correlation_id"] == correlation_id
     assert calls[-1][-4:] == [
-        "--field", "correlation_id=" + correlation_id,
-        "--field", "manual_task=",
+        "--raw-field", "correlation_id=" + correlation_id,
+        "--raw-field", "manual_task=",
     ]
 
 
@@ -2572,7 +3055,6 @@ def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
     monkeypatch.setattr(agent, "_workflow_runs", lambda gh: [])
     if agent._is_windows():
         from app.autonomous_engineering_state_broker import StateBrokerConflict
-
         monkeypatch.setattr(
             agent,
             "cleanup_shared_progress_data",
@@ -2603,33 +3085,31 @@ def test_cleanup_refuses_when_repository_execution_lock_is_owned(monkeypatch):
     assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
 
 
-def test_cleanup_rechecks_active_workflow_after_acquiring_repository_lock(monkeypatch):
+def test_cleanup_windows_checks_live_github_workflows_before_broker_recovery(monkeypatch):
     calls = {"runs": 0, "cleanup": 0}
     monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
 
-    def workflow_runs(gh):
-        calls["runs"] += 1
-        return [] if calls["runs"] == 1 else [{"status": "in_progress"}]
-
-    monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
-    monkeypatch.setattr(agent, "repository_execution_lock", lambda *args, **kwargs: nullcontext())
-
-    def cleanup():
-        calls["cleanup"] += 1
-        return {"cleaned": True}
-
-    monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", cleanup)
-
-    response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post(
-        "/api/autonomous-engineering/cleanup",
-    )
-
     if agent._is_windows():
-        assert response.status_code == 200
-        assert calls == {"runs": 1, "cleanup": 1}
-    else:
+        monkeypatch.setattr(agent, "_workflow_runs", lambda gh: (
+            calls.__setitem__("runs", calls["runs"] + 1) or [{"status": "in_progress"}]
+        ))
+        monkeypatch.setattr(agent, "cleanup_shared_progress_data", lambda: (
+            calls.__setitem__("cleanup", calls["cleanup"] + 1) or {"cleaned": True}
+        ))
+        response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post("/api/autonomous-engineering/cleanup")
         assert response.status_code == 409
-        assert response.json()["code"] == "AUTONOMOUS_ENGINEERING_CONFLICT"
+        assert calls == {"runs": 1, "cleanup": 0}
+    else:
+        monkeypatch.setattr(agent, "repository_execution_lock", lambda *args, **kwargs: nullcontext())
+        def workflow_runs(gh):
+            calls["runs"] += 1
+            return [] if calls["runs"] == 1 else [{"status": "in_progress"}]
+        monkeypatch.setattr(agent, "_workflow_runs", workflow_runs)
+        monkeypatch.setattr(agent, "_cleanup_autonomous_engineering_temporary_data_locked", lambda: (
+            calls.__setitem__("cleanup", calls["cleanup"] + 1) or {"cleaned": True}
+        ))
+        response = TestClient(main_module.app, client=("127.0.0.1", 12345)).post("/api/autonomous-engineering/cleanup")
+        assert response.status_code == 409
         assert calls == {"runs": 2, "cleanup": 0}
 
 def test_windows_cleanup_delegates_locking_to_broker_without_client_self_lock(monkeypatch):
@@ -2714,114 +3194,172 @@ def test_posix_cleanup_lock_order_is_repository_then_state_then_checkpoint(monke
     assert calls == ["repository", "durable-state", "checkpoint"]
 
 
-def test_cancel_prefers_running_workflow_over_a_newer_queued_run(monkeypatch):
-    calls = []
-    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    # gh run list is newest-first: the queued run is newer than the active run.
-    runs = [
-        {"databaseId": 222, "status": "queued"},
-        {"databaseId": 111, "status": "in_progress"},
+
+
+def test_schedule_gate_suppresses_cross_process_duplicate_workflow_dispatches():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    schedule_gate = workflow[
+        workflow.index("  schedule-gate:") : workflow.index("\n  codex:")
     ]
 
-    def fake_run(command, timeout=8, *, raise_os_error=False):
-        calls.append(command)
-        if command[1:3] == ["auth", "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        if command[1:3] == ["run", "view"]:
-            run_id = command[3]
-            state = "queued" if run_id == "222" else "in_progress"
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
-            )
-        if command[1:3] == ["run", "cancel"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        raise AssertionError(command)
+    assert "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=30" in schedule_gate
+    assert "int(run.get(\"id\", 0)) != current_id" in schedule_gate
+    assert 'run.get("status") in {"queued", "in_progress", "waiting", "requested", "pending"}' in schedule_gate
+    assert 'if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]' in schedule_gate
+    assert "no durable state was changed" in schedule_gate
+    assert "Another autonomous run is already active or queued" in schedule_gate
+    codex_job = workflow[workflow.index("  codex:") :]
+    assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
+    assert "cancel-in-progress: false" in codex_job
 
-    monkeypatch.setattr(agent, "_run", fake_run)
+def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admission():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    assert "AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT:" in workflow
+    start = workflow.index("- name: Recheck live Pause and execution mode after concurrency admission")
+    end = workflow.index("- name: Provision verified GitHub CLI for this Runner job", start)
+    persistence = workflow.index("- name: Persist manual task under the controller's runner and concurrency ownership")
+    gate = workflow[start:persistence]
+    concurrency = workflow.index("group: autonomous-local-engineering-${{ github.repository }}")
+    assert concurrency < start < persistence < end
+    assert "shell: python {0}" in gate
+    assert "scripts/autonomous_engineering_admission.py" in gate
+    assert 'VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}' in gate
+    assert 'GH_TOKEN: ${{ github.token }}' not in gate
+    assert "MANUAL_TASK:" in gate and "EVENT_NAME:" in gate
+    assert "RESUME_ONCE:" in gate and "RECOVERY_ATTEMPT:" in gate
 
-    result = agent.cancel_autonomous_engineering()
+    gated_steps = (
+        "Persist manual task under the controller's runner and concurrency ownership",
+        "Prepare Runner virtual environment and install runtime dependencies",
+        "Initialize live progress before prerequisite checks",
+        "Snapshot accepted scorecard from trusted main",
+        "Capture live GitHub state with the read-only workflow token",
+        "Provision verified GitHub CLI for this Runner job",
+        "Ensure Codex CLI is installed for the Runner service account",
+        "Verify local Ollama and Codex prerequisites",
+        "Verify the selected model's allocated Ollama context",
+        "Verify Ollama and a real workspace-confined Codex tool call",
+        "Install project dependencies for local test execution",
+        "Prepare bounded engineering instructions",
+    )
+    for step_name in gated_steps:
+        step_start = workflow.index("- name: " + step_name)
+        next_step = workflow.find("\n      - name:", step_start + 1)
+        step_body = workflow[step_start:next_step if next_step >= 0 else len(workflow)]
+        assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in step_body
 
-    assert result["run_id"] == 111
-    assert calls[-1][1:3] == ["run", "cancel"]
-    assert calls[-1][3] == "111"
+    verify_start = workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)
+    verify_end = workflow.index("- name: Unload and remove this run's temporary Ollama context model", verify_start)
+    verify_step = workflow[verify_start:verify_end]
+    assert "-VerifyOnly" in verify_step
+    assert "steps.execute.outcome == 'success'" in verify_step
+    execute_step = workflow[end:verify_start]
+    assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}" in execute_step
+    assert "github.ref == 'refs/heads/main'" in workflow
+    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in execute_step
+    cycle_policy = (
+        Path(__file__).resolve().parents[1]
+        / "scripts" / "autonomous_engineering_cycle.py"
+    ).read_text(encoding="utf-8")
+    assert 'os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")' in cycle_policy
+    run_cycle_start = cycle_policy.index("def run_cycle(")
+    assert cycle_policy.index('os.environ.pop("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "")', run_cycle_start) < cycle_policy.index("result = run(", run_cycle_start)
+    assert "_live_pause_enabled(settings_token, repo)" in cycle_policy
+    assert "_live_execution_mode(settings_token, repo)" in cycle_policy
+    assert "def _settings_api(" in cycle_policy
+    assert 'return api(settings_token, repo, "GET", path)' in cycle_policy
 
 
-def test_cancel_falls_back_to_queued_run_when_no_run_is_in_progress(monkeypatch):
+def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
+    workflow = (
+        Path(__file__).resolve().parents[1]
+        / ".github" / "workflows" / "autonomous-codex-engineering.yml"
+    ).read_text(encoding="utf-8")
+    gate_start = workflow.index("- name: Apply the configured daily execution frequency")
+    gate_end = workflow.index("\n  codex:", gate_start)
+    schedule_gate = workflow[gate_start:gate_end]
+
+    assert "RESUME_ONCE: ${{ inputs.resume_once || false }}" in schedule_gate
+    assert 'if [[ "$PAUSED" == "true" ]]; then' in schedule_gate
+    assert 'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then' in schedule_gate
+    assert "bypasses only the stale workflow-context Pause snapshot" in schedule_gate
+    assert "live gate after concurrency admission remains authoritative" in schedule_gate
+    assert "A manual task was not accepted because autonomous engineering is paused" in schedule_gate
+
+    live_gate = workflow.index("Recheck live Pause and execution mode after concurrency admission")
+    assert gate_start < live_gate
+    assert "scripts/autonomous_engineering_admission.py" in workflow[live_gate:]
+    assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in workflow[live_gate:]
+
+
+
+@pytest.mark.parametrize("path", [
+    "actions/runs/1/../2",
+    "actions/runs/001",
+    "actions/runs/-1",
+    "actions/runs/123?unexpected=true",
+    "actions/runs/123/jobs?per_page=10",
+    "actions/runs/123\n",
+    "actions/runs/123456789012345678901",
+    "actions/workflows/other.yml/runs?per_page=100",
+])
+def test_github_api_adapter_rejects_unapproved_paths_before_subprocess(monkeypatch, path):
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("Invalid endpoint reached subprocess"))
+    with pytest.raises(HTTPException) as error:
+        agent._github_api_json("gh", path)
+    assert error.value.status_code == 422
+
+
+@pytest.mark.parametrize("path", [
+    "actions/runs/123",
+    "actions/runs/123/jobs?per_page=100",
+    "actions/workflows/autonomous-codex-engineering.yml/runs?per_page=100",
+])
+def test_github_api_adapter_constructs_only_canonical_endpoints(monkeypatch, path):
     calls = []
-    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    runs = [
-        {"databaseId": 333, "status": "queued"},
-        {"databaseId": 222, "status": "waiting"},
-    ]
-
-    def fake_run(command, timeout=8, *, raise_os_error=False):
-        calls.append(command)
-        if command[1:3] == ["auth", "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        if command[1:3] == ["run", "cancel"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        raise AssertionError(command)
-
-    monkeypatch.setattr(agent, "_run", fake_run)
-
-    result = agent.cancel_autonomous_engineering()
-
-    assert result["run_id"] == 333
-    assert not any(command[1:3] == ["run", "view"] for command in calls)
-    assert calls[-1][3] == "333"
+    monkeypatch.setattr(agent, "_repository", lambda: "owner/repo")
+    monkeypatch.setattr(agent, "_run", lambda command, **kwargs: (
+        calls.append(command) or subprocess.CompletedProcess(command, 0, "{}", "")
+    ))
+    assert agent._github_api_json("gh", path) == {}
+    assert calls == [["gh", "api", "repos/owner/repo/" + path]]
 
 
-def test_cancel_inspects_codex_job_when_newer_workflow_run_is_only_at_schedule_gate(monkeypatch):
+
+def test_pause_refuses_concurrent_local_control_mutation(monkeypatch):
+    from threading import Lock
+    lock = Lock()
+    lock.acquire()
+    monkeypatch.setattr(agent, "_DISPATCH_REQUEST_LOCK", lock)
+    monkeypatch.setattr(agent, "_run", lambda *a, **k: pytest.fail("Pause must not mutate during another local control operation"))
+    try:
+        with pytest.raises(HTTPException) as error:
+            agent.pause_autonomous_engineering()
+        assert error.value.status_code == 409
+        assert error.value.headers["X-Error-Code"] == "AUTONOMOUS_PAUSE_IN_PROGRESS"
+    finally:
+        lock.release()
+
+
+def test_settings_reject_malformed_rollback_snapshot_before_any_write():
+    from app.autonomous_engineering_services import save_repository_variables
+
     calls = []
-    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    runs = [
-        {"databaseId": 222, "status": "in_progress"},
-        {"databaseId": 111, "status": "in_progress"},
-    ]
 
-    def fake_run(command, timeout=8, *, raise_os_error=False):
+    def run_command(command, **kwargs):
         calls.append(command)
-        if command[1:3] == ["auth", "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        if command[1:3] == ["run", "view"]:
-            run_id = command[3]
-            state = "queued" if run_id == "222" else "in_progress"
-            return subprocess.CompletedProcess(
-                command, 0, json.dumps({"jobs": [{"name": "codex", "status": state}]}), ""
-            )
-        if command[1:3] == ["run", "cancel"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        raise AssertionError(command)
-
-    monkeypatch.setattr(agent, "_run", fake_run)
-
-    result = agent.cancel_autonomous_engineering()
-
-    assert result["run_id"] == 111
-    assert [command[3] for command in calls if command[1:3] == ["run", "view"]] == ["222", "111"]
-    assert calls[-1][3] == "111"
-
-
-def test_cancel_fails_closed_when_too_many_workflow_runs_are_in_progress(monkeypatch):
-    monkeypatch.setattr(agent.shutil, "which", lambda _: "gh")
-    runs = [{"databaseId": index + 1, "status": "in_progress"} for index in range(6)]
-
-    def fake_run(command, timeout=8, *, raise_os_error=False):
-        if command[1:3] == ["auth", "status"]:
-            return subprocess.CompletedProcess(command, 0, "", "")
-        if command[1:3] == ["run", "list"]:
-            return subprocess.CompletedProcess(command, 0, json.dumps(runs), "")
-        raise AssertionError("Job inspection and cancellation must not start beyond the bound.")
-
-    monkeypatch.setattr(agent, "_run", fake_run)
+        return subprocess.CompletedProcess(command, 0, stdout='[{"name":"AUTONOMOUS_ENGINEERING_MODE"}]')
 
     with pytest.raises(HTTPException) as error:
-        agent.cancel_autonomous_engineering()
-
-    assert error.value.status_code == 409
+        save_repository_variables(
+            "gh", (("AUTONOMOUS_ENGINEERING_MODE", "scheduled"),),
+            run_command=run_command, repository="owner/repo",
+        )
+    assert error.value.status_code == 502
+    assert [command[:3] for command in calls] == [["gh", "variable", "list"]]

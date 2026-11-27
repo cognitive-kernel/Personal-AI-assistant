@@ -1,24 +1,146 @@
-## 2026-11-24 — ممیزی زنده و اولویت عملیاتی UI مهندسی
+## 2026-11-26 — PR #882 consolidated engineering remediation (in progress)
 
-- مبنای بررسی زنده main: `8a879d0962b00897744e114ff7297e5c6228ff1d`.
-- 10 check از 11 check روی همین SHA موفق‌اند؛ job `codex` در workflow run شمارهٔ 375 با شناسهٔ `45413836616` هنوز queued بود. این اجرای زنده دست‌نخورده باقی می‌ماند.
-- PRهای باز زنجیره‌ای‌اند: #863 و #866 روی base قدیمی `3d1e843...`؛ #869 بر #863؛ #870 بر #866؛ #872 بر #870. headهای #863/#866/#869/#870 در زمان ممیزی check-run نداشتند. #872 با head `476bcdc76c777457131224c017ea48520fe1ccee` هشت check موفق دارد، اما 3 commit از main عقب و روی زنجیرهٔ stacked قرار دارد؛ CI سبز آن مجوز ادغام مستقیم نیست.
-- صفحهٔ `/autonomous-engineering`، 7 فایل UI تخصصی، 13 API route و 21 تست browser با نام Autonomous Engineering در main شناسایی شدند. فهرست controlها، endpointها، state ownership، شواهد CI و گیت‌های باز در [ممیزی زندهٔ UI](UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md) ثبت شده است.
-- اولویت اجرای بعدی فقط تکمیل همین ماژول است: ابتدا حل امن dependency graph و انتقال PRهای موجود، سپس تثبیت state/recovery، سپس browser/fault E2E و در پایان پذیرش واقعی Windows با Ollama/Codex/Runner. توسعهٔ قابلیت جدید در سایر ماژول‌ها متوقف می‌ماند.
-- مالک تأیید کرده مدل مهندسی `gpt-oss:20b` است. مقدار واقعی repository variable و inventory کامل مدل‌های نصب‌شده هنوز از میزبان قابل تأیید نیست؛ هیچ مدل یا مسیر کاری خودکار تغییر نمی‌کند.
-- هیچ PR، branch، workflow run، task، checkpoint، Runner یا دادهٔ durable حذف/لغو/بازنویسی نشده است.
+- All changes are on `fix/engineering-consolidated-20261126`; PR #882 is draft. No merge, local host operation, service removal, repository variable change, or state activation was performed.
+- Backend façade split into control, readiness, run operations, state store and task owner/lifecycle modules. Compatibility façades remain; complete import/architecture isolation is not yet accepted.
+- Native transport is opt-in. Native remote dispatch is deliberately blocked pending replacement of the service-based Runner lifecycle and remaining PowerShell workflow stages.
+- Native recovery reconciles exact run/attempt and process ownership under shared locks. Migration creates a hash-verified staged copy only; the existing authority is not switched. A staged marker prevents accidental live use. Full crash/restart and real-host recovery acceptance remain open.
+- GitHub CLI acquisition now uses scoped Python download, official release checksum verification, exact archive-member extraction, and executable/capability checks. Windows x64 automatic acquisition is scoped to this capability; Codex, Ollama, Python and Runner end-to-end provisioning and UI coverage remain incomplete.
+- Security: legacy POSIX broker socket restricted to owner/group and authenticated peer UID, installed package restricted to owner/group. CodeQL still reported two new high-severity permission findings on 873a11ec72bf8e350b13b2c012ec25ca98f3190f. Do not dismiss or mark resolved; exact-head analysis and least-privilege legacy design review are required. Intermediate Linux/browser/dependency checks passed, but final Windows/full CI and comprehensive UI scenarios remain open.
+- Prior active-PR descriptions below are historical. Current evidence is PR #882 and its exact-head checks. Do not increase completion score or claim Gate A–J complete. No reliable labor-hour measurement was collected.
+
+## 2026-11-26 — dependency policy made mandatory
+
+- Both master prompts now require application/native implementations first and treat external tools/shells/services/package managers as capability-scoped exceptions only.
+- PowerShell is prohibited in ordinary startup, Broker, state/lock, and process-inspection paths when application/native alternatives exist. Any exception requires proof or explicit owner approval for that exact capability.
+- Approved missing/incompatible prerequisites must be fetched from official sources, integrity-checked, installed in app/job scope, verified, cached, and retried automatically when authorized. No silent system-wide mutation or privilege escalation is allowed.
+- Mandatory tests now include native/no-tool operation, clean/missing/incompatible prerequisites, supply-chain verification failures, partial installs, offline/permission failures, cache/concurrency/retry, and feature isolation.
+- Source prompt commits: UI bdddae3cb55398ea72d4e60c09a739660b7dc5c2, master fe21ebb45ef0eaae120e907ba0a208a50f0af234. Active PR branch prompt commits: UI 2b72ec46b678d40bf274eb69953a28ddb92ff4e4, master 5ad5b5575631fb04614fe589e15bea78f0ca1505.
+- Implementation gap remains: current Broker/service and PowerShell provisioning code has not yet been removed. Treat it as non-conforming until replaced or covered by a narrow, documented, explicitly approved exception. No local host state was changed.
+
+---
+## 2026-11-26 — stale-run recovery integrated; native Runner architecture pending
+
+- The Windows Broker cleanup path now distinguishes stale progress from a live execution using the exact run ID/attempt, host, owner token, PID, process creation time, and independent repository/checkpoint locks.
+- A stopped non-terminal run transitions to `interrupted` with a recovery event. Verified checkpoints, current progress, event history, history records, and pending markers are preserved; cleanup only removes temporary files.
+- Progress writers now coordinate through the durable-state lock. Dashboard responses omit the internal owner token.
+- Python unit tests and Windows live-service integration tests have been added. Exact-head CI is running; no green result or Windows target-host acceptance is claimed yet.
+- **Still open:** remove the mandatory Windows Broker Service, PowerShell provisioning/communication, machine-wide state root, and service-account/group/ACL requirements. The proposed replacement uses a service-free, user-session Runner with native cross-platform locks. Its scheduling trade-off requires confirmation before changing Runner registration and workflow labels.
+- No local service, Runner, ACL, account/group, checkpoint, pending task, model, or user host state has been modified. PR #879 remains Draft.
 
 ---
 
-## 2026-11-24 — snapshot زنده و اصلاح race در UI ماژول مهندسی
+## 2026-11-26 — native state ownership and recovery work in progress
 
-- مبنای main با PR #863 تأیید شد: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
-- PR #863 با عنوان اصلاح portability مربوط به Windows State Broker باز و Draft است؛ آخرین head مشاهده‌شده `5a4c5a37acc45b63d0cf00e7b1102a4c4ff66226` در حال اجرای Browser E2E، CodeQL و dependency audit بود. این runها به‌عنوان نتیجهٔ موفق تلقی نمی‌شوند و branch آن دست‌نخورده باقی مانده است.
-- ممیزی UI ماژول مهندسی یک race را در `refreshAfterMutation()` اثبات کرد: دو mutation که منتظر یک poll مشترک بودند، می‌توانستند هم‌زمان دو درخواست status ایجاد کنند و پاسخ‌ها با ترتیب نامطمئن UI را overwrite کنند.
-- اصلاح در branch مستقل `fix/autonomous-engineering-status-refresh-serialization-20261124` از main انجام شد: serialization درخواست‌های authoritative پس از mutation و افزودن regression Playwright برای سناریوی دو mutation روی poll معلق.
-- فایل‌های اجرایی تغییرکرده: `app/static/autonomous-engineering-status.js` و `tests/test_browser_e2e.py`. گزارش در `docs/ENGINEERING_LOG.md` و inventory UI ثبت شده است.
-- Browser E2E، full test suite، CodeQL، dependency audit و exact-head CI برای branch اصلاحی هنوز اجرا/تأیید نشده‌اند. PR باید Draft بماند؛ merge ممنوع است تا همهٔ گیت‌های لازم پاس شوند.
-- هیچ run فعال، task، checkpoint، branch قبلی، Runner، database، ACL یا durable state حذف/لغو/تغییر داده نشده است.
+- New Draft remediation branch: `fix/autonomous-engineering-native-state-runtime-20261126`, based on PR #878 head `8ec6fa4b3e665cf7a16945386ed75af9c7861a53`.
+- Proposed ADR-025 records the target architecture: remove the mandatory Windows Broker Service, PowerShell provisioning/communication, machine-wide state configuration, and manual account/group/ACL choreography; use native cross-platform process locks and run/attempt ownership, with a service-free local Runner lifecycle.
+- Root-cause evidence: Windows cleanup currently treats a verified checkpoint as an unconditional blocker and uses a non-terminal progress status as proof of a live run. Neither condition proves process liveness. A stale progress record can therefore leave cleanup permanently conflicted.
+- Implemented foundation only: repository lock metadata schema v2 now records the owner process creation time; the parent publication guard checks PID + creation time + run ID + host. Added a pure recovery classifier and focused tests for stale runs, active controller/watcher locks, queued remote runs, unknown evidence, mismatched owners, and PID reuse.
+- Not yet complete: recovery classifier is not yet wired into the live cleanup/Broker protocol; legacy Broker/PowerShell/service code remains in place pending replacement. No claim is made that the user's Windows machine is fixed or that end-to-end operation is restored.
+- Exact-head CI and non-admin Windows target-host acceptance have not yet been run for this branch. No merge is authorized.
+
+---
+
+## 2026-11-26 — PR #878: restore shadowed Broker regression tests
+
+- A diff audit of PR #872 found five duplicate top-level test names in `tests/test_autonomous_engineering_state_broker.py`; the same file on current main had no duplicates. Earlier definitions were silently overwritten during Python module import.
+- Added a test-integrity regression guard and renamed the five repeated definitions without removing test bodies or assertions.
+- Audit and Gate A/B state-transition inventory: `docs/AUTONOMOUS_ENGINEERING_GATE_A_B_AUDIT_2026-11-26.fa.md`.
+- Fix commit: `cee98e6c27395a4f4b42dd564706450497118fbb`; Draft PR #878 targets PR #877's modularization branch.
+- Exact-head CI for PR #878 was queued when recorded; no pass is claimed. Windows target-host acceptance remains open.
+- No durable task/checkpoint, Runner, Broker, service, ACL, secret, repository variable, model, or user host state was changed.
+
+## 2026-11-25 — وضعیت جاری اصلاح ریشه‌ای Autonomous Engineering
+
+- مبنای integration: `main` با SHA `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
+- شاخهٔ کاری: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ PR #872 باز و Draft است. این شاخه در مقایسهٔ زنده با `main` دارای `behind=0` است؛ ادعاهای قدیمی‌تر دربارهٔ stacked بودن آن در سوابق پایین این فایل، وضعیت تاریخی‌اند.
+- اصلاحات قبلی در همین شاخه startup را فقط‌خواندنی کرده‌اند: startup دیگر Broker را با UAC نصب/ترمیم نمی‌کند و مدل Ollama را start/pull نمی‌کند؛ پیش‌نیاز ناقص فقط در همان قابلیت گزارش می‌شود. راه‌اندازی Broker باید اقدام صریح UI باشد.
+- خطای duplicate PowerShell TypeData با محدودکردن import ماژول Security به `$PSHOME\Modules` در فرایند جاری هدف‌گیری شده است؛ پذیرش نهایی آن روی Windows میزبان کاربر هنوز لازم است.
+- مهاجرت تنظیمات legacy، chat profile موجودی را که به Codex context tag موقت اشاره می‌کند به base tag همان مدل برمی‌گرداند؛ مدل‌های معتبر و تنظیمات دیگر حفظ می‌شوند؛ suffix موقت مستقل از منبع مقدار تنظیم‌شده normalize می‌شود.
+- اصلاح جدید چرخهٔ مدل: Context از RAM آزاد و metadata مدل محاسبه می‌شود؛ tag موقت run-scoped ساخته می‌شود و در پایان/شکست workflow unload و حذف می‌شود. مدل پایه حفظ می‌شود. Legacy aliasهای فاقد شناسهٔ مالکیت فقط audit می‌شوند و حذف خودکار ندارند.
+- regression tests برای lifecycle، workflow و migration legacy model اضافه/به‌روزرسانی شده‌اند. Code head `4857f411b38574e88e8662e09e1c2a94150b7ed4` است؛ Tests run `45627954707` در حال اجراست (bootstrap macOS موفق و jobهای اصلی Linux/Windows و Windows storage/Broker هنوز queued هستند)؛ Browser E2E run `45627954623` و dependency audit run `45627954566` موفق شده‌اند؛ CodeQL run `45627954696` پس از rerun در صف است. پذیرش کامل CI هنوز انجام نشده است. CI موفق SHA قدیمی `583f482af18b2921225ce91ae1d3ebdc5d765aec` این اصلاحات را پوشش نمی‌دهد.
+- گیت‌های target-host همچنان بازند: اجرای برنامه و UI واقعی، State Broker/LocalService، Runner non-admin، Ollama/Codex واقعی، task غیرمخرب از UI تا PR، Pause/Resume/Cancel، crash/restart و حفظ checkpoint، و پذیرش دستی دسترس‌پذیری UI.
+- PR graph: #875 در شاخهٔ #872 ادغام شده؛ #863/#869 و #866/#870/#871 به‌عنوان superseded بسته شده‌اند؛ #876 پس از انتقال inventory بسته شده است. #868 در شاخهٔ #863 ادغام شده بود و کدش به #872 منتقل شده است. PR #872 تنها integration فعال و Draft است.
+- هیچ merge به main یا deploy انجام نشده است. هیچ مدل، DB، سرویس، Runner، ACL، secret، variable یا checkpoint میزبان کاربر تغییر نکرده است.
+
+---
+
+## 2026-11-24 — PR #872 diagnostic polling cache follow-up
+
+- Added a 60-second bounded cache for failed-run diagnostics to prevent repeated Broker reads during dashboard polling; regression coverage verifies reuse across consecutive polls.
+- The cache is an optimization; Broker-backed diagnostics remain authoritative.
+- PR #872 exact-head tests, Browser E2E and dependency audit must pass on the final updated SHA. Windows target-host acceptance remains pending and is not replaced by CI.
+- The stacked PR base chain (#866 → #870 → #872) remains unresolved; do not merge until the branch history is safely reconciled and every required acceptance gate passes.
+
+---
+
+## 2026-11-24 — PR #872: تکمیل اصلاحات ماژول Autonomous Engineering و بازاعتبارسنجی
+
+- PR: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، شاخهٔ `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ همچنان stacked روی #870 و #866 است و نباید مستقل از baseهایش merge شود.
+- بازبینی دو پرامپت اجرایی، UI acceptance، UI audit و وضعیت main انجام شد. baseline fencing/lease epoch از PR #799 حفظ شده؛ این تغییرات آن را بازنویسی یا حذف نمی‌کنند.
+- ۱۴ مورد گزارش‌شده در backend، retry/Codex و UI در کد شاخه پیاده‌سازی شده‌اند؛ در بازبینی CI، چند regression harness قدیمی و دو شکاف واقعی تکمیلی شناسایی شد.
+- اصلاحات تکمیلی پس از CI ناموفق: تست Resume اکنون اجرای موفق پاک‌کردن Pause را قبل از dispatch شبیه‌سازی می‌کند؛ خطای قطعی launch صریحاً retryable است؛ retry گزارش حفظ worktree/checkpoint را صریح می‌گوید؛ marker فقط از آخرین خط غیرخالی ارزیابی می‌شود؛ تست‌ها با API جدید sticky status و credential consumption هماهنگ شده‌اند؛ POSIX broker اکنون blockerهای reservation/grace را مانند Windows تفکیک می‌کند؛ fixture قدیمی وابسته به متغیر حافظه‌ای حذف شده است.
+- شکاف رفتاری افزوده‌شده: Resume روی صف idle و از قبل unpaused دیگر workflow تازه dispatch نمی‌کند؛ اگر run فعال باشد، فقط همان اجرا ادامه می‌یابد.
+- CI قبلی روی SHA `82c44e04d44f6366c307440175352fe847621781` در tests شکست خورد؛ Browser E2E، dependency audit و Windows storage regressions موفق بودند. علت‌های تستی/قراردادی و اصلاحات آن‌ها در Engineering Log ثبت می‌شوند.
+- SHA این snapshot پیش از اصلاح مستندات: `784b80abbe97e3f2bd3089d6e1e8c235abd2df0d`. exact-head tests، Browser E2E و dependency audit در صف اجرا هستند؛ هیچ pass برای این SHA ادعا نمی‌شود.
+- Windows target-host، Runner/Ollama/Codex واقعی، dispatch/pause/resume/cancel عملیاتی، crash/restart، restore/rollback و پذیرش UI توسط مالک هنوز pending هستند. تا تکمیل base PRها، exact-head CI و Gateهای میزبان، PR Draft می‌ماند و merge ممنوع است.
+- هیچ workflow فعالی لغو یا تغییر داده نشد؛ هیچ Pause/Mode secret یا variable، task، checkpoint، Runner، ACL، database یا دادهٔ کاربر تغییر نکرد.
+
+---
+
+## 2026-11-24 — Resume idempotency and safe rollback
+
+- Resume now shares the dispatch mutex, has its own acceptance grace (separate from manual dispatch), and manual dispatch is suppressed immediately after an accepted Resume.
+- If a workflow run is already active, Resume clears Pause but does not enqueue a second workflow. If preflight/launch fails definitively, Pause is restored; if the dispatch outcome is ambiguous, the request is marked non-retryable for the visibility window and the operator must inspect run history.
+- Regression tests cover lock contention, existing active runs, duplicate Resume, cross-action duplicate dispatch, Pause rollback, and ambiguous outcomes.
+
+## 2026-11-24 — reconciliation after mainline UI/cancel merges
+
+- Current main: ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1.
+- PR #864 (serialized status refresh) and PR #867 (job-aware Cancel) are merged. Their exact-head tests, Browser E2E, CodeQL and dependency-audit checks passed; the feature branches now carry these regressions so later integration does not revert them.
+- Parent branches #863 and #866 were updated with the mainline Cancel handler; #863 also carries the serialized status refresh implementation and browser regression. Child branches #869/#870 must be rebased/merged onto their updated parent heads before merge.
+- Exact-head CI for the latest child commits is pending. Windows target-host acceptance, Runner/UAC/ACL, Ollama/Codex and actual dispatch/pause/resume/cancel tests remain NOT RUN.
+- No workflow was dispatched and no repository secret was created by the assistant. For #870, the owner must create AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN as a fine-grained, repository-scoped token with Variables: read; never paste its value into chat or issues.
+
+---
+
+## 2026-11-24 — اصلاح نهایی منبع اعتبارنامهٔ خواندن متغیرهای Actions
+
+- اصلاح قبلی که از `gh auth token` حساب Runner استفاده می‌کرد، پس از بررسی واقعی `scripts/provision_autonomous_runner.ps1` کنار گذاشته شد: احراز هویت CLI در نشست نصب‌کننده انجام می‌شود، اما Runner تازه‌نصب‌شده معمولاً با حساب محلی جداگانه و غیرادمین اجرا می‌شود و اسکریپت، credential نصب‌کننده را به آن حساب منتقل نمی‌کند.
+- مسیر فعلی در branch #870 در هر سه لایهٔ PowerShell live gate، Python cycle controller و Python recovery coordinator از secret اختصاصی `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` استفاده می‌کند. این باید یک fine-grained token محدود به همین repository با مجوز **Variables: read** باشد؛ فقط برای GETهای متغیرهای Pause/Mode و بررسی هویت مخزن استفاده می‌شود. `GITHUB_TOKEN` برای عملیات workflow/controller جدا باقی می‌ماند. cycle controller پیش از اجرای Codex این secret را از environment حذف می‌کند.
+- نبودن secret یا هر خطای مجوز/اعتبارسنجی، اجرای task را متوقف می‌کند. مقدار token در log یا فایل ذخیره نمی‌شود.
+- پیش‌نیاز مالک: secret را در GitHub → Settings → Secrets and variables → Actions با نام دقیق `AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN` ایجاد کند. مقدار token نباید در ChatGPT، کد یا issue ارسال شود.
+- exact-head CI و آزمایش خواندن واقعی متغیرها روی Runner هدف همچنان pending است. تا تکمیل این موارد هیچ merge یا ادعای پذیرش مجاز نیست.
+
+---
+
+## 2026-11-24 — اصلاح مجوز خواندن زندهٔ Pause و Execution Mode
+
+- مبنای فعلی بررسی‌شدهٔ `main`: `ff90d2e3745cb8b2d8dfb08d7b9baddef903d1f1`.
+- PRهای مرتبط در زمان این snapshot: #863، #866، #869 و #870 باز هستند؛ #864 و #868 بسته شده‌اند. وضعیت بسته‌شدن به‌تنهایی به‌عنوان ادغام یا پذیرش عملیاتی تفسیر نمی‌شود.
+- نقص جدید در stack مربوط به #866/#870: مرحلهٔ live gate از `github.token` برای خواندن `/actions/variables/{name}` استفاده می‌کرد؛ اما فهرست رسمی permissionهای `GITHUB_TOKEN` شامل `Variables: read` نیست. API خواندن متغیرهای repository به این permission نیاز دارد؛ بنابراین این مسیر نمی‌تواند مبنای قابل اتکای live Pause/Mode باشد.
+- اصلاح در branch `fix/recovered-pr-chain-live-pause-gate-20261124`: مرحلهٔ post-concurrency اکنون credential احرازشدهٔ GitHub CLI حساب سرویس Runner را فقط برای GET هویت repository و متغیرهای Actions به‌کار می‌برد. `GITHUB_TOKEN` برای عملیات workflow/controller جدا می‌ماند. نبودن احراز هویت یا مجوز خواندن متغیرها fail-closed است.
+- regression contract تست، منبع token را از `gh auth token --hostname github.com` الزام می‌کند و استفاده از `github.token` در Authorization این gate را رد می‌کند.
+- exact-head CI و تأیید روی Runner واقعی برای `gh auth token` و خواندن دو متغیر هنوز pending است؛ تا آن زمان PR #870 Draft می‌ماند و هیچ merge مجاز نیست. هیچ workflow یا task واقعی اجرا نشده و هیچ متغیر Pause/Mode، task، checkpoint، PR، Runner، ACL، database یا دادهٔ کاربر تغییر نکرده است.
+
+---
+
+## 2026-11-24 — وضعیت زندهٔ Autonomous Engineering و اصلاحات در حال اعتبارسنجی
+
+- SHA فعلی `main`: `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`.
+- PRهای مرتبط:
+  - [#863](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/863) — اصلاح startup و Windows State Broker؛ Draft، head `760a32bfc35f26698af0f7af74f06b121288d782`. CI exact-head در حال اجراست؛ CodeQL و Dependency Audit موفق‌اند.
+  - [#864](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/864) — سریالی‌سازی refresh وضعیت UI بعد از mutation؛ Draft، head `8303afa5d44f104c6e9a5d569868f3db248023b0`. تمام workflowهای گزارش‌شده موفق‌اند.
+  - [#865](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/865) — Draft قدیمی قفل Elevated؛ بسته شد و diff باقی‌مانده بدون حذف تغییرات به [#868](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/868) منتقل شد.
+  - [#866](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/866) — خواندن زندهٔ Pause و Execution Mode پس از گرفتن concurrency slot؛ Draft، شاخهٔ `fix/autonomous-engineering-live-pause-gate-20261124`. سه assertion قدیمی در تست‌ها اصلاح شده‌اند؛ exact-head CI جدید در صف است.
+  - [#867](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/867) — انتخاب job واقعی Codex برای لغو؛ Draft، head `7238ea3da83678a06370160af9183d34ad4a6421`. تست‌ها، Browser E2E، CodeQL و Dependency Audit موفق‌اند.
+  - [#868](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/868) — قفل machine-wide در پردازهٔ Elevated و آزمون سناریوی orphaned child پس از timeout والد؛ Draft، head `ef7bc25cdc79ba4adb9d3bfc3848dee2a59496a4`، بر پایهٔ head جاری #863. Dependency Audit موفق؛ تست‌ها و آزمون‌های Windows در حال اجرا/صف هستند.
+- نقص Elevated setup: قفل Python والد به‌تنهایی پردازهٔ UAC-elevated فرزند را پوشش نمی‌دهد. #868 mutex را پیش از هر بارگذاری ماژول/کشف Runner/تغییر ACL یا سرویس می‌گیرد. آزمون Windows، والد را terminate می‌کند و بررسی می‌کند فرزند همچنان قفل را نگه می‌دارد؛ abandoned owner بدون تأیید صریح اپراتور fail-closed می‌ماند.
+- نقص Pause: خواندن snapshot متغیر GitHub پیش از concurrency برای job صف‌شده قابل اتکا نبود. #866 پس از گرفتن slot، مقدار زندهٔ Pause و Mode را از API می‌خواند؛ پیش از default کردن 404 متغیر، دسترسی و هویت repository را با همان token تأیید می‌کند تا 404 ناشی از دسترسی نامعتبر به مخزن fail-open نشود. خطاهای دیگر و مقدار نامعتبر fail-closed هستند. Recovery policy نیز قبل و بعد از backoff تنظیمات زنده را بازخوانی می‌کند.
+- نقص Cancel: انتخاب صرفاً بر اساس وضعیت workflow می‌توانست اجرای تازه‌ای را که هنوز پشت concurrency منتظر است لغو کند. #867 وضعیت job به نام `codex` را بررسی می‌کند و اجرای واقعی را بر اجرای صرفاً صف‌شده مقدم می‌داند.
+- اصلاحات Windows CI در base #863: تست‌های PATH PowerShell از registry واقعی runner جدا شدند؛ assertion هشدار rollback با متن واقعی هماهنگ شد؛ مقایسهٔ ACL فقط bit سیستم‌عامل `D:AI` را normalize می‌کند و owner/group/ACEها را دقیق مقایسه می‌کند.
+- هیچ PRی merge نشده است. هیچ workflow اجرایی dispatch نشده و هیچ متغیر Pause، task، owner metadata، checkpoint، database، ACL، Runner registration یا دادهٔ پایدار روی میزبان کاربر تغییر نکرده است.
+- گیت‌های باز: exact-head CI تمام PRها، Windows target-host UAC/mutex، pause/resume/cancel واقعی، Runner موجود/ناموجود، Ollama و Codex واقعی، crash/restart و بازیابی checkpoint، و بازبینی نهایی امنیت/دسترسی. PRها تا تکمیل شواهد Draft باقی می‌مانند.
+
 
 ---
 
@@ -597,8 +719,76 @@ The subsequent documentation-only evidence update does not change runtime code a
 
 ---
 
+## 2026-11-24 — سخت‌سازی انتخاب هدف Cancel
 
-### 2026-11-24 — regression harness correction
+- Cancel اکنون از همان dispatch lock مشترک با Dispatch و Resume استفاده می‌کند؛ در زمان ثبت Dispatch/Resume هم‌زمان اجرا نمی‌شود.
+- انتخاب اجرا قطعی‌تر شد: یک Codex job فعال، هدف اصلی است؛ چند Codex job فعال یا چند candidate صف‌شده باعث 409 و fail-closed می‌شود. اگر job مشخصی وجود نداشته باشد، فقط یک workflow فعالِ یکتا قابل لغو است؛ چند workflow مبهم هرگز با انتخاب جدیدترین run لغو نمی‌شوند.
+- تست‌های regression برای چند Codex job فعال، چند candidate صف‌شده، fallback مبهم، تنها workflow فعال و lock contention اضافه شدند. این اصلاح در شاخه‌های والد و follow-upهاست؛ exact-head CI هنوز pending است.
 
-- PR #864 first Browser E2E attempt failed in the newly added status-refresh regression because the test intercepted `fetch` after initial page polling had already started; the controlled resolver did not own that pre-existing request. This was a test-harness defect, not evidence that the serialization fix failed.
-- The test now stubs API responses before navigation and waits for the initial status snapshot before starting the controlled race. A new exact-head CI run is required; prior Browser E2E failure remains in the audit trail.
+## 2026-11-24 — Autonomous Engineering module hardening in progress
+
+- Work is isolated on fix/autonomous-engineering-backend-ui-hardening-20261124-rebased and is stacked on the latest live-pause base branch fix/recovered-pr-chain-live-pause-gate-20261124 (PR #870).
+- The implementation covers the 14 reported backend, Codex retry/report, and UI findings. Windows dispatch admission now goes through the protected State Broker rather than opening protected state files from the application account. Windows cleanup delegates active-progress and lock decisions to the broker.
+- The broker protocol includes strict two-phase dispatch reservation operations for both POSIX and Windows. These changes require the Windows service to be rebuilt/reinstalled before target-host validation.
+- Tests and documentation have been updated, but exact-head CI has not yet been run on this branch. Do not merge or claim the module is fully fixed until Linux and Windows suites, broker service compilation/integration, browser E2E, and real Windows target-host acceptance checks pass.
+- Existing active workflow runs were left untouched. No active run was cancelled or modified.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.
+
+## 2026-11-25 — harden read-only Variables permission verification
+
+- GitHub may return HTTP 404 both for an absent repository variable and for a token that cannot access the variable endpoint. Repository metadata access alone does not prove the fine-grained token has Variables: read.
+- The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
+- This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
+- Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
+
+
+## 2026-11-25 — یکپارچه‌سازی ماژول مهندسی و CI دقیق
+
+- شاخهٔ integration: `fix/autonomous-engineering-backend-ui-hardening-20261124-rebased`؛ head کد `583f482af18b2921225ce91ae1d3ebdc5d765aec`؛ مبنای `main` برابر `8b7c20c50ef4fd9346e924d212a35f36ff646515` است. مقایسهٔ زندهٔ GitHub وضعیت `ahead` با `behind=0` و 69 فایل تغییرکرده را نشان می‌دهد.
+- PR اصلی: [#872](https://github.com/cognitive-kernel/Personal-AI-assistant/pull/872)، همچنان Draft و باز؛ هیچ merge انجام نشده است.
+- چهار workflow روی exact head موفق‌اند:
+  - Tests شامل Linux/Windows، Windows storage/Broker integration و managed Python bootstrap: [run 45595886385](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886385).
+  - Browser E2E: [run 45595886850](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886850).
+  - CodeQL: [run 45595886382](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886382).
+  - Dependency audit: [run 45595886307](https://github.com/cognitive-kernel/Personal-AI-assistant/actions/runs/45595886307).
+- در Windows storage job، build/attestation بستهٔ Broker، LocalService و Named Pipe، ACL، PowerShell Desktop/Core، identity portability، checkpoint/recovery، process lock و SQLite restore موفق شدند.
+- اصلاحات اصلی: `--raw-field` برای workflow inputs؛ durable cross-process dispatch admission؛ Resume یک‌باره با live Pause/Mode gate؛ exact-run Cancel؛ Broker setup صریح و startup فقط‌خواندنی؛ Broker package قابل‌راستی‌آزمایی؛ Codex report/retry diagnostics؛ UI state/polling hardening.
+- بررسی فقط GitHub/کد/CI بوده است. هیچ task، checkpoint، Runner، service، ACL، secret، repository variable یا مدل Ollama روی میزبان مالک تغییر نکرده و workflow اجرای واقعی Codex dispatch نشده است.
+- گیت‌های target-host همچنان بازند: اجرای UI روی Windows واقعی با حساب non-admin، UAC/Broker/Runner واقعی، Ollama/Codex واقعی، task غیرمخرب تا PR، Pause/Resume/Cancel، crash/restart و checkpoint preservation؛ همچنین scope توکن Variables: read و پذیرش دستی accessibility/مالک.
+- نتیجه: Gateهای repository CI و Browser E2E روی این SHA موفق‌اند؛ ماژول هنوز به‌عنوان operationally accepted یا ready-to-merge اعلام نمی‌شود. PR تا تکمیل گیت‌های میزبان Draft می‌ماند.
+
+
+## 2026-11-25 — PowerShell module load regression
+
+- دو محل Import ماژول Security اصلاح شدند تا در صورت بارگذاری قبلی دوباره Import نکنند؛ module path خارج از $PSHOME\Modules رد می‌شود و PSModulePath حتماً restore می‌شود.
+- تست Windows جدید، import دوبارهٔ AutonomousWindowsIdentity.psm1 را در PowerShell 5.1 با مسیرهای PS7/PS5 آلوده آزمایش می‌کند؛ تست probe نیز guard و path validation را بررسی می‌کند.
+- Code head: abb2e7b8007e173b8c4116919e5051c36bf5c25b. CI در انتظار/در حال اجرا است و تا موفقیت exact-head و تست میزبان مالک، وضعیت مشکل باز می‌ماند.
+
+
+## 2026-11-25 — Chat profile recovery from ephemeral Codex tags
+
+- Persisted `chat_ollama_model` values ending in a reserved Codex context suffix are normalized to the corresponding base model during database initialization. Ordinary user-selected models and the legacy generic setting are preserved.
+- Startup preflight treats the temporary-tag case as recoverable only when the base model is already installed; it never pulls or starts Ollama automatically.
+- Regression coverage: existing temporary profile, absent legacy generic key, preservation of ordinary profile values, environment-seeded temporary value, and missing base-model behavior.
+- Code head: `d1514c636365ee807775aed101a07d9b1e983bd5`; latest integration report: `docs/AUTONOMOUS_ENGINEERING_INTEGRATION_2026-11-25.fa.md`. Exact-head CI and Windows owner-host acceptance remain open.
+
+
+## 2026-11-26 — PR #872 disposition and backend architecture gate
+
+- Live GitHub state: PR #872 is the only open PR; it is Draft, unmerged, and based on main. Its current head is `18bcba48e843a5920e27c33f51f4bf98ec1728aa`.
+- Exact-head workflows verified successful: tests `45759899919`, Browser E2E `45759899887`, CodeQL `45759899837`, dependency audit `45759899799`.
+- PR #872 is retained as the integration PR; it is neither merged nor cancelled. The backend architecture gate and Windows target-host acceptance are blocking.
+- `app/autonomous_engineering.py` remains a 1,626-line multi-responsibility module. Existing `tests/test_autonomous_engineering_module_boundaries.py` validates UI JavaScript boundaries but does not yet enforce Python backend boundaries.
+- A separate remediation branch was created from the exact PR head: `fix/autonomous-engineering-modular-boundaries-20261126`.
+- The modularization plan and prompt-conflict resolution are recorded in `docs/AUTONOMOUS_ENGINEERING_MODULARIZATION_PLAN_2026-11-26.fa.md`.
+- No task, checkpoint, Runner, Broker, Windows service, ACL, secret, repository variable, user database, model, or host state was changed during this audit.
+- Do not mark the module fixed or merge until backend decomposition/fitness tests, final exact-head CI, and real Windows target-host acceptance all pass.

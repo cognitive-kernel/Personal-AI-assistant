@@ -5,6 +5,7 @@ import json
 import math
 import os
 import shutil
+import stat
 import tempfile
 import time
 from contextlib import ExitStack, contextmanager
@@ -35,6 +36,11 @@ def _machine_configured_state_directory() -> str:
             return str(value).strip()
     except FileNotFoundError:
         return ""
+
+
+def machine_configured_state_directory() -> str:
+    """Public read-only machine configuration discovery for migration."""
+    return _machine_configured_state_directory()
 
 
 def _is_path_within(path: Path, parent: Path) -> bool:
@@ -95,14 +101,14 @@ def _migrate_legacy_posix_state(legacy: Path | None, shared: Path, home: Path | 
         raise RuntimeError("The legacy state was previously migrated to a different shared root.")
 
     lock_names = (
-        "autonomous-durable-state.lock",
         "repository-execution.lock",
+        "autonomous-durable-state.lock",
         "autonomous-checkpoint-store.lock",
     )
-    lock_paths = sorted(
-        [legacy / name for name in lock_names] + [shared / name for name in lock_names],
-        key=lambda item: str(item.resolve()),
-    )
+    # Lock scope comes first, then stable root order. Sorting complete paths
+    # alphabetically inverted the repository -> state -> checkpoint hierarchy.
+    roots = sorted((legacy, shared), key=lambda item: str(item.resolve()))
+    lock_paths = [root / name for name in lock_names for root in roots]
     with ExitStack() as stack:
         for lock_path in lock_paths:
             stack.enter_context(exclusive_file_lock(
@@ -184,6 +190,9 @@ def execution_state_directory(
     """Resolve one stable state root shared by every participating process identity."""
     is_windows = is_windows_fn or _is_windows
     machine_state = machine_state_fn or _machine_configured_state_directory
+    from .autonomous_engineering_native_config import native_state_enabled, resolve_native_state_directory
+    if native_state_enabled():
+        return resolve_native_state_directory(is_windows=is_windows(), machine_state=machine_state)
     process_configured = os.getenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", "").strip()
     home = _current_home_directory() if not is_windows() else None
     if not is_windows() and os.name != "nt":
@@ -290,10 +299,16 @@ def exclusive_file_lock(
     path.parent.mkdir(parents=True, exist_ok=True)
     deadline = time.monotonic() + timeout
 
-    with path.open("a+b") as handle:
+    if path.is_symlink():
+        raise OSError("State lock cannot be a symbolic link.")
+    descriptor = os.open(path, os.O_CREAT | os.O_RDWR | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    with os.fdopen(descriptor, "r+b") as handle:
+        info = os.fstat(handle.fileno())
+        if not stat.S_ISREG(info.st_mode) or getattr(info, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0):
+            raise OSError("State lock must be a regular file.")
         handle.seek(0, os.SEEK_END)
         if handle.tell() == 0:
-            handle.write(b"\\0")
+            handle.write(b"\0")
             handle.flush()
 
         if os.name == "nt":

@@ -21,9 +21,11 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     monkeypatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", raising=False)
     with repository_execution_lock("run-1", "attempt-2"):
-        pass
+        assert len(os.environ["AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN"]) == 64
 
+    assert "AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN" not in os.environ
     # Windows byte-range locks also prevent a second handle from reading the
     # locked file; inspect its diagnostic metadata after ownership is released.
     import json
@@ -31,7 +33,11 @@ def test_execution_lock_records_owner_metadata_and_releases_after_scope(
     lock_bytes = (shared_state_tmp_path / "repository-execution.lock").read_bytes()
     assert lock_bytes[:1] == b"0"
     metadata = json.loads(lock_bytes[1:].decode("utf-8"))
+    assert metadata["schema_version"] == 2
     assert metadata["pid"] == os.getpid()
+    assert metadata["process_started_at"] == pytest.approx(psutil.Process(os.getpid()).create_time(), abs=0.02)
+    assert len(metadata["owner_token"]) == 64
+    assert all(character in "0123456789abcdef" for character in metadata["owner_token"])
     assert metadata["run_id"] == "run-1"
     assert metadata["run_attempt"] == "attempt-2"
     assert metadata["host"]
@@ -407,3 +413,16 @@ def test_publish_parent_guard_requires_the_locked_cycle_controller(
         )
     assert child.returncode != 0
     assert "not owned by the active cycle controller" in child.stderr
+
+
+
+def test_maintenance_lock_preserves_previous_run_identity(monkeypatch, shared_state_tmp_path):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path))
+    with repository_execution_lock("previous-run", "1"):
+        pass
+    path = shared_state_tmp_path / "repository-execution.lock"
+    previous = path.read_bytes()
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN", raising=False)
+    with repository_execution_lock("ui-cleanup", "1", record_owner=False):
+        assert "AUTONOMOUS_ENGINEERING_EXECUTION_OWNER_TOKEN" not in os.environ
+    assert path.read_bytes() == previous

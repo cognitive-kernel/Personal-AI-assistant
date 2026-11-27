@@ -1,4 +1,11 @@
+import base64
+import os
+import shutil
+import subprocess
 from pathlib import Path
+from textwrap import dedent
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,7 +147,7 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "NetworkStream" not in service
     assert '"version", 1' in service
     assert 'method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}' in python_client
-    assert '_WINDOWS and method == "GET" and path == "/v1/health/verify"' in python_client
+    assert '(_WINDOWS or native) and method == "GET" and path == "/v1/health/verify"' in python_client
     assert 'method == "POST" and path == "/v1/cleanup"' in python_client
     assert 're.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path)' in python_client
     assert "Unsupported state-broker endpoint" in python_client
@@ -155,8 +162,11 @@ def test_machine_state_broker_uses_a_local_allowlisted_pipe_not_a_network_file_a
     assert "Install-AutonomousStateBrokerService" in provision
     assert "PersonalAIAssistantStateBroker" in installer
     assert "'obj=' 'NT AUTHORITY\\LocalService' 'start=' 'auto'" in installer
-    assert 'Join-Path $env:ProgramData "PersonalAIAssistant\\StateBroker"' in installer
-    assert "AutonomousStateBrokerService.cs" in installer
+    assert '$programData = [string]$env:ProgramData' in installer
+    assert 'ServiceRoot = Join-Path $programData ("PersonalAIAssistant" + [char]92 + "StateBroker")' in installer
+    assert "AutonomousStateBrokerService.cs" not in installer
+    assert "csc.exe" not in installer
+    assert "Get-AutonomousStateBrokerPackage" in installer
     assert "Invoke-AutonomousStateBroker" in installer
     assert "Start-Process" in ensure and "-Verb RunAs" in ensure
     assert "Runner.Worker.exe" in ensure
@@ -196,7 +206,7 @@ def test_machine_state_broker_health_checks_the_full_state_tree_acl_manifest():
     assert 'Path "/v1/health/verify"' in _read("scripts/AutonomousStateBrokerInstall.psm1")
     assert '"/v1/health/verify"' in _read("scripts/AutonomousStateBroker.psm1")
     assert 'value.get("acl_ready") is True' in client
-    assert run.count('health(timeout_ms=30000, verify=True)') == 2
+    assert run.count('health(timeout_ms=30000, verify=True)') == 1
     assert 'TimeoutMilliseconds 30000' in ensure
     assert '$currentSid, $brokerSid, "S-1-5-32-545"' in runtime_test
     assert 'Path "/v1/health" -TimeoutMilliseconds 30000' in runtime_test
@@ -328,3 +338,380 @@ def test_broker_health_exposes_only_safe_acl_failure_reason_codes():
     ]
     assert '"state_directory"' not in health_details
     assert '"state_path"' not in health_details
+
+
+def test_windows_broker_installer_uses_verified_prebuilt_binary_without_target_compiler():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert 'Join-Path $PSScriptRoot "bin"' in installer
+    assert 'PersonalAIAssistant.StateBroker.exe' in installer
+    assert '$hashFile = $packagedExe + ".sha256"' in installer
+    assert 'Get-FileHash -LiteralPath $packagedExe -Algorithm SHA256' in installer
+    assert 'Get-FileHash -LiteralPath $temporaryExe -Algorithm SHA256' in installer
+    assert 'Copy-Item -LiteralPath $packagedExe -Destination $temporaryExe' in installer
+    assert 'csc.exe' not in installer
+    assert 'Microsoft.NET' not in installer
+    assert 'Build and stage the Windows machine state broker' in workflow
+    assert workflow.count("\n  windows-storage-regressions:\n") == 1
+    assert workflow.count("\n  runtime-bootstrap:\n") == 1
+    runtime_job = workflow.split("\n  runtime-bootstrap:\n", 1)[1]
+    assert "-or $committedHash -ne $expectedHash) {" not in runtime_job
+    assert 'upload-artifact@v4' in workflow
+    assert 'actions/attest-build-provenance@v3' in workflow
+    assert 'attestations: write' in workflow
+    assert 'windows-state-broker-package' in workflow
+    assert 'Exercise the packaged broker under Windows PowerShell Desktop' in workflow
+    assert workflow.count('Test-AutonomousDotNetFramework48') >= 2
+    assert '$PSVersionTable.PSEdition' in workflow
+    live_test = _read("scripts/test_autonomous_state_broker_service.ps1")
+    assert 'PersonalAIAssistant.StateBroker.exe' in live_test
+    assert 'Get-FileHash -LiteralPath $servicePackage -Algorithm SHA256' in live_test
+    assert 'Get-FileHash -LiteralPath $serviceExe -Algorithm SHA256' in live_test
+    assert 'Copy-Item -LiteralPath $servicePackage -Destination $serviceExe' in live_test
+    assert 'csc.exe' not in live_test
+    build_step = workflow.split('Build and stage the Windows machine state broker', 1)[1].split(
+        'Upload the prebuilt Windows state broker package', 1
+    )[0]
+    assert 'dotnet build $project' in build_step
+    assert 'csc.exe' not in build_step
+    assert '--output $buildRoot' in build_step
+    assert '$freshHash' in build_step and '$committedHash' in build_step
+    assert 'Broker source changed; regenerated the packaged executable and SHA-256 manifest' in build_step
+    assert 'Copy-Item -LiteralPath $freshExe -Destination $packagedExe -Force' in build_step
+    assert 'committed broker executable does not match its SHA-256 manifest' in build_step
+    assert 'No committed broker package exists yet' in build_step
+    assert 'final deterministic SHA-256 verification' in build_step
+    assert 'commit-broker-package:' in workflow
+    assert 'contents: write' in workflow
+    assert 'git push origin' in workflow
+    commit_job = workflow.split('commit-broker-package:', 1)[1].split('runtime-bootstrap:', 1)[0]
+    assert 'cmp -s' in commit_job
+    assert 'already committed; no branch update is needed' in commit_job
+    broker_project = _read("scripts/AutonomousStateBrokerService.csproj")
+    assert '<TargetFramework>net48</TargetFramework>' in broker_project
+    assert '<Deterministic>true</Deterministic>' in broker_project
+    assert 'Microsoft.NETFramework.ReferenceAssemblies.net48' in broker_project
+    assert 'Version="1.0.3"' in broker_project
+    assert '<Reference Include="System.IO.Pipes.AccessControl" />' in broker_project
+    sdk_pin = _read("scripts/global.json")
+    assert '"version": "11.0.100"' in sdk_pin
+    assert 'dotnet-version: 11.0.100' in workflow
+
+
+def test_broker_setup_preflights_package_before_runner_or_acl_mutation():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+
+    package_preflight = ensure.index("$brokerPackage = Get-AutonomousStateBrokerPackage")
+    runner_discovery = ensure.index("$runnerServiceCandidates")
+    runner_stop = ensure.index("Stop-Service -Name $service.Name")
+    state_acl_change = ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+
+    assert package_preflight < runner_discovery < runner_stop < state_acl_change
+    assert "Get-AutonomousStateBrokerPackage" in installer
+    assert '"Get-Acl", "Set-Acl", "Get-CimInstance"' in installer
+    assert "Get-Command $commandName -ErrorAction Stop" in installer
+    assert "Get-Command takeown.exe -ErrorAction Stop" in installer
+    assert "Get-Command icacls.exe -ErrorAction Stop" in installer
+    assert "Get-Command sc.exe -ErrorAction Stop" in installer
+    assert "$serviceSource" not in installer
+    assert "AutonomousStateBrokerService.cs is missing" not in installer
+    assert "csc.exe" not in installer
+
+
+def test_broker_setup_rolls_back_acl_and_manifest_when_install_fails():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    identity = _read("scripts/AutonomousWindowsIdentity.psm1")
+    workflow = _read(".github/workflows/tests.yml")
+
+    assert "[switch]$PassThru" in identity
+    assert "function Restore-AutonomousDirectoryTreeAcl" in identity
+    assert "InstallerSid = $InstallerSid" in identity
+    assert "& $takeown.Source /F $entryPath" in identity
+    assert "& $icacls.Source $entryPath /grant:r $grant /C /Q" in identity
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclTransaction" in ensure
+    assert "$previousStateModifySids" in ensure
+    assert "if (-not $setupCommitted)" in ensure
+    assert ensure.index("Install-AutonomousStateBrokerService") < ensure.index("$setupCommitted = $true")
+    assert "Transactional ACL snapshot and exact rollback passed." in workflow
+    assert "Restore-AutonomousDirectoryTreeAcl -Snapshot $aclSnapshot" in workflow
+
+
+def test_broker_installer_cleans_staging_and_restores_existing_service_on_stop_failure():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    install = installer.split("function Install-AutonomousStateBrokerService", 1)[1]
+
+    stage_start = install.index("try {")
+    stop_service = install.index("Stop-Service -Name $serviceName", stage_start)
+    stage_catch = install.index("} catch {", stop_service)
+    cleanup = install.index("Remove-Item -LiteralPath $temporaryExe", stage_catch)
+    stage_catch_end = install.index("\n    }\n\n    $hadServiceExe", stage_catch)
+
+    assert stage_start < stop_service < stage_catch < cleanup < stage_catch_end
+    assert "if ($wasRunning)" in install[stage_catch:stage_catch_end]
+    assert "Start-Service -Name $serviceName -ErrorAction SilentlyContinue" in install[stage_catch:stage_catch_end]
+    assert "$existingServicePath" in install
+    assert 'Write-Warning "Could not restore the previous state-broker service configuration."' in install
+    assert "'binPath=' $binaryPath" in install
+    assert '"StartPending"' in install and '"StopPending"' in install
+    assert 'refusing to replace its executable' in install
+
+
+def test_broker_installer_preflights_net48_and_service_control_before_mutation():
+    installer = _read("scripts/AutonomousStateBrokerInstall.psm1")
+    release_check = installer.index("$frameworkRelease = Get-AutonomousDotNetFrameworkRelease")
+    service_root_creation = installer.index("New-Item -ItemType Directory -Path $serviceRoot")
+    service_lookup = installer.index("Get-Service -Name $serviceName")
+
+    assert "RegistryView]::Registry64" in installer
+    assert "RegistryView]::Registry32" in installer
+    assert "$frameworkRelease -lt 528040" in installer
+    assert release_check < service_root_creation < service_lookup
+    assert "$scCommand = Get-Command sc.exe -ErrorAction Stop" in installer
+    assert installer.index("$scCommand = Get-Command sc.exe") < service_root_creation
+
+
+
+def test_state_broker_elevated_child_holds_machine_mutex_before_mutations():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
+
+    acquire = ensure.index("Enter-AutonomousStateBrokerSetupMutex")
+    assert acquire > ensure.index("Start-Process -FilePath $hostExecutable -Verb RunAs -ArgumentList $argumentLine -Wait")
+    assert acquire < ensure.index("$brokerLogDirectory =")
+    assert acquire < ensure.index('Import-Module (Join-Path $scriptRoot "AutonomousWindowsIdentity.psm1")')
+    assert acquire < ensure.index("Get-CimInstance Win32_Service")
+    assert acquire < ensure.index("Stop-Service -Name $service.Name")
+    assert acquire < ensure.index("Set-AutonomousDirectoryTreeAcl -Path $stateRoot")
+    assert '$Name = "Global\\PersonalAIAssistant.StateBrokerSetup"' in lock_module
+    assert "$mutex.WaitOne(0)" in lock_module
+    assert "Another elevated state-broker setup is already running" in lock_module
+    assert "catch [System.Threading.AbandonedMutexException]" in lock_module
+    assert "fail-closed" in lock_module
+    assert "$mutex.ReleaseMutex()" in lock_module
+    assert "$mutex.Dispose()" in lock_module
+    assert lock_module.rfind("$mutex.ReleaseMutex()") < lock_module.rfind("$mutex.Dispose()")
+
+
+def test_state_broker_abandoned_mutex_requires_explicit_operator_acknowledgement():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    lock_module = _read("scripts/AutonomousStateBrokerSetupLock.psm1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    abandoned = lock_module[
+        lock_module.index("catch [System.Threading.AbandonedMutexException]"):
+        lock_module.index("if (-not $acquired)")
+    ]
+
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in ensure
+    assert "if ($abandoned -and -not $AcknowledgeAbandoned)" in lock_module
+    assert "AcknowledgeAbandoned" in lock_module
+    assert "ReleaseMutex" not in abandoned
+    assert "AcknowledgeAbandonedSetup" in lock_module
+    assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "ReleaseMutex" in lock_module
+    assert "AcknowledgeAbandonedSetup" in ensure
+    python_setup = _read("app/autonomous_engineering_broker_setup.py")
+    assert "-AcknowledgeAbandonedSetup" not in python_setup
+
+
+def test_broker_elevation_relaunches_the_same_compatible_host_before_import_or_mutation():
+    ensure = _read("scripts/ensure_autonomous_state_broker.ps1")
+    parameters = ensure[:ensure.index("$ErrorActionPreference")]
+    elevation = ensure[:ensure.index("$scriptRoot =")]
+    acquire = ensure.index("Enter-AutonomousStateBrokerSetupMutex")
+
+    assert "[switch]$ElevatedChild" in parameters
+    assert "[switch]$AcknowledgeAbandonedSetup" in parameters
+    assert "[switch]$WindowsPowerShellHost" not in parameters
+    assert "Get-Process -Id $PID -ErrorAction Stop).Path" in elevation
+    assert 'Join-Path $PSHOME "Modules"' in elevation
+    assert "Start-Process -FilePath $hostExecutable -Verb RunAs" in elevation
+    assert '$argumentLine += " -AcknowledgeAbandonedSetup"' in elevation
+    assert elevation.index('Join-Path $PSHOME "Modules"') < elevation.index("Start-Process -FilePath $hostExecutable")
+    assert elevation.index("Start-Process -FilePath $hostExecutable") < acquire
+    assert "$env:PSModulePath = $previousModulePath" in elevation
+    assert "$windowsPowerShellPath" not in elevation
+
+
+def test_security_module_import_is_isolated_to_the_active_powershell_host():
+    module = _read("scripts/AutonomousWindowsIdentity.psm1")
+    assert '$previousModulePath = $env:PSModulePath' in module
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in module
+    assert 'Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop' in module
+    assert '$env:PSModulePath = $previousModulePath' in module
+    assert module.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < module.index(
+        'Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop'
+    )
+    assert module.index('Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop') < module.index(
+        '$env:PSModulePath = $previousModulePath'
+    )
+
+
+def _engineering_workflow_step(step_name: str) -> tuple[str, str]:
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    step = workflow.split(f"      - name: {step_name}\n", 1)[1].split("\n      - name:", 1)[0]
+    options, body = step.split("        run: |\n", 1)
+    return options, dedent(body)
+
+
+def test_live_pause_workflow_python_admission_parses():
+    step_name = "Recheck live Pause and execution mode after concurrency admission"
+    options, script = _engineering_workflow_step(step_name)
+    assert "        shell: python {0}\n" in options
+    compile(script, step_name, "exec")
+
+
+@pytest.mark.parametrize("step_name", [
+    "Persist manual task under the controller's runner and concurrency ownership",
+    "Prepare Runner virtual environment and install runtime dependencies",
+])
+def test_pause_admitted_workflow_powershell_parses_on_windows(step_name):
+    if os.name != "nt":
+        pytest.skip("PowerShell parser validation runs on Windows.")
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("A supported PowerShell host is unavailable.")
+
+    options, script = _engineering_workflow_step(step_name)
+    assert "        shell: powershell\n" in options
+    assert "steps.pause.outputs.skip != 'true'" in options
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    command = (
+        "$source = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('"
+        + encoded
+        + "')); $tokens = $null; $errors = $null; "
+        "[System.Management.Automation.Language.Parser]::ParseInput($source, [ref]$tokens, [ref]$errors) | Out-Null; "
+        "if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }"
+    )
+    result = subprocess.run(
+        [powershell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_run_scoped_temporary_codex_variants_are_rejected_as_base_models():
+    root = Path(__file__).resolve().parents[1]
+    paths = [
+        root / "scripts" / "provision_autonomous_runner.ps1",
+        root / "scripts" / "check_autonomous_agent.ps1",
+        root / "scripts" / "check_autonomous_runner.ps1",
+        root / "scripts" / "verify_ollama_context.ps1",
+    ]
+
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert "-paa-[0-9]+-[0-9]+-[a-f0-9]{12}" in source
+
+
+def test_windows_powershell_security_import_ignores_inherited_cross_edition_module_paths():
+    if os.name != "nt":
+        pytest.skip("Windows PowerShell 5.1 integration check")
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("Windows PowerShell executable is unavailable")
+
+    root = Path(__file__).resolve().parents[1]
+    module_path = str(root / "scripts" / "AutonomousWindowsIdentity.psm1")
+    escaped_module_path = module_path.replace("'", "''")
+    env = os.environ.copy()
+    windows_powershell_modules = str(
+        Path(env.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
+    )
+    powershell7_modules = str(
+        Path(env.get("ProgramFiles", r"C:\Program Files")) / "PowerShell" / "7" / "Modules"
+    )
+    env["PSModulePath"] = ";".join([powershell7_modules, windows_powershell_modules])
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$before = $env:PSModulePath; "
+        "if ($before -notlike '*PowerShell\\7\\Modules*') { throw 'PowerShell 7 module path injection was not inherited' }; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
+        "if (-not $security) { throw 'Security module did not load' }; "
+        "$expected = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')); "
+        "$actual = [IO.Path]::GetFullPath($security.Path); "
+        "if (-not $actual.StartsWith(($expected.TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Security module loaded outside PSHOME Modules' }; "
+        "if ($env:PSModulePath -ne $before) { throw 'PSModulePath was not restored' }; "
+        "Write-Output 'PAA_SECURITY_IMPORT_OK'"
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        cwd=root,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    assert "PAA_SECURITY_IMPORT_OK" in result.stdout
+
+
+def test_windows_identity_module_reuses_preloaded_security_module():
+    if os.name != "nt":
+        pytest.skip("Windows PowerShell 5.1 integration check")
+    powershell = shutil.which("powershell.exe")
+    if not powershell:
+        pytest.skip("Windows PowerShell executable is unavailable")
+
+    module_path = str(ROOT / "scripts" / "AutonomousWindowsIdentity.psm1")
+    escaped_module_path = module_path.replace("'", "''")
+    env = os.environ.copy()
+    windows_modules = str(
+        Path(env.get("WINDIR", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "Modules"
+    )
+    powershell7_modules = str(
+        Path(env.get("ProgramFiles", r"C:\Program Files")) / "PowerShell" / "7" / "Modules"
+    )
+    env["PSModulePath"] = ";".join([powershell7_modules, windows_modules])
+    script = (
+        "$ErrorActionPreference = 'Stop'; "
+        "$inherited = $env:PSModulePath; "
+        "if ($inherited -notlike '*PowerShell\\7\\Modules*') { throw 'PowerShell 7 module path injection was not inherited' }; "
+        "$env:PSModulePath = Join-Path $PSHOME 'Modules'; "
+        "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; "
+        "$env:PSModulePath = $inherited; "
+        f"Import-Module -Name '{escaped_module_path}' -Force -ErrorAction Stop; "
+        "$security = Get-Module Microsoft.PowerShell.Security | Select-Object -First 1; "
+        "$expected = [IO.Path]::GetFullPath((Join-Path $PSHOME 'Modules')); "
+        "$actual = [IO.Path]::GetFullPath($security.Path); "
+        "if (-not $actual.StartsWith(($expected.TrimEnd('\\') + '\\'), [StringComparison]::OrdinalIgnoreCase)) { throw 'Preloaded Security module path is not from the active host' }; "
+        "if ($env:PSModulePath -ne $inherited) { throw 'PSModulePath was not preserved after reusing the loaded module' }; "
+        "Write-Output 'PAA_PRELOADED_SECURITY_REUSE_OK'"
+    )
+    result = subprocess.run(
+        [
+            powershell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=45,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + "\n" + result.stderr
+    assert "PAA_PRELOADED_SECURITY_REUSE_OK" in result.stdout

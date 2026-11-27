@@ -1,30 +1,27 @@
+import os
+import stat
 from pathlib import Path
+
+import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_machine_state_broker_is_checked_before_app_startup():
+def test_machine_state_broker_startup_preflight_is_read_only():
     source = (ROOT / "run.py").read_text(encoding="utf-8")
     bootstrap = source[source.index("def _ensure_state_broker"):source.index("\ndef main()")]
     main = source[source.index("def main()"):]
 
     assert "def _ensure_state_broker() -> bool:" in bootstrap
     assert "from app.autonomous_engineering_state_broker import health" in bootstrap
-    assert 'if system == "Windows":' in bootstrap
-    assert 'elif system in {"Linux", "Darwin"}:' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker.ps1"' in bootstrap
-    assert 'ROOT / "scripts" / "ensure_autonomous_state_broker_posix.py"' in bootstrap
-    assert '"-ExecutionPolicy"' in bootstrap
-    assert '"-File"' in bootstrap
-    assert "shell=False" in bootstrap
-    assert "capture_output = False" in bootstrap
-    assert "if health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "if not health(timeout_ms=30000, verify=True):" in bootstrap
-    assert "state-broker-setup.log" in bootstrap
-    assert 'request("GET", "/v1/health/verify", timeout_ms=30000)' in bootstrap
+    assert "health(timeout_ms=30000, verify=True)" in bootstrap
+    assert "Start-Process" not in bootstrap
+    assert "ensure_autonomous_state_broker.ps1" not in bootstrap
+    assert "ensure_autonomous_state_broker_posix.py" not in bootstrap
+    assert "subprocess.run" not in bootstrap
     assert main.index("_ensure_dependencies(dev)") < main.index("from dotenv import load_dotenv")
-    assert main.index("load_dotenv(ROOT / \".env\", override=False)") < main.index("_ensure_state_broker()")
+    assert main.index('load_dotenv(ROOT / ".env", override=False)') < main.index("_ensure_state_broker()")
     assert main.index("_ensure_state_broker()") < main.index("_ensure_ollama()")
     assert main.index("_ensure_state_broker()") < main.index("uvicorn")
 
@@ -85,7 +82,9 @@ def test_posix_broker_setup_uses_dynamic_service_identity_and_native_service_man
     assert "sys.path.insert(0, str(project_root))" in installer
     assert "def _prepare_socket_path" in service
     assert "AccessControl" not in service
-    assert "MARKERS" in service and "CLEANUP_NAMES" in service
+    store = (ROOT / "app" / "autonomous_engineering_state_store.py").read_text(encoding="utf-8")
+    assert "RestrictedStateBroker" in service
+    assert "MARKERS" in store and "CLEANUP_NAMES" in store
     assert "/v1/progress" in client
     assert "configured_socket_path" in client
     assert 'Path("/etc/xdg")' in config
@@ -107,27 +106,102 @@ def test_posix_state_migration_does_not_rewrite_existing_tree_permissions():
     assert "os.chmod(directory, 0o700)" not in migration
     assert "both copies were preserved" in migration
 
-def test_windows_acl_module_loads_security_cmdlets_in_its_own_scope():
+def test_windows_acl_module_exposes_security_cmdlets_to_host_scope():
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
 
-    security_import = "Import-Module Microsoft.PowerShell.Security -ErrorAction Stop"
+    security_import = "Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop"
     assert security_import in module
     assert module.index(security_import) < module.index("function Set-AutonomousDirectoryAcl")
     assert "Get-Acl -LiteralPath" in module
     assert "Set-Acl -LiteralPath" in module
 
 
-def test_windows_acl_module_filters_inherited_powershell7_paths_before_security_import():
+def test_windows_acl_module_import_isolated_to_active_host_and_restores_module_path():
     module = (ROOT / "scripts" / "AutonomousWindowsIdentity.psm1").read_text(encoding="utf-8")
-    pre_import = module[:module.index("Import-Module Microsoft.PowerShell.Security")]
+    import_block = module[:module.index("function ConvertTo-AutonomousWindowsAccountName")]
 
-    assert '$PSVersionTable.PSEdition -eq "Desktop"' in pre_import
-    assert r"'*\Documents\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\Modules'" in pre_import
-    assert r"'*\Program Files\PowerShell\*\Modules'" in pre_import
-    assert r"'*\Program Files (x86)\PowerShell\Modules'" in pre_import
-    assert "$env:PSModulePath = $compatibleModulePaths -join [IO.Path]::PathSeparator" in pre_import
-    assert pre_import.index("$env:PSModulePath =") < module.index(
+    assert '$previousModulePath = $env:PSModulePath' in import_block
+    assert '$env:PSModulePath = Join-Path $PSHOME "Modules"' in import_block
+    assert "Import-Module Microsoft.PowerShell.Security -Global -ErrorAction Stop" in import_block
+    assert import_block.index('$env:PSModulePath = Join-Path $PSHOME "Modules"') < import_block.index(
         "Import-Module Microsoft.PowerShell.Security"
     )
-    assert "SetEnvironmentVariable" not in pre_import
+    assert import_block.index("Import-Module Microsoft.PowerShell.Security") < import_block.index(
+        "$env:PSModulePath = $previousModulePath"
+    )
+    assert "finally {" in import_block
+    assert "SetEnvironmentVariable" not in import_block
+    assert "Program Files\\\\PowerShell" not in import_block
+
+def test_windows_broker_relaunches_the_current_host_without_pinning_powershell_exe():
+    ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    compatibility = (ROOT / "scripts" / "configure_autonomous_engineering_progress.ps1").read_text(encoding="utf-8")
+
+    assert '$hostExecutable = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in ensure
+    assert 'Start-Process -FilePath $hostExecutable -Verb RunAs' in ensure
+    assert 'Join-Path $PSHOME "powershell.exe"' not in ensure
+    assert '$powershell = [string](Get-Process -Id $PID -ErrorAction Stop).Path' in compatibility
+    assert '& $powershell -NoLogo -NoProfile -NonInteractive' in compatibility
+    assert 'Get-Command powershell.exe' not in compatibility
+
+def test_windows_broker_setup_uses_machine_wide_mutex_and_persistent_recovery_marker():
+    ensure = (ROOT / "scripts" / "ensure_autonomous_state_broker.ps1").read_text(encoding="utf-8")
+    lock_module = (ROOT / "scripts" / "AutonomousStateBrokerSetupLock.psm1").read_text(encoding="utf-8")
+
+    assert 'Import-Module (Join-Path $scriptRoot "AutonomousStateBrokerSetupLock.psm1") -Force' in ensure
+    assert 'Enter-AutonomousStateBrokerSetupMutex -Name "Global\\PersonalAIAssistant.StateBrokerSetup"' in ensure
+    assert ensure.index("Enter-AutonomousStateBrokerSetupMutex") < ensure.index("Get-CimInstance Win32_Service")
+    assert "Exit-AutonomousStateBrokerSetupMutex -Lock $setupMutexState" in ensure
+    assert ensure.index("Clear-AutonomousStateBrokerSetupRecoveryMarker") > ensure.index("if ($setupFailure) { throw $setupFailure }")
+    assert "AcknowledgeAbandonedSetup" in ensure
+    assert "RegistryView]::Registry64" in lock_module
+    assert "Set-AutonomousStateBrokerSetupRecoveryMarker" in lock_module
+    assert "AUTONOMOUS_STATE_BROKER_SETUP_RECOVERY_BLOCKED" in lock_module
+    assert 'SetValue("SetupReason", $Reason' in lock_module
+    assert 'DeleteValue("SetupReason", $false)' in lock_module
+    assert '-or $Reason -match "[\\r\\n]"' in lock_module
+    assert "$preserveSetupMutex = $false" in ensure
+    assert "$requiresRecoveryAcknowledgement = $setupCommitted -or $rollbackFailures.Count -gt 0" in ensure
+    assert "recovery marker persistence failed; setup mutex retained until process exit." in ensure
+    assert "if ($null -ne $setupMutexState -and -not $preserveSetupMutex)" in ensure
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Requires POSIX directory ownership")
+def test_posix_socket_directory_is_created_and_reused_safely(tmp_path):
+    from scripts.ensure_autonomous_state_broker_posix import _prepare_service_socket_directory
+
+    socket_dir = tmp_path / "broker socket"
+    uid, gid = os.geteuid(), os.getegid()
+    _prepare_service_socket_directory(socket_dir, uid, gid)
+    original = socket_dir.stat()
+    assert (original.st_uid, original.st_gid) == (uid, gid)
+    assert stat.S_IMODE(original.st_mode) == 0o710
+
+    _prepare_service_socket_directory(socket_dir, uid, gid)
+    assert socket_dir.stat().st_ino == original.st_ino
+
+    unsafe = tmp_path / "unsafe"
+    unsafe.symlink_to(socket_dir, target_is_directory=True)
+    with pytest.raises(OSError):
+        _prepare_service_socket_directory(unsafe, uid, gid)
+    assert socket_dir.stat().st_ino == original.st_ino
+
+    socket_dir.chmod(0o777)
+    with pytest.raises(RuntimeError, match="permissions are unsafe"):
+        _prepare_service_socket_directory(socket_dir, uid, gid)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Requires POSIX installer module")
+def test_systemd_unit_recreates_socket_directory_on_every_start():
+    from scripts.ensure_autonomous_state_broker_posix import _systemd_unit
+
+    socket_dir = Path("/run/paa-state-broker-0123456789abcdef")
+    unit = _systemd_unit(
+        "runner", Path("/usr/bin/python3"), Path("/etc/protected/broker.py"),
+        Path("/var/lib/assistant state"), socket_dir / "broker.sock",
+        client_uid=1001, service_group="assistant",
+    )
+
+    assert f"RuntimeDirectory={socket_dir.name}\nRuntimeDirectoryMode=0710\n" in unit
+    assert 'ReadWritePaths="/var/lib/assistant state"\n' in unit
+    assert f'"{socket_dir}/broker.sock"' in unit

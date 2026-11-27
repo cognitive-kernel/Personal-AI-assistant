@@ -231,7 +231,17 @@ def get_progress(
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
     current = snapshot.get("current")
+    if isinstance(current, dict):
+        current = dict(current)
+        current.pop("execution_owner_token", None)
     records = snapshot.get("history") if isinstance(snapshot.get("history"), list) else []
+    raw_events = snapshot.get("events") if isinstance(snapshot.get("events"), list) else []
+    events = []
+    for event in raw_events[-50:]:
+        if isinstance(event, dict):
+            safe_event = dict(event)
+            safe_event.pop("execution_owner_token", None)
+            events.append(safe_event)
     baseline = _scorecard_baseline(snapshot.get("baseline") if isinstance(snapshot.get("baseline"), dict) else None)
     all_snapshots = _aggregate_snapshots(records, "daily", None, None, baseline)
     latest_snapshot = all_snapshots[-1] if all_snapshots else baseline
@@ -249,11 +259,7 @@ def get_progress(
         "current": current,
         "history": history,
         "latest_snapshot": latest_snapshot,
-        "events": (
-            snapshot.get("events", [])[-50:]
-            if isinstance(snapshot.get("events"), list)
-            else []
-        ),
+        "events": events,
         "available": bool(current or history),
         "storage_configured": bool(snapshot.get("storage_configured")),
         "updated_at": datetime.now(timezone.utc).isoformat(),

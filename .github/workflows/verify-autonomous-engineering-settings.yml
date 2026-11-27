@@ -1,0 +1,93 @@
+name: Verify Autonomous Engineering settings
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  verify-read-only-settings:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions: {}
+    steps:
+      - name: Verify repository identity and read-only Variables access
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          VARIABLES_TOKEN: ${{ secrets.AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+
+          repository = os.environ.get("REPOSITORY", "").strip()
+          token = os.environ.pop("VARIABLES_TOKEN", "").strip()
+          if not repository or "/" not in repository or not token:
+              raise SystemExit("Settings probe blocked: repository or read-only Variables secret is missing.")
+
+          base = "https://api.github.com/repos/" + repository
+          headers = {
+              "Accept": "application/vnd.github+json",
+              "Authorization": "Bearer " + token,
+              "X-GitHub-Api-Version": "2022-11-28",
+              "User-Agent": "Personal-AI-Assistant-settings-probe",
+          }
+          token = None
+
+          class ProbeError(RuntimeError):
+              pass
+
+          def get(path):
+              request = urllib.request.Request(base + "/" + path.lstrip("/"), headers=headers, method="GET")
+              try:
+                  with urllib.request.urlopen(request, timeout=15) as response:
+                      raw = response.read(1_000_000).decode("utf-8")
+                      return json.loads(raw) if raw else {}
+              except urllib.error.HTTPError as exc:
+                  raise ProbeError("GitHub API GET failed (HTTP " + str(exc.code) + ").") from None
+              except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+                  raise ProbeError("GitHub API GET failed due to a network or response error.") from None
+
+          metadata = get("")
+          actual_repository = metadata.get("full_name") if isinstance(metadata, dict) else None
+          if not isinstance(actual_repository, str) or actual_repository.casefold() != repository.casefold():
+              raise SystemExit("Settings probe blocked: repository identity could not be verified.")
+
+          inventory = get("actions/variables?per_page=1")
+          total_count = inventory.get("total_count") if isinstance(inventory, dict) else None
+          variables = inventory.get("variables") if isinstance(inventory, dict) else None
+          if type(total_count) is not int or total_count < 0 or not isinstance(variables, list):
+              raise SystemExit("Settings probe blocked: Variables read permission/schema could not be verified.")
+
+          def read_setting(name, allowed, default):
+              try:
+                  item = get("actions/variables/" + name)
+              except ProbeError as exc:
+                  # With collection read already proven, 404 means this named
+                  # variable is absent. Any other failure remains fail-closed.
+                  if "HTTP 404" in str(exc):
+                      value = default
+                      present = False
+                  else:
+                      raise
+              else:
+                  if not isinstance(item, dict) or not isinstance(item.get("value"), str):
+                      raise ProbeError("GitHub returned an invalid value for " + name + ".")
+                  value = item["value"].strip().lower()
+                  present = True
+              if value not in allowed:
+                  raise ProbeError("The value of " + name + " is outside the accepted set.")
+              print(name + "=" + value + (" (set)" if present else " (unset; default applied)"))
+
+          read_setting("AUTONOMOUS_ENGINEERING_PAUSED", {"true", "false"}, "false")
+          read_setting("AUTONOMOUS_ENGINEERING_MODE", {"continuous", "scheduled"}, "continuous")
+          headers["Authorization"] = ""
+          headers.clear()
+          print("repository_identity=verified")
+          print("variables_read_permission=verified")
+          print("settings_probe=read_only; no task was dispatched and no setting was changed")
+          PY

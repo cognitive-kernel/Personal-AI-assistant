@@ -10,12 +10,35 @@ from app import autonomous_engineering as agent
 from app import autonomous_engineering_progress as progress
 
 
-@pytest.fixture(autouse=True)
-def _reset_dispatch_admission_state(monkeypatch):
-    monkeypatch.setattr(agent, "_LAST_DISPATCH_ACCEPTED_AT", 0.0)
+def _install_dispatch_admission_fake(monkeypatch):
+    """Keep route tests independent of the machine broker while preserving its contract."""
+    from contextlib import contextmanager
+    from threading import Lock
+    import time
+
+    reservation_lock = Lock()
+    state = {"accepted_at": None}
+
+    @contextmanager
+    def fake_dispatch_admission_lock():
+        if not reservation_lock.acquire(blocking=False):
+            raise agent.StateBrokerConflict("dispatch reservation is active", ["dispatch_reservation_active"])
+        admission = {"accepted": False}
+        try:
+            accepted_at = state["accepted_at"]
+            if accepted_at is not None and time.monotonic() - accepted_at < 90:
+                raise agent.StateBrokerConflict("dispatch was recently accepted", ["dispatch_recently_accepted"])
+            yield admission
+            if admission.get("accepted") is True:
+                state["accepted_at"] = time.monotonic()
+        finally:
+            reservation_lock.release()
+
+    monkeypatch.setattr(agent, "dispatch_admission_lock", fake_dispatch_admission_lock)
 
 
 def _ready(monkeypatch):
+    _install_dispatch_admission_fake(monkeypatch)
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
         "paused": False,
@@ -297,11 +320,12 @@ def test_empty_dispatch_remains_available_to_resume_persisted_work(monkeypatch):
 
     assert result["accepted"] is True
     workflow_call = next(command for command in calls if command[1:3] == ["workflow", "run"])
-    assert "--field" in workflow_call
-    assert "manual_task=" in workflow_call
+    assert "--raw-field" in workflow_call
+    assert any(value.startswith("manual_task=") for value in workflow_call)
 
 
 def _ready_for_dispatch_admission(monkeypatch):
+    _install_dispatch_admission_fake(monkeypatch)
     monkeypatch.setattr(agent, "collect_status", lambda: {
         "ready": True,
         "paused": False,

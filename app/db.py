@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 import os
+import re
 import sqlite3
 import threading
 from pathlib import Path
@@ -33,6 +34,23 @@ def settings_connection() -> sqlite3.Connection:
 
 def learning_connection() -> sqlite3.Connection:
     return _connect(defaults.learning_db_path)
+
+_INTERNAL_CODEX_CONTEXT_VARIANT = re.compile(
+    r"-codex-(?:ctx(?:[0-9]+)?(?:-paa-[0-9]+-[0-9]+-[a-f0-9]{12})?|64k)$",
+    re.IGNORECASE,
+)
+
+
+def _legacy_chat_model_base(model: Any) -> Any:
+    """Do not migrate an app-generated temporary Codex variant into chat settings."""
+    if not isinstance(model, str):
+        return model
+    value = model.strip()
+    match = _INTERNAL_CODEX_CONTEXT_VARIANT.search(value)
+    if match is None or match.start() == 0:
+        return model
+    return value[:match.start()]
+
 
 def init_databases() -> None:
     """Initialize versioned settings/learning stores and seed missing default settings."""
@@ -71,16 +89,20 @@ def init_databases() -> None:
                             "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
                             (json.dumps(existing_settings[legacy_key]), profile_key),
                         )
-            # Keep the legacy model choice for chat. Learning and programming
-            # get their own purpose-specific defaults unless explicitly configured.
+
+            # Seed a missing chat profile from the legacy model choice.
             if (
                 "chat_ollama_model" not in existing_settings
                 and os.getenv("CHAT_OLLAMA_MODEL") is None
             ):
                 conn.execute(
                     "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
-                    (json.dumps(existing_settings["ollama_model"]), "chat_ollama_model"),
+                    (
+                        json.dumps(_legacy_chat_model_base(existing_settings["ollama_model"])),
+                        "chat_ollama_model",
+                    ),
                 )
+
             # Move only the former built-in learning default. Preserve any custom
             # model choice and honor an explicit environment override.
             learning_model_override = os.getenv("LEARNING_OLLAMA_MODEL")
@@ -99,6 +121,22 @@ def init_databases() -> None:
                     (json.dumps("gpt-oss:20b"), "learning_ollama_model"),
                 )
 
+        # A Codex context variant is a generated task-local model, never a durable
+        # chat model. Normalize the persisted value regardless of whether it came
+        # from a legacy setting, a profile, or an environment-seeded default.
+        # Ordinary user-selected model tags are not changed.
+        chat_model_row = conn.execute(
+            "SELECT value_json FROM settings WHERE key=?",
+            ("chat_ollama_model",),
+        ).fetchone()
+        if chat_model_row is not None:
+            saved_chat_model = json.loads(chat_model_row["value_json"])
+            base_chat_model = _legacy_chat_model_base(saved_chat_model)
+            if base_chat_model != saved_chat_model:
+                conn.execute(
+                    "UPDATE settings SET value_json=?, updated_at=CURRENT_TIMESTAMP WHERE key=?",
+                    (json.dumps(base_chat_model), "chat_ollama_model"),
+                )
 
 def get_settings() -> dict[str, Any]:
     with settings_connection() as conn:

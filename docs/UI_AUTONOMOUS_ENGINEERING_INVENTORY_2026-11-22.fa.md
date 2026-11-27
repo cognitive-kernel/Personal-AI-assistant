@@ -33,10 +33,10 @@ UI مستقیماً فایل‌های durable، checkpoint یا Runner را تغ
 | بازخوانی وضعیت | `GET /status` | فقط read؛ readiness و GitHub state باید قابل تأیید باشند | بدون mutation؛ status و pending-work snapshot |
 | ذخیره تنظیمات | `POST /settings` | مدل نصب‌شده، Context، tools، Ollama و GitHub CLI معتبر | متغیرهای repository برای model/interval/mode تغییر می‌کنند؛ خطا باید بدون ذخیرهٔ ناقص گزارش شود |
 | دانلود مدل | `POST /models/pull` سپس `GET /models/pull/{job_id}` | تأیید صریح کاربر و سرویس محلی Ollama | job دانلود به حالت queued/running/completed/failed می‌رود؛ مدل موجود حذف یا جایگزین نمی‌شود |
-| ارسال task دستی | `POST /dispatch` با `task` | readiness کامل، نبود run فعال، نبود task/PR/cleanup مسدودکننده و checkpoint معتبر | workflow به GitHub ارسال می‌شود؛ نتیجهٔ timeout مبهم است و نباید کورکورانه retry شود |
+| ارسال task دستی | `POST /dispatch` با `task` | readiness کامل، نبود run فعال، نبود task/PR/cleanup مسدودکننده و checkpoint معتبر؛ در mode=scheduled نیز task صریح مجاز است | workflow به GitHub ارسال می‌شود؛ ورودی `resume_once` تنظیم نمی‌شود؛ نتیجهٔ timeout مبهم است و نباید کورکورانه retry شود |
 | اجرای چرخه از صف | `POST /dispatch` بدون body | همان readiness؛ اگر checkpoint وجود دارد فقط همان task ادامه می‌یابد | dispatch/reconcile؛ task جدید ساخته نمی‌شود مگر admission آن مجاز باشد |
 | توقف ایمن | `POST /pause` | GitHub CLI authenticated | `AUTONOMOUS_ENGINEERING_PAUSED=true`؛ اجرای جاری تا مرز امن/پایان workflow ادامه دارد و چرخهٔ جدید شروع نمی‌شود؛ این توقف، suspend لحظه‌ای process نیست |
-| ادامه | `POST /resume` | GitHub CLI authenticated | pause variable برابر false و workflow dispatch می‌شود؛ نتیجهٔ dispatch باید جداگانه از Runs تأیید شود |
+| ادامه | `POST /resume` | GitHub CLI authenticated؛ Resume صریح مالک | pause variable برابر false و workflow dispatch با ورودی `resume_once=true` می‌شود؛ در mode=scheduled فقط همین اجرای خالی یک‌باره مجاز است؛ نتیجهٔ dispatch باید جداگانه از Runs تأیید شود |
 | لغو اضطراری | `POST /cancel` | اجرای active از GitHub پیدا شود | GitHub run فعال cancel می‌شود؛ checkpoint/task durable پاک نمی‌شود |
 | بازخوانی سوابق | `GET /runs` | GitHub API قابل دسترسی | read-only؛ stale response باید کنار گذاشته شود |
 | مشاهده گزارش | `GET /runs/{run_id}/logs` | run ID باید متعلق به repository/workflow مورد انتظار باشد | job/step failure، diagnostic ذخیره‌شده و log sanitize‌شده نمایش داده می‌شود |
@@ -57,12 +57,13 @@ UI مستقیماً فایل‌های durable، checkpoint یا Runner را تغ
 |---|---|---|
 | Ready + no pending work | dispatch task جدید یا چرخهٔ صف | queued/in_progress پس از تأیید GitHub |
 | Active workflow | مشاهده progress/log؛ cancel اضطراری | completed یا cancelled |
-| Paused | dispatch جدید ممنوع | resume، که pause variable را پاک و workflow را dispatch می‌کند |
+| Paused | dispatch جدید و recovery ممنوع؛ task جاری تا مرز امن ادامه می‌یابد | resume، که pause variable را پاک و workflow را با resume_once=true dispatch می‌کند |
 | Pending task/owner/PR/cleanup | task جدید ممنوع؛ فقط reconcile/ادامهٔ همان کار | پس از تعیین‌تکلیف durable blocker به Ready |
 | Verified checkpoint | فقط ادامهٔ همان task | restore همان worktree/diff و ادامه |
 | Unverified checkpoint | هیچ dispatch جدیدی مجاز نیست | بررسی مالک/یکپارچگی؛ fail-closed |
 | Completed run | logs و حذف run قدیمی با تأیید | history حذف می‌شود؛ task state مستقل است |
 | Cleanup blocked | cleanup ممنوع | رفع blocker با مالک state broker |
+| Scheduled mode | push/schedule، recovery و empty workflow_dispatch بدون resume_once ممنوع؛ task دستی مجاز | task دستی یا Resume یک‌باره با resume_once=true؛ چرخهٔ بعدی فقط پس از تغییر mode به continuous |
 
 ## 4. reproduction و regressionهای موجود
 
@@ -269,9 +270,165 @@ Reproduction روی Windows target، Ollama/Codex واقعی و Runner با ACL 
 ---
 
 
-## الحاقیهٔ 2026-11-24 — race در refresh وضعیت پس از mutation
+---
 
-- **Root cause اثبات‌شده در main `3d1e843ff1d2726e74e16535cdff3ee3c1da44ea`:** `refreshAfterMutation()` فقط poll موجود را await می‌کرد. اگر دو mutation هنگام اجرای یک poll تمام می‌شدند، هر دو continuation پس از پایان همان poll به‌طور مستقل `refreshStatus()` را اجرا می‌کردند؛ در نتیجه دو snapshot هم‌زمان می‌توانستند UI را با ترتیب پاسخ غیرقابل‌پیش‌بینی به‌روزرسانی کنند.
-- **اصلاح در branch `fix/autonomous-engineering-status-refresh-serialization-20261124`:** refreshهای پس از mutation با `statusMutationRefreshPromise` سریالی شده‌اند. هر refresh منتظر mutation قبلی و poll پیشین می‌ماند و سپس یک درخواست authoritative مستقل اجرا می‌کند.
-- **Regression:** تست Playwright جدید، poll قبلی را معلق نگه می‌دارد، دو refresh پس از mutation را هم‌زمان درخواست می‌کند و حداکثر یک درخواست status فعال و به‌روزرسانی نهایی پس از هر دو mutation را assert می‌کند.
-- **وضعیت:** کد و تست به branch اضافه شده‌اند؛ اجرای Browser E2E و exact-head CI هنوز pending است. Gate D تا عبور تست‌ها بسته نمی‌شود.
+## الحاقیهٔ 2026-11-24 — ممیزی مجدد بر اساس وضعیت فعلی main
+
+این الحاقیه وضعیت تاریخی inventory مورخ 2026-11-22 را بازنویسی نمی‌کند؛ موارد زیر snapshot جدید و مرجع جاری برای ادامهٔ کار هستند.
+
+### یافته‌های جدید و اصلاحات
+
+| حوزه | یافته | اصلاح/وضعیت |
+|---|---|---|
+| UI status refresh | دو mutation می‌توانستند پس از یک poll مشترک، درخواست‌های status هم‌زمان بفرستند و snapshot قدیمی‌تر را جایگزین کنند | PR #864 این refreshها را سریالی می‌کند؛ exact-head CI کامل موفق است |
+| Broker provisioning | timeout پردازهٔ Python/PowerShell والد، تضمین نمی‌کند UAC-elevated child متوقف شود؛ قفل والد ممکن است آزاد شود درحالی‌که فرزند هنوز ACL/service را تغییر می‌دهد | finding در review PR #863 ثبت شد؛ PR #865 قفل machine-wide را داخل child اضافه کرده؛ exact-head CI و Windows integration هنوز pending هستند |
+| Safe Pause | مرحلهٔ پیش از task مقدار vars.AUTONOMOUS_ENGINEERING_PAUSED را از workflow context می‌خواند؛ run منتظر concurrency ممکن است snapshot قدیمی داشته باشد | PR #866 مقدار جاری را از Actions Variables API پس از گرفتن concurrency slot می‌خواند؛ exact-head CI pending است |
+| Emergency Cancel | انتخاب اولین run فعال از فهرست newest-first ممکن بود run تازه‌صف‌شده را لغو کند و run قدیمی‌ترِ درحال‌اجرا را باقی بگذارد | PR #867 وضعیت job واقعی codex را با gh run view بررسی می‌کند و اجرای دارای job درحال‌اجرا را انتخاب می‌کند؛ exact-head CI pending است |
+
+### وضعیت Gateها
+
+- **A — Inventory و reproduction:** inventory و state-transition mapping موجود است؛ بازتولیدهای میزبان واقعی و بررسی همهٔ کنترل‌ها هنوز تکمیل نشده‌اند.
+- **B — Ownership/fencing/recovery:** lease epoch و owner fencing در main وجود دارند؛ ممیزی تمام domain mutation call-siteها، رفتار owner قدیمی، crash/restart و recovery واقعی هنوز لازم است. قفل elevated Broker در PR #865 هنوز پذیرفته نشده است.
+- **C — Error contract/observability:** structured errors و correlation پایه موجودند؛ خطاهای timeout/ambiguous و correlation باید در مسیرهای جدید نیز exact-head و target-host تأیید شوند.
+- **D — UI state machine:** اصلاح refresh race در PR #864 روی exact head با CI کامل موفق شده؛ Pause live gate و Cancel priority در PRهای #866/#867 هنوز CI pending دارند.
+- **E — Browser E2E:** PR #864 روی head دقیق Browser E2E را گذرانده؛ PRهای جدید هنوز نیازمند اجرای مجدد روی head نهایی هستند.
+- **F — Exact-head CI:** فقط PR #864 در این snapshot تمام workflowهای لازم را روی head دقیق گذرانده است. وضعیت PRهای #863 و #865–#867 باید جداگانه و روی آخرین SHA بررسی شود.
+- **G — Windows target host:** pending؛ نیازمند حساب غیرادمین، UAC، LocalService Broker، Runner واقعی/ناموجود، ACL و Ollama/Codex واقعی.
+- **H — Crash/restart/recovery:** pending؛ باید parent timeout با child Elevated زنده، crash در حین تغییر ACL، restart و حفظ checkpoint روی Windows واقعی آزمایش شوند.
+- **I — Documentation/rollback:** این الحاقیه و docs/UI_ACCEPTANCE.md به‌روز شدند؛ runbook دقیق بازیابی abandoned mutex و شواهد restore/rollback هنوز لازم است.
+- **J — Owner acceptance:** pending؛ همهٔ PRها Draft باقی می‌مانند و هیچ merge خودکاری انجام نمی‌شود.
+
+### محدودیت و ایمنی
+
+- وضعیت CI یک PR یا SHA به PR دیگر یا به main تعمیم داده نمی‌شود.
+- Browser E2E و Windows hosted CI جایگزین پذیرش میزبان واقعی نیستند.
+- هیچ task، owner metadata، checkpoint، database، ACL، Runner registration یا workflow پایدار حذف یا بازنویسی نشده است.
+- پیش از merge باید تمام checkها روی exact head سبز باشند و گیت‌های target-host/owner acceptance تکمیل شوند.
+
+
+
+### حاقیهٔ Safe Pause و Execution Mode — 2026-11-24
+
+- کنترل workflow پس از گرفتن concurrency slot، مقدار زندهٔ Pause و Execution Mode را می‌خواند.
+- کنترلر Python پس از گرفتن repository execution lock و پیش از durable-state recovery یا شروع task هر دو مقدار را دوباره می‌خواند و پیش از dispatch چرخهٔ بعدی پس از ادغام مالک نیز آن‌ها را بررسی می‌کند.
+- Recovery نیز mode و Pause را پیش از طبقه‌بندی retry و بار دیگر پس از backoff، درست پیش از dispatch، بررسی می‌کند.
+- نبود متغیر Pause (HTTP 404) به معنی false و نبود متغیر mode به معنی continuous است؛ خطای API یا مقدار نامعتبر fail-closed است.
+- در حالت scheduled، runهای خودکار push/schedule و recovery که پشت concurrency منتظر مانده‌اند اجرا نمی‌شوند؛ task دستی مجاز است و Resume فقط با ورودی صریح resume_once یک اجرای خالی را مجاز می‌کند. Pause پس از شروع task، task جاری را قطع نمی‌کند؛ فقط شروع task/recovery بعدی را متوقف می‌کند. exact-head CI این تغییرات هنوز pending است.
+
+
+
+## 2026-11-24 — live admission transition table (ADR-024)
+
+| Trigger / event | Live precondition read | State transition / permitted action |
+|---|---|---|
+| Push / schedule queued behind Codex concurrency | Workflow reads live Pause and execution mode after the Codex slot; cycle controller repeats after repository lock | Pause=true blocks. mode=scheduled blocks. mode=continuous + Pause=false permits one task only when the current UTC schedule gate admitted it. |
+| Explicit manual task | Live Pause and mode; manual task payload is non-empty | Pause=true blocks. mode=scheduled does not block an explicit manual task. No resume_once marker is sent. |
+| Owner Resume | POST /resume clears Pause and dispatches workflow_dispatch with resume_once=true | In scheduled mode one empty-task run is permitted. The marker is not inherited by the next cycle. |
+| Automatic continuous chaining after owner merge | Cycle controller re-reads live mode and Pause immediately before dispatch | Dispatch next cycle only when live mode=continuous and Pause=false. Otherwise the accepted task remains complete and no next cycle is dispatched. |
+| Automatic recovery | Recovery coordinator reads live mode/Pause before retry classification and after backoff; main workflow gate reads them again after concurrency | mode=scheduled or Pause=true blocks recovery. Recovery dispatch never sets resume_once. |
+| Unmarked empty workflow_dispatch | Live gate checks mode, recovery_attempt, manual_task, and resume_once | In scheduled mode it is rejected; continuous mode may proceed if Pause=false and other admission checks pass. |
+| Emergency cancel | POST /cancel; inspect run status and actual Codex job with gh run view --json jobs | Select the run whose Codex job is in_progress; fail closed on ambiguous/unreadable job state or excessive simultaneous in-progress runs. No task/checkpoint data is deleted. |
+
+The implementation and rationale are recorded in [ADR-024](architecture/ADR-024-live-pause-and-execution-mode-admission.md). Exact-head CI and target-host acceptance remain pending; this table records the intended and tested contract, not a claim of end-to-end completion.
+
+## 2026-11-24 — inherited mainline regressions
+
+- PR #864's serialized post-mutation status refresh is now part of main and parent #863; PR #867's job-aware Cancel handler is carried by both parent branches. The child follow-ups must retain these changes when rebased.
+- The progress cleanup queue fix and dedicated read-only Variables credential remain specific to #870 and await exact-head CI and secret-backed Runner validation.
+- Broker Registry64 and same-thread/wrong-thread acknowledgement behavior remain specific to #869 and await Windows storage regression execution and target-host validation.
+- Resume و manual dispatch از lock مشترک استفاده می‌کنند؛ timestamp مستقل Resume و guard متقابل مانع dispatch تکراری می‌شود. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ خطای قطعی Pause را rollback می‌کند.
+
+## الحاقیهٔ 2026-11-24 — وضعیت فعلی state ownership و کنترل‌های UI
+
+| مسیر/رویداد | مالک state | قرارداد و وضعیت |
+|---|---|---|
+| status poll و post-mutation refresh | autonomous-engineering-status.js | statusRefreshPromise برای single-flight و statusMutationRefreshPromise برای سریال‌سازی refreshهای پس از mutation؛ پاسخ قدیمی نباید snapshot جدیدتر را overwrite کند. |
+| pause/resume/cancel | UI controls → API → GitHub Actions | Pause فقط admission آینده را متوقف می‌کند؛ Resume در حالت scheduled باید یک dispatch یک‌بارهٔ صریح بسازد؛ Cancel باید job واقعی Codex را تشخیص دهد و task/checkpoint را حذف نکند. |
+| run history/log/delete | autonomous-engineering-runs.js → API | sequence guard پاسخ‌های قدیمی؛ حذف فقط run پایان‌یافته و متعلق به workflow؛ cleanup از مسیر lockهای repository → durable state → checkpoint. |
+| progress/chart | autonomous-engineering-progress.js → API | progress owner مستقل؛ refreshهای هم‌زمان coalesce می‌شوند. follow-up #870 رویداد cleanup را با queueIfBusy: true به refresh بعدی تبدیل می‌کند تا درخواست درحال اجرا باعث drop شدن refresh نشود. |
+| live Pause/Mode | PowerShell gate + cycle/recovery controllers | خواندن Variables فقط با credential اختصاصی read-only؛ GITHUB_TOKEN برای عملیات workflow باقی می‌ماند؛ cycle secret را پیش از اجرای Codex از environment حذف می‌کند. |
+| Broker setup mutex | PowerShell setup-lock module + Windows registry marker | marker با Registry64 ثابت؛ در شکست marker-write، process fallback fail-closed؛ acknowledgement فقط از thread مالک می‌تواند ownership قبلی را آزاد و قفل تازه بگیرد. |
+
+### Root causes و شواهد به‌روز
+- Refresh race: دو mutation می‌توانستند پس از انتظار برای یک poll مشترک، دو درخواست status موازی بسازند؛ در main با promise queue حل و در PR #864 روی exact head تست شد.
+- Cancel race: workflow status به‌تنهایی کافی نبود؛ job Codex می‌تواند پشت schedule gate در صف باشد. main اکنون gh run view --json jobs را بررسی و اجرای دارای Codex job فعال را انتخاب می‌کند؛ exact-head PR #867 موفق شد.
+- Cleanup/progress: اگر event پاک‌سازی هنگام درخواست progress فعال می‌رسید، refresh event بدون queue حذف می‌شد؛ اصلاح queueIfBusy: true در follow-up #870 است و CI آن هنوز pending است.
+- Live settings: GITHUB_TOKEN مجوز Variables:read ندارد؛ #870 credential read-only جداگانه را در PowerShell، cycle و recovery به کار می‌گیرد و fail-closed است.
+- Windows setup: marker رجیستری باید cross-bitness باشد و fallback فرایندی نباید با recursive mutex ownership دور زده شود؛ #869 مسیر Registry64 و acknowledgement same-thread/wrong-thread را تست می‌کند.
+
+### وضعیت Gateها
+- Repository-level UI tests برای #864 و #867: موفق روی exact head.
+- Exact-head CI برای شاخه‌های فعلی #863/#869 و #866/#870: pending تا اجرای کامل روی آخرین SHA.
+- Windows target-host، Runner واقعی، Ollama/Codex واقعی و owner acceptance: NOT RUN؛ هیچ‌کدام با CI شبیه‌سازی‌شده جایگزین نمی‌شوند.
+- Resume و manual dispatch از reservation دو مرحله‌ای مشترک در State Broker استفاده می‌کنند؛ timestamp و lease در state محافظت‌شده ذخیره می‌شود، بین workerها و پس از restart باقی می‌ماند، و lease رهاشده به‌صورت محافظه‌کارانه grace تازه ایجاد می‌کند. در صورت وجود run فعال فقط Pause برداشته می‌شود و run دوم صف نمی‌شود؛ در صورت dispatch جدید، Pause فقط پس از پذیرش GitHub برداشته می‌شود.
+- Cancel با dispatch/resume lock سریال می‌شود و run_id را از snapshot موفق UI می‌گیرد؛ سرور همان run را مستقیماً از GitHub می‌خواند، workflow و وضعیت فعال آن را اعتبارسنجی می‌کند، job Codex همان run را می‌سنجد و فقط همان شناسه را لغو می‌کند.
+- ورودی‌های workflow_dispatch با gh workflow run --raw-field ارسال می‌شوند؛ متن manual_task و correlation_id دیگر مشمول @path expansion یا تبدیل نوع --field نیستند.
+- cleanup در Windows تصمیم active-progress و lock را به State Broker محافظت‌شده واگذار می‌کند؛ مسیرهای مطلق فایل از پاسخ API حذف می‌شوند.
+
+
+### پوشش ۱۴ یافتهٔ بازبینی (2026-11-24)
+
+- Backend: raw-field، مسیر قفل‌دار مشترک dispatch/resume، reservation پایدار Broker، cancel بر اساس run_id، diagnostics محدود به failure/current page، cleanup بدون افشای مسیر مطلق و redaction گسترده.
+- Codex: failure feedback پالایش‌شده در retry، طبقه‌بندی enum برای نبود پیام نهایی/نشانگر ناقص/نشانگر غیرپایانی، timeout محدود ۶۰۰ ثانیه برای report-only repair، و پذیرش نشانگر فقط در آخرین خط غیرخالی.
+- UI: پیام چسبنده، refresh callback بدون Event argument، حفظ keyed run/log panels، حفظ Cancel/Pause/Resume در poll failure، معنای درست retryable، وضعیت خطای cleanup ناقص، تاریخ معتبر، fallback بازه، عدم بلعیدن timeout بدنهٔ response و اصلاح مسیر راه‌اندازی.
+- وضعیت: پیاده‌سازی و regression test اضافه شده‌اند؛ exact-head CI، build/integration سرویس Windows Broker، browser E2E و پذیرش روی Windows واقعی هنوز اجرا/تأیید نشده‌اند.
+
+
+## 2026-11-25 — latest-main reconciliation for the engineering stack
+
+- Integrated the current mainline history through `8b7c20c50ef4fd9346e924d212a35f36ff646515` as a merge parent; the branch retains its stronger Broker-backed dispatch/resume reservation and exact-run Cancel contract.
+- Preserved the mainline serialized post-mutation status-refresh regression and job-aware cancellation improvements. The branch's UI contract additionally sends the exact run ID from the last successful snapshot and fails closed if the selected run is no longer active or has no active Codex job.
+- Updated the pinned `actions/setup-node` reference to the current `v7.1.0` commit.
+- Added the current live UI-to-API audit as `UI_AUTONOMOUS_ENGINEERING_LIVE_AUDIT_2026-11-24.fa.md`; it is a static audit, not target-host acceptance.
+- Exact-head validation is required again after integration with the startup-readiness changes. No runtime workflow was dispatched by this merge preparation.
+
+## 2026-11-25 — integrated startup readiness and Broker portability
+
+- Startup performs read-only Broker and Ollama readiness checks; it does not request UAC, install/repair a service, start Ollama, or pull a model.
+- The dashboard exposes explicit Broker setup and refreshes readiness after the operation. Runner provisioning remains a separate privileged operation and is not required to install/use the local Broker.
+- The Windows Broker package is built and SHA-256 verified in CI; the target host no longer compiles C# or requires a local compiler.
+- PowerShell host selection is capability-based; the elevated child owns the machine mutex, abandoned setup is fail-closed, and ACL changes are transactional with rollback.
+- Ollama/model readiness is checked per capability. Missing models are not silently downloaded or substituted.
+- GitHub workflow dispatch uses --raw-field for task and correlation input; literal @path text remains data.
+- Final acceptance still requires exact-head CI on the combined branch and live Windows target-host verification.
+
+## 2026-11-25 — harden read-only Variables permission verification
+
+- GitHub may return HTTP 404 both for an absent repository variable and for a token that cannot access the variable endpoint. Repository metadata access alone does not prove the fine-grained token has Variables: read.
+- The live workflow gate, cycle controller, and recovery coordinator now verify the repository Variables collection endpoint before treating a named-variable 404 as an unset value. The collection response must have a valid non-negative total_count and a variables array.
+- This verification is read-only and only runs on the missing-variable path; the dedicated fine-grained credential is never used for Actions, PR, or repository mutations.
+- Invalid, inaccessible, malformed, or revoked read permission fails closed; no task or recovery dispatch is accepted.
+
+
+## الحاقیهٔ 2026-11-25 — اصلاح چرخهٔ عمر Ollama و وضعیت PRها
+
+### ریشه‌یابی مدل مهندسی
+- `scripts/verify_ollama_context.ps1` Context امن را از RAM آزاد و metadata مدل محاسبه می‌کرد، اما نسخهٔ قبلی tag پایدار `<base>-codex-ctx` می‌ساخت و پس از task آن را حذف نمی‌کرد.
+- workflow قبلی بعد از task فقط allocation را با `-VerifyOnly` بررسی می‌کرد؛ post-task model cleanup وجود نداشت.
+- `scripts/ollama_legacy_cleanup.py` می‌توانست aliasهای عددی `-codex-ctxN` را در تمام خانواده‌های مدل حذف کند، درحالی‌که این نام‌ها مالکیت اجرای جاری را ثابت نمی‌کنند.
+- نتیجه: خطای `pull model manifest: file does not exist` برای یک نام داخلی مانند `qwen2.5:7b-codex-ctx2048` نباید با pull مدل از registry پاسخ داده شود؛ این نام، مدل پایهٔ قابل انتخاب نیست.
+
+### قرارداد lifecycle اصلاح‌شده
+1. فقط مدل پایه‌ای که در Ollama نصب و توسط مالک انتخاب شده استفاده می‌شود؛ startup نه مدل pull می‌کند، نه مدل پایه را تغییر یا حذف می‌کند.
+2. Context از RAM آزاد، وزن مدل، KV cache و حداکثر context خود مدل محاسبه می‌شود؛ دادهٔ نامعتبر یا headroom ناکافی باعث توقف fail-closed می‌شود.
+3. برای هر run/attempt یک tag یکتا ساخته می‌شود: `<base>-codex-ctx<context>-paa-<run-id>-<attempt>-<nonce>`.
+4. tag و context دقیق پیش از `/api/create` در workflow environment ثبت می‌شوند تا شکست جزئی preflight هم قابل cleanup باشد.
+5. در پایان یا failure، `always()` فقط همان tag را unload می‌کند، خروج آن از `/api/ps` را بررسی می‌کند، وجود tag پایه را دوباره تأیید می‌کند، فقط همان tag موقت را حذف می‌کند و نبودنش را در `/api/tags` بررسی می‌کند.
+6. اگر مالکیت، context، base tag، unload یا deletion قابل اثبات نباشد، مدل حفظ می‌شود و cleanup خطا می‌دهد؛ مدل پایه و سایر tagها هدف قرار نمی‌گیرند.
+7. legacy aliasهای بدون شناسهٔ run فقط audit می‌شوند؛ حذف destructive تنها با `--delete-confirmed-legacy` ممکن است و در startup اجرا نمی‌شود.
+9. مهاجرت legacy settings هنگام ساخت chat profile جدید، Codex context variant را به base tag تبدیل می‌کند؛ اگر پروفایل موجود به tag موقت اشاره کند نیز فقط همان suffix اصلاح می‌شود. مقدار legacy و انتخاب‌های معتبر کاربر حفظ می‌شوند.
+10. همین lifecycle در workflow اصلی و workflow diagnostic ویندوز اعمال شده است.
+
+### PR graph پس از reconciliation
+- `main`: `8b7c20c50ef4fd9346e924d212a35f36ff646515`.
+- PR #872: شاخهٔ integration مبتنی بر main، باز و Draft.
+- PR #875: startup-readiness slice در شاخهٔ PR #872 ادغام شده؛ merge آن به معنی ادغام در main نیست.
+- PR #863 و PR #869 به‌همراه #866، #870 و #871 به‌عنوان superseded بسته شده‌اند؛ branchهایشان برای audit حفظ شده‌اند. PR #868 پیش‌تر در شاخهٔ #863 ادغام شده بود و محتوایش در #872 وجود دارد.
+- PR #876 پس از انتقال و به‌روزرسانی محتوای inventory در همین شاخه، به‌عنوان سند تکراری بسته شد؛ branch آن برای audit حفظ شده است.
+
+### وضعیت پذیرش
+- Regressionهای lifecycle، ownership، context mismatch، unload failure، deletion verification، audit-only legacy cleanup و عدم انتخاب internal variant افزوده شده‌اند.
+- آخرین code head ثبت‌شده `4857f411b38574e88e8662e09e1c2a94150b7ed4` است. Tests run `45627954707` در حال اجراست (bootstrap macOS موفق و jobهای اصلی Linux/Windows و Windows storage/Broker هنوز queued هستند)؛ Browser E2E run `45627954623` و dependency audit run `45627954566` موفق شده‌اند؛ CodeQL run `45627954696` پس از rerun در صف است. هیچ pass کامل برای این head ادعا نمی‌شود.
+- اجرای واقعی Windows host، PowerShell 5.1، State Broker، Runner، Ollama/Codex، task واقعی از UI، Pause/Resume/Cancel، crash/restart و پذیرش مالک همچنان pending است.
+- Browser E2E و CI میزبانی‌شده جایگزین target-host acceptance نیستند. تا تکمیل گیت‌ها، PR #872 Draft می‌ماند و merge انجام نمی‌شود.
+

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -41,12 +42,53 @@ def test_task_marker_accepts_exactly_one_marker(tmp_path: Path, report: str, exp
     assert cycle.task_marker(path) == expected
 
 
-@pytest.mark.parametrize("report", ["", "TASK_COMPLETE\nQUEUE_EMPTY", "TASK_UNKNOWN", "TASK_COMPLETE\nTASK_COMPLETE"])
+@pytest.mark.parametrize("report", ["", "TASK_UNKNOWN"])
 def test_task_marker_rejects_missing_or_ambiguous_marker(tmp_path: Path, report: str):
     path = tmp_path / "report.md"
     path.write_text(report, encoding="utf-8")
     with pytest.raises(RuntimeError):
         cycle.task_marker(path)
+
+
+def test_task_marker_validates_only_the_last_nonempty_line(tmp_path: Path):
+    path = tmp_path / "report.md"
+    path.write_text("TASK_COMPLETE\nQUEUE_EMPTY\n", encoding="utf-8")
+    assert cycle.task_marker(path) == "QUEUE_EMPTY"
+    path.write_text("TASK_COMPLETE\nTASK_COMPLETE\n", encoding="utf-8")
+    assert cycle.task_marker(path) == "TASK_COMPLETE"
+
+
+def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_marker(tmp_path: Path):
+    from scripts.autonomous_engineering_cycle_workspace import TaskReportError, TaskReportFailureKind
+
+    report = tmp_path / "report.md"
+    report.write_text("", encoding="utf-8")
+    with pytest.raises(TaskReportError) as empty:
+        cycle.task_marker(report)
+    assert empty.value.kind == TaskReportFailureKind.NO_LAST_AGENT_MESSAGE
+
+    report.write_text("Implementation summary without a marker.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as missing:
+        cycle.task_marker(report)
+    assert missing.value.kind == TaskReportFailureKind.MISSING_TERMINAL_MARKER
+
+    report.write_text("TASK_COMPLETE\nMore prose after the marker.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as misplaced:
+        cycle.task_marker(report)
+    assert misplaced.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("- quoted marker: TASK_COMPLETE\nMore prose after the quote.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as quoted:
+        cycle.task_marker(report)
+    assert quoted.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("TASK_COMPLETE.\n", encoding="utf-8")
+    with pytest.raises(TaskReportError) as punctuation:
+        cycle.task_marker(report)
+    assert punctuation.value.kind == TaskReportFailureKind.MARKER_NOT_FINAL_LINE
+
+    report.write_text("- quoted marker: TASK_COMPLETE\nTASK_BLOCKED\n", encoding="utf-8")
+    assert cycle.task_marker(report) == "TASK_BLOCKED"
 
 
 def test_validate_paths_accepts_only_reviewable_project_paths():
@@ -74,6 +116,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -180,6 +223,7 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -204,9 +248,11 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
         lambda *args: (_ for _ in ()).throw(AssertionError("invalid report must not clear the task checkpoint")),
     )
     calls = {"codex": 0}
+    codex_invocations = []
 
     def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
         assert any("autonomous_engineering_progress.py" in str(part) for part in command)
+        codex_invocations.append((command, capture, timeout_seconds))
         calls["codex"] += 1
         if calls["codex"] == 1:
             report = Path(command[command.index("--report") + 1])
@@ -226,18 +272,86 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert calls["codex"] == 2
-    assert "exactly one valid completion marker" in retry_text
+    assert codex_invocations[0][1] is True
+    assert "--timeout-seconds" not in codex_invocations[0][0]
+    assert codex_invocations[1][1] is True
+    timeout_index = codex_invocations[1][0].index("--timeout-seconds")
+    assert 1 <= int(codex_invocations[1][0][timeout_index + 1]) <= 600
+    assert codex_invocations[1][2] <= 630
+    assert "valid terminal completion marker" in retry_text
     assert "do not reset or discard the existing worktree/checkpoint" in retry_text
-    assert "do not repeat implementation or rerun broad tests" in retry_text
+    assert "do not repeat completed implementation or rerun broad tests" in retry_text
     assert "Fix the root cause, add or update regression tests" not in retry_text
     assert cycle.CODEX_RETRY_POLICY.max_elapsed_seconds == 45 * 60
     assert cycle.TASK_RETRY_POLICY.max_elapsed_seconds == 90 * 60
-    assert "on its own final line" in retry_text
+    assert "last non-empty line is exactly one plain marker" in retry_text
     assert "TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED" in retry_text
-    assert "Continue the SAME task" in retry_text
+    assert "SAME task" in retry_text
+    assert "Do not select or start another task" in retry_text
     assert len(stopped) == 2
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
     assert cycle.load_pending_pr() is None
+
+
+def test_run_cycle_stops_without_blind_retry_when_codex_has_no_final_agent_message(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
+):
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("Complete the selected task.", encoding="utf-8")
+    monkeypatch.setattr(cycle, "ROOT", tmp_path)
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    state_root = shared_state_tmp_path / "autonomous-state"
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_root))
+    monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
+    stopped = []
+    monkeypatch.setattr(cycle, "stop_checkpoint_watcher", lambda *args: stopped.append(args))
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+    monkeypatch.setattr(cycle, "api", lambda *args, **kwargs: [])
+    monkeypatch.setattr(cycle, "find_open_autonomous_pr", lambda *args: None)
+    monkeypatch.setattr(cycle, "restore_checkpoint", lambda *args: False)
+    monkeypatch.setattr(cycle, "checked", lambda command, **kwargs: (
+        "base-sha" if command[:3] == ["git", "rev-parse", "HEAD"]
+        else "codex/local-engineering-123-1-task-1" if command[1:3] == ["branch", "--show-current"]
+        else ""
+    ))
+    calls = []
+
+    def fake_run(command, *, env=None, capture=False, timeout_seconds=None):
+        calls.append(command)
+        report = Path(command[command.index("--report") + 1])
+        report.with_suffix(report.suffix + ".status.json").write_text(json.dumps({
+            "schema_version": 1,
+            "final_agent_message_present": False,
+            "missing_message_reason": "turn_failed_or_tool_error",
+            "turn_completed": False,
+            "turn_failed": True,
+            "jsonl_event_count": 19,
+            "process_exit_code": 1,
+        }), encoding="utf-8")
+        return subprocess.CompletedProcess(command, 1, "", "tool call did not complete")
+
+    monkeypatch.setattr(cycle, "run", fake_run)
+    args = type("Args", (), {
+        "run_id": "123", "run_attempt": "1", "model": "test-model",
+        "prompt": str(prompt), "mode": "continuous",
+    })()
+    with pytest.raises(RuntimeError, match="no final agent message"):
+        cycle.run_cycle(args)
+
+    assert len(calls) == 1
+    assert len(stopped) == 1
+    saved = json.loads((state_root / "run-diagnostics" / "123.json").read_text(encoding="utf-8"))
+    entry = saved["diagnostics"][-1]
+    assert entry["category"] == "no_last_agent_message"
+    assert "reason=turn_failed_or_tool_error" in entry["summary"]
+    assert "turn_failed=True" in entry["summary"]
+    assert "jsonl_event_count=19" in entry["summary"]
+    assert "tool call did not complete" in entry["detail"]
+    assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
 def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path):
@@ -245,6 +359,7 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
     prompt.write_text("Complete the selected task.", encoding="utf-8")
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
@@ -287,6 +402,11 @@ def test_run_cycle_bounds_failed_codex_attempts_and_preserves_task(monkeypatch: 
 
     assert calls["codex"] == 2
     assert len(stopped) == 2
+    retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
+    retry_text = retry_prompt.read_text(encoding="utf-8")
+    assert "Codex process exited with code 1" in retry_text
+    assert "simulated Codex failure" in retry_text
+    assert "Sanitized diagnostic from the failed Codex attempt" in retry_text
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
 
 
@@ -364,6 +484,7 @@ def test_run_cycle_recovers_open_task_pr_and_waits_for_owner_merge(
     records = []
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     live_pr = {
         "number": 77,
@@ -552,6 +673,7 @@ def test_publish_pull_request_rejects_head_changed_after_exact_sha_checks(
 
 def test_git_auth_environment_keeps_token_out_of_child_environment(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("GH_TOKEN", "secret-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GITHUB_TOKEN", "secret-token")
 
     env = cycle.git_auth_env("secret-token")
@@ -1691,7 +1813,7 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
         "12345", "1", task=1, attempt=2,
         stage="codex_decision", category="task_blocked",
         summary="Codex marked task 1 as blocked.",
-        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value ghp_0123456789abcdefghijklmnopqrstuvwxyz password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
+        detail="The sandbox policy rejected the requested operation. Bearer bearer-secret-value Authorization: Basic dXNlcjpwYXNzd29yZA== ghp_0123456789abcdefghijklmnopqrstuvwxyz sk-proj-0123456789abcdefghijklmnopqrstuv eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ4In0.signaturelongtoken password=hunter2 OPENAI_API_KEY=sk-test-value CLIENT_SECRET=client-secret-value",
     )
     assert cycle.persist_run_diagnostic(
         "12345", "1", task=1, attempt=2,
@@ -1711,6 +1833,10 @@ def test_persist_run_diagnostic_appends_redacted_report_details(
     detail = saved["diagnostics"][0]["detail"]
     assert "sandbox policy rejected" in detail
     assert "bearer-secret-value" not in detail
+    assert "dXNlcjpwYXNzd29yZA==" not in detail
+    assert "sk-proj-0123456789abcdefghijklmnopqrstuv" not in detail
+    assert "eyJhbGciOiJIUzI1NiJ9" not in detail
+    assert "signaturelongtoken" not in detail
     assert "ghp_0123456789abcdefghijklmnopqrstuvwxyz" not in detail
     assert "hunter2" not in detail
     assert "sk-test-value" not in detail
@@ -1737,6 +1863,7 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     state_root = shared_state_tmp_path / "autonomous-state"
     monkeypatch.setattr(cycle, "ROOT", tmp_path)
     monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(state_root))
@@ -1793,7 +1920,8 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")
     assert "TASK_BLOCKED is not accepted without a substantive explanation" in retry_text
-    assert "Continue the SAME task" in retry_text
+    assert "SAME task" in retry_text
+    assert "Do not select or start another task" in retry_text
     assert "concrete evidence" in retry_text
     diagnostic_path = state_root / "run-diagnostics" / "123.json"
     saved = json.loads(diagnostic_path.read_text(encoding="utf-8"))
@@ -1802,3 +1930,495 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     assert "Concrete blocker" in entries[-1]["detail"]
     assert "Concrete blocker" in entries[-1]["summary"]
     assert prompt.read_text(encoding="utf-8") == "Complete the selected task."
+
+
+def test_cycle_controller_rechecks_live_pause_after_repository_lock(monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        events.append("lock_enter")
+        try:
+            yield
+        finally:
+            events.append("lock_exit")
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    def fake_api(token, repo, method, path, payload=None):
+        assert token == "settings-token"
+        if path == "":
+            events.append("repo_check")
+            return {"full_name": repo}
+        events.append("live_pause_read")
+        return {"value": "true"}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("A paused task must not start"))
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "a" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+
+    assert cycle.main() == 0
+    assert events == ["lock_enter", "repo_check", "live_pause_read", "lock_exit"]
+
+
+
+def test_cycle_repository_404_cannot_be_mistaken_for_missing_pause_variable(monkeypatch):
+    calls = []
+
+    def inaccessible(token, repo, method, path, payload=None):
+        calls.append(path)
+        if path == "":
+            raise RuntimeError("GitHub API GET repository failed (404): not found")
+        raise AssertionError("Variable lookup must not run without verified repository access")
+
+    monkeypatch.setattr(cycle, "api", inaccessible)
+    with pytest.raises(RuntimeError, match="Could not verify repository access"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
+    assert calls == [""]
+
+def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
+    def missing_variable(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        if path == "actions/variables?per_page=1":
+            return {"total_count": 0, "variables": []}
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
+
+    monkeypatch.setattr(cycle, "api", missing_variable)
+
+    assert cycle._live_pause_enabled("test-token", "owner/repository") is False
+
+
+def test_cycle_variable_404_fails_closed_when_variables_read_permission_is_missing(monkeypatch):
+    calls = []
+
+    def inaccessible_inventory(token, repo, method, path, payload=None):
+        calls.append(path)
+        if path == "":
+            return {"full_name": repo}
+        if path == "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED":
+            raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (404): not found")
+        if path == "actions/variables?per_page=1":
+            raise RuntimeError("GitHub API GET actions/variables failed (404): not found")
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "api", inaccessible_inventory)
+    with pytest.raises(RuntimeError, match="Could not verify repository Variables read permission"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
+    assert calls == [
+        "",
+        "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED",
+        "actions/variables?per_page=1",
+    ]
+
+
+def test_cycle_live_pause_api_failure_fails_closed(monkeypatch):
+    def denied(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_PAUSED failed (403): forbidden")
+
+    monkeypatch.setattr(cycle, "api", denied)
+
+    with pytest.raises(RuntimeError, match="Could not verify the live durable Pause setting"):
+        cycle._live_pause_enabled("test-token", "owner/repository")
+
+
+def test_cycle_controller_rechecks_live_mode_after_repository_lock(monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        events.append("lock_enter")
+        try:
+            yield
+        finally:
+            events.append("lock_exit")
+
+    def fake_api(token, repo, method, path):
+        events.append(path)
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("A scheduled-mode automatic task must not start"))
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "b" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "schedule")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+
+    assert cycle.main() == 0
+    assert events == [
+        "lock_enter",
+        "",
+        "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED",
+        "",
+        "actions/variables/AUTONOMOUS_ENGINEERING_MODE",
+        "lock_exit",
+    ]
+
+
+def test_cycle_live_mode_missing_variable_defaults_continuous(monkeypatch):
+    def missing_variable(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        if path == "actions/variables?per_page=1":
+            return {"total_count": 0, "variables": []}
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_MODE failed (404): not found")
+
+    monkeypatch.setattr(cycle, "api", missing_variable)
+
+    assert cycle._live_execution_mode("test-token", "owner/repository") == "continuous"
+
+
+def test_cycle_live_mode_api_failure_fails_closed(monkeypatch):
+    def denied(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        raise RuntimeError("GitHub API GET actions/variables/AUTONOMOUS_ENGINEERING_MODE failed (403): forbidden")
+
+    monkeypatch.setattr(cycle, "api", denied)
+
+    with pytest.raises(RuntimeError, match="Could not verify the live execution mode"):
+        cycle._live_execution_mode("test-token", "owner/repository")
+
+
+def test_cycle_controller_allows_explicit_one_shot_resume_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: 23)
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "c" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "true")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "")
+
+    assert cycle.main() == 23
+
+
+def test_cycle_controller_blocks_unmarked_empty_dispatch_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: pytest.fail("An unmarked empty dispatch must not start"))
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "d" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "")
+
+    assert cycle.main() == 0
+
+
+def test_cycle_controller_allows_manual_task_in_scheduled_mode(monkeypatch):
+    from contextlib import contextmanager
+
+    @contextmanager
+    def fake_lock(run_id, run_attempt):
+        yield
+
+    def fake_api(token, repo, method, path):
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        raise AssertionError(path)
+
+    monkeypatch.setattr(cycle, "repository_execution_lock", fake_lock)
+    monkeypatch.setattr(cycle, "api", fake_api)
+    monkeypatch.setattr(cycle, "run_cycle", lambda args, **kwargs: 29)
+    monkeypatch.setattr(cycle.sys, "argv", [
+        "autonomous_engineering_cycle.py", "run",
+        "--run-id", "123", "--run-attempt", "1",
+        "--correlation-id", "e" * 32,
+        "--model", "test-model", "--prompt", "prompt.md", "--mode", "continuous",
+    ])
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "workflow_dispatch")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RECOVERY_ATTEMPT", "0")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_RESUME_ONCE", "false")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_MANUAL_TASK", "Fix a specific bug")
+
+    assert cycle.main() == 29
+
+
+
+def test_run_cycle_fails_closed_without_read_only_variables_credential(monkeypatch):
+    monkeypatch.setenv("GH_TOKEN", "workflow-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", raising=False)
+
+    with pytest.raises(RuntimeError, match="read-only AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN"):
+        cycle.run_cycle(None)
+    assert "AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN" not in os.environ
+
+def test_next_cycle_dispatch_is_suppressed_by_live_scheduled_mode(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "scheduled"}
+        return {}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "a" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert calls == [
+        ("GET", "", None),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE", None),
+    ]
+
+
+def test_next_cycle_dispatch_is_suppressed_by_live_pause(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "true"}
+        return {}
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "b" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert calls == [
+        ("GET", "", None),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_MODE", None),
+        ("GET", "", None),
+        ("GET", "actions/variables/AUTONOMOUS_ENGINEERING_PAUSED", None),
+    ]
+
+
+def test_next_cycle_dispatch_occurs_only_when_live_mode_is_continuous_and_unpaused(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            return {"accepted": True}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "c" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is True
+    assert calls[-1][0] == "POST"
+    assert calls[-1][2]["inputs"]["manual_task"] == ""
+    assert "resume_once" not in calls[-1][2]["inputs"]
+
+
+
+def test_next_cycle_dispatch_uses_live_mode_instead_of_stale_workflow_snapshot(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+
+    def fake_api(token, repo, method, path, payload=None):
+        calls.append((token, method, path, payload))
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": "continuous"}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            return {"accepted": True}
+        raise AssertionError((token, method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {"mode": "scheduled", "correlation_id": "e" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled(
+        "workflow-token", "owner/repository", args, settings_token="settings-token"
+    ) is True
+    assert all(call[0] == "settings-token" for call in calls if call[2] == "" or "actions/variables/" in call[2])
+    assert all(call[1] == "GET" for call in calls if call[0] == "settings-token")
+    assert calls[-1][0] == "workflow-token"
+    assert calls[-1][1] == "POST"
+
+def test_next_cycle_dispatch_fails_closed_when_live_settings_cannot_be_read(monkeypatch):
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    calls = []
+
+    def denied(token, repo, method, path, payload=None):
+        calls.append((method, path, payload))
+        raise RuntimeError("HTTP 403")
+
+    monkeypatch.setattr(cycle, "api", denied)
+    args = type("Args", (), {"mode": "continuous", "correlation_id": "d" * 32})()
+
+    assert cycle._dispatch_next_cycle_if_enabled("token", "owner/repository", args) is False
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    ("live_mode", "paused", "expected_dispatch"),
+    [
+        ("scheduled", False, False),
+        ("continuous", True, False),
+        ("continuous", False, True),
+    ],
+)
+def test_recovered_owner_merged_pr_chains_only_when_live_mode_allows(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    shared_state_tmp_path: Path,
+    live_mode: str,
+    paused: bool,
+    expected_dispatch: bool,
+):
+    records = []
+    dispatches = []
+    pending = {
+        "number": 77,
+        "task": 1,
+        "head_sha": "a" * 40,
+        "base_sha": "b" * 40,
+    }
+    monkeypatch.setenv("GH_TOKEN", "test-token")
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
+    monkeypatch.setenv("GH_REPO", "owner/repository")
+    monkeypatch.setenv(
+        "AUTONOMOUS_ENGINEERING_PROGRESS_DIR",
+        str(shared_state_tmp_path / "recovered-merged-pr-live-gate"),
+    )
+    monkeypatch.setattr(cycle, "recover_pending_state_cleanup_unlocked", lambda _state_dir: None)
+    monkeypatch.setattr(
+        cycle,
+        "reconcile_pending_pr_state_unlocked",
+        lambda _state_dir, _repo, _open, _fetch: pending,
+    )
+    monkeypatch.setattr(
+        cycle,
+        "complete_merged_pr",
+        lambda _token, _repo, saved: {
+            "number": saved["number"],
+            "merge_sha": "c" * 40,
+        },
+    )
+    monkeypatch.setattr(cycle, "record", lambda *args, **kwargs: records.append((args, kwargs)))
+    monkeypatch.setattr(cycle, "snapshot", lambda *args: None)
+
+    def fake_api(token, repo, method, path, payload=None):
+        if path == "pulls?state=open&per_page=100":
+            return []
+        if path == "pulls/77":
+            return {"number": 77, "state": "closed", "merged": True}
+        if path == "":
+            return {"full_name": repo}
+        if path.endswith("AUTONOMOUS_ENGINEERING_MODE"):
+            return {"value": live_mode}
+        if path.endswith("AUTONOMOUS_ENGINEERING_PAUSED"):
+            return {"value": "true" if paused else "false"}
+        if method == "POST" and path.endswith("/dispatches"):
+            dispatches.append(payload)
+            return {"accepted": True}
+        raise AssertionError((method, path, payload))
+
+    monkeypatch.setattr(cycle, "api", fake_api)
+    args = type("Args", (), {
+        "run_id": "301",
+        "run_attempt": "1",
+        "mode": "continuous",
+        "correlation_id": "d" * 32,
+    })()
+
+    assert cycle.run_cycle(args) == 0
+    assert len(records) == 1
+    assert len(dispatches) == int(expected_dispatch)
+    if expected_dispatch:
+        assert dispatches[0]["ref"] == "main"
+        assert dispatches[0]["inputs"] == {
+            "manual_task": "",
+            "correlation_id": "d" * 32,
+        }
+

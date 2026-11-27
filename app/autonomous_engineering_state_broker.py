@@ -22,6 +22,7 @@ _INVALID_HANDLE_VALUE = wintypes.HANDLE(-1).value
 _ERROR_IO_PENDING = 997
 _ERROR_PIPE_BUSY = 231
 _ERROR_FILE_NOT_FOUND = 2
+_ERROR_FILE_NOT_FOUND_RETRIES = 50
 _ERROR_SEM_TIMEOUT = 121
 _WAIT_OBJECT_0 = 0
 _WAIT_TIMEOUT = 258
@@ -159,6 +160,7 @@ def _overlapped_transfer(
 
 def _open_pipe(kernel32, deadline: float):
     """Open the service pipe while tolerating the brief gap between instances."""
+    missing_instance_attempts = 0
     while True:
         handle = kernel32.CreateFileW(
             _PIPE_NAME,
@@ -174,13 +176,19 @@ def _open_pipe(kernel32, deadline: float):
 
         error = ctypes.get_last_error()
         if error == _ERROR_FILE_NOT_FOUND:
-            # A worker disposes its instance after each response and immediately
-            # creates the next one. During that tiny gap the pipe name may have
-            # no instance yet; retry within the caller's single deadline.
+            # Retry only the short worker handoff gap; an absent/stopped service
+            # must surface WinError 2 rather than becoming a generic timeout.
+            missing_instance_attempts += 1
+            if missing_instance_attempts >= _ERROR_FILE_NOT_FOUND_RETRIES:
+                raise StateBrokerError(
+                    "Windows state broker pipe is unavailable (WinError 2); "
+                    "verify that the PersonalAIAssistantStateBroker service is installed and running."
+                )
             remaining = _remaining_ms(deadline)
             time.sleep(min(0.01, remaining / 1000.0))
             continue
 
+        missing_instance_attempts = 0
         if error == _ERROR_PIPE_BUSY:
             remaining = _remaining_ms(deadline)
             if kernel32.WaitNamedPipeW(_PIPE_NAME, remaining):
@@ -205,23 +213,34 @@ def request(method: str, path: str, *, timeout_ms: int = 3500, body: dict[str, A
         raise ValueError("Unsupported state-broker method.")
     if not isinstance(path, str):
         raise ValueError("Unsupported state-broker endpoint.")
+    from .autonomous_engineering_native_config import native_state_enabled
+    native = native_state_enabled()
     allowed = (
         method == "GET" and path in {"/v1/health", "/v1/pending-work", "/v1/progress"}
     ) or (
-        _WINDOWS and method == "GET" and path == "/v1/health/verify"
+        (_WINDOWS or native) and method == "GET" and path == "/v1/health/verify"
     ) or (
         method == "GET" and re.fullmatch(r"/v1/diagnostics/[0-9]{1,20}", path) is not None
     ) or (
         method == "POST" and path == "/v1/cleanup"
     )
-    if not allowed and path in {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}:
+    task_paths = {"/v1/tasks/pending", "/v1/tasks/archived", "/v1/tasks/archive", "/v1/tasks/restore"}
+    dispatch_paths = {"/v1/dispatch-admission/acquire", "/v1/dispatch-admission/complete"}
+    if path in task_paths:
         from .autonomous_engineering_state_broker_contract import validate_task_request
         validate_task_request(method, path, body)
+        allowed = True
+    elif path in dispatch_paths:
+        from .autonomous_engineering_state_broker_contract import validate_dispatch_admission_request
+        validate_dispatch_admission_request(method, path, body)
         allowed = True
     elif body is not None:
         raise ValueError("This state-broker endpoint does not accept a request body.")
     if not allowed:
         raise ValueError("Unsupported state-broker endpoint.")
+    if native:
+        from .autonomous_engineering_native_transport import request_native
+        return request_native(method, path, body, error_type=StateBrokerError, conflict_type=StateBrokerConflict)
     if os.name != "nt":
         from .autonomous_engineering_state_broker_unix import request_unix
         return request_unix(
@@ -297,10 +316,14 @@ def health(*, timeout_ms: int = 3500, verify: bool = False) -> bool:
         # The application bootstrap requests a fresh Windows ACL scan once per
         # process start. Runtime UI polling uses the broker's short-lived cache.
         # POSIX uses its native health endpoint for both modes.
-        path = "/v1/health/verify" if verify and _WINDOWS else "/v1/health"
+        from .autonomous_engineering_native_config import native_state_enabled
+        path = "/v1/health/verify" if verify and (_WINDOWS or native_state_enabled()) else "/v1/health"
         value = request("GET", path, timeout_ms=timeout_ms)
         if not isinstance(value, dict) or value.get("ready") is not True:
             return False
+        from .autonomous_engineering_native_config import native_state_enabled
+        if native_state_enabled():
+            return value.get("storage_ready") is True and value.get("service") == "native"
         if _WINDOWS:
             return value.get("storage_ready") is True and value.get("acl_ready") is True
         return True
