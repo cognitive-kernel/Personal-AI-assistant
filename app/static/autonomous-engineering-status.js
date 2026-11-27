@@ -242,10 +242,24 @@
       $("codex-detail").textContent = data.codex && data.codex.version
         ? data.codex.version + "؛ این بررسی فقط حساب برنامه را پوشش می‌دهد."
         : "حساب Runner جداگانه و هنگام اجرای Workflow بررسی می‌شود.";
+      const nativeWorkflowBlocked = checks.native_runner_workflow_compatible === false;
       labels.runner.textContent = stateText(checks.runner_running);
-      $("runner-detail").textContent = checks.native_runner_workflow_compatible === false
-        ? "اجرای Workflow در حالت بومی هنوز تأیید نشده است؛ داشبورد و ذخیره‌سازی مستقل در دسترس‌اند."
-        : checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
+      if (nativeWorkflowBlocked) {
+        const ownership = data.runner?.local_ownership;
+        const descriptions = {
+          verified: "مالکیت محلی تأیید شد",
+          not_found: "Runner بومی پیدا نشد",
+          mismatch: "حساب یا فضای وضعیت Runner سازگار نیست",
+          ambiguous: "چند Runner بومی شناسایی شد",
+          unverifiable: "مالکیت Runner قابل تأیید نیست"
+        };
+        labels.runner.textContent = Object.hasOwn(descriptions, ownership)
+          ? descriptions[ownership]
+          : descriptions.unverifiable;
+        $("runner-detail").textContent = "ارسال Workflow در حالت بومی غیرفعال است.";
+      } else {
+        $("runner-detail").textContent = checks.runner_running ? "فرایند Runner.Listener فعال است." : "Runner محلی فعال نیست.";
+      }
       const githubReady = checks.github_cli_authenticated && checks.github_runs_available;
       labels.github.textContent = stateText(githubReady);
       $("github-detail").textContent = !checks.github_cli_authenticated
@@ -340,7 +354,7 @@
           : "اجرای یک چرخهٔ زمان‌بندی‌شده";
       }
       const requiredProbesKnown = modelsKnown && storageKnown && !incomplete.has("runner");
-      const ready = requiredProbesKnown && data.ready === true;
+      const ready = !nativeWorkflowBlocked && requiredProbesKnown && data.ready === true;
       const paused = githubKnown && data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
       const pill = $("agent-readiness");
@@ -357,9 +371,9 @@
         lastActiveRun = active;
         cancelButton.disabled = !active;
         pauseButton.disabled = paused;
-        resumeButton.disabled = !paused || checks.native_runner_workflow_compatible === false;
+        resumeButton.disabled = !paused || nativeWorkflowBlocked;
       }
-      lastCanDispatch = requiredProbesKnown && canDispatch;
+      lastCanDispatch = !nativeWorkflowBlocked && requiredProbesKnown && canDispatch;
       statusKnown = true;
       syncDispatchControls();
       // Run history refreshes independently and after committed mutations.

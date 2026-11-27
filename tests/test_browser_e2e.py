@@ -6589,3 +6589,33 @@ def test_autonomous_engineering_incomplete_probe_preserves_confirmed_configurati
         assert cancel.is_disabled()
         assert resume.is_disabled()
         browser.close()
+
+
+def test_autonomous_engineering_native_runner_ownership_does_not_imply_dispatch():
+    base_url = os.environ["E2E_BASE_URL"]
+    state = {"ownership": "verified"}
+
+    def status(route):
+        route.fulfill(json={
+            "ready": False, "can_dispatch": False, "paused": True, "state_backend": "native",
+            "checks": {"runner_running": True, "native_runner_workflow_compatible": False},
+            "runner": {"local_ownership": state["ownership"]},
+            "github": {"recent_runs": []},
+        })
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.route("**/api/autonomous-engineering/status", status)
+        page.route("**/api/autonomous-engineering/runs**", lambda route: route.fulfill(json={"runs": []}))
+        page.route("**/api/autonomous-engineering/progress**", lambda route: route.fulfill(json={"history": []}))
+        page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        page.get_by_text("مالکیت محلی تأیید شد", exact=True).wait_for()
+        assert page.locator("#runner-detail").inner_text() == "ارسال Workflow در حالت بومی غیرفعال است."
+        assert page.locator("#dispatch-agent").is_disabled()
+        assert page.locator("#resume-agent").is_disabled()
+        state["ownership"] = "ambiguous"
+        page.locator("#refresh-agent").click()
+        page.get_by_text("چند Runner بومی شناسایی شد", exact=True).wait_for()
+        assert page.locator("#send-agent-task").is_disabled()
+        browser.close()
