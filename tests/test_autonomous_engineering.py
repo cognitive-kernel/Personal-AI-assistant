@@ -1983,6 +1983,14 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
     assert result["model_recommended_context_length"] == 32768
+    assert result["model_context_blocker"] is None
+
+    monkeypatch.setattr(ollama, "_request", lambda *args, **kwargs: {"models": [{"name": "large-model:latest"}]})
+    resident = agent._ollama_status("large-model:latest")
+    assert resident["model_context_blocker"] == "resident_context"
+    assert resident["model_context_supported"] is False
+    assert resident["model_recommended_context_length"] is None
+
 
 
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):

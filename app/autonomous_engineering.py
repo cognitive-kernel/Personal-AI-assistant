@@ -175,7 +175,7 @@ def _ollama_status(model: str) -> dict[str, Any]:
         model_info: dict[str, Any],
         details: dict[str, Any],
         model_entry: dict[str, Any],
-    ) -> int | None:
+    ) -> int | str | None:
         # Reuse /api/show and /api/tags data already fetched by ollama_status.
         # model_details() repeats both requests and adds a separate /api/ps call,
         # which made each dashboard refresh unnecessarily slow.
@@ -187,6 +187,12 @@ def _ollama_status(model: str) -> dict[str, Any]:
         estimate = _model_memory_estimate(
             selected_model, model_info, details, model_entry.get("size"), maximum
         )
+        if estimate is None:
+            return "weight_metadata"
+        if running_entry is not None:
+            running_context = running_entry.get("context_length")
+            if type(running_context) is not int or running_context <= 0:
+                return "resident_context"
         return _recommended_context_tokens(
             maximum,
             estimate,

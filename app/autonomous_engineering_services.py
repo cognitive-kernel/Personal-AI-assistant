@@ -184,6 +184,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
         metadata_available = context_length is not None
         recommended_context = None
         recommendation_error = None
+        context_blocker = "context_metadata" if not metadata_available else "probe_unavailable"
         if metadata_available and (callable(recommended_context_details_fn) or callable(recommended_context_fn)):
             prefix = f"{architecture}." if isinstance(architecture, str) and architecture else ""
             kv_dimensions_present = bool(prefix) and all(
@@ -202,6 +203,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
                 for suffix in ("attention.head_count_kv", "attention.head_count")
             )
             if not kv_dimensions_present:
+                context_blocker = "kv_metadata"
                 recommendation_error = "Ollama did not expose enough architecture-specific KV-cache metadata to calculate a hardware-safe context."
             else:
                 try:
@@ -211,9 +213,15 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
                         candidate = recommended_context_fn(model)
                     if isinstance(candidate, int) and not isinstance(candidate, bool) and candidate > 0:
                         recommended_context = min(candidate, context_length)
+                        context_blocker = None
+                    elif candidate in ("weight_metadata", "resident_context"):
+                        context_blocker = candidate
+                        recommendation_error = "Ollama did not expose enough runtime model metadata."
                     else:
+                        context_blocker = "memory_budget"
                         recommendation_error = "Current hardware and model metadata do not yield a safe context allocation."
                 except Exception as exc:
+                    context_blocker = "probe_failed"
                     recommendation_error = f"Hardware context calculation failed: {type(exc).__name__}"
         context_supported = recommended_context is not None
         # Probe only after the hardware estimate: a first probe may load the model,
@@ -242,6 +250,7 @@ def ollama_status(model: str, *, build_opener, maximum_context_fn, supports_tool
             "model_supports_tools": model_supports_tools,
             "model_metadata_available": metadata_available,
             "model_context_supported": context_supported,
+            "model_context_blocker": context_blocker,
             "model_context_error": (
                 None if context_supported else
                 recommendation_error if metadata_available else
