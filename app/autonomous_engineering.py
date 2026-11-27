@@ -162,13 +162,8 @@ _NoRedirectHandler = _services.NoRedirectHandler
 
 
 def _ollama_status(model: str) -> dict[str, Any]:
-    from .ollama import (
-        _find_running_model_entry,
-        _model_memory_estimate,
-        _recommended_context_tokens,
-        _request as ollama_request,
-    )
-    from .hardware import detect_hardware
+    from .ollama import _find_running_model_entry, _request as ollama_request
+    from .ollama_context import OllamaModelMetadataError, select_context_window
 
     def _recommended_context(
         selected_model: str,
@@ -183,25 +178,27 @@ def _ollama_status(model: str) -> dict[str, Any]:
         running = running_payload.get("models", []) if isinstance(running_payload, dict) else []
         running_entry = _find_running_model_entry(running, selected_model)
         architecture = resolve_model_architecture(model_info, details.get("family"))
-        maximum = maximum_context_tokens(model_info, architecture)
-        estimate = _model_memory_estimate(
-            selected_model, model_info, details, model_entry.get("size"), maximum
-        )
-        if estimate is None:
+        weight_bytes = model_entry.get("size")
+        if type(weight_bytes) is not int or weight_bytes <= 0:
             return "weight_metadata"
-        if running_entry is not None:
-            running_context = running_entry.get("context_length")
-            if type(running_context) is not int or running_context <= 0:
-                return "resident_context"
-        return _recommended_context_tokens(
-            maximum,
-            estimate,
-            detect_hardware(),
-            model_is_loaded=running_entry is not None,
-            running_context_tokens=(
-                running_entry.get("context_length") if isinstance(running_entry, dict) else None
-            ),
-        )
+        running_context = running_entry.get("context_length") if running_entry is not None else None
+        if running_entry is not None and (type(running_context) is not int or running_context <= 0):
+            return "resident_context"
+        available_bytes = psutil.virtual_memory().available
+        if available_bytes <= 0:
+            return None
+        try:
+            selection = select_context_window(
+                model_info=model_info,
+                architecture=architecture,
+                model_weight_bytes=weight_bytes,
+                available_memory_bytes=available_bytes,
+                model_is_loaded=running_entry is not None,
+                running_context_tokens=running_context,
+            )
+        except OllamaModelMetadataError:
+            return None
+        return selection["selected_context_tokens"]
 
     def _tool_probe(payload: dict[str, Any]) -> dict[str, Any]:
         try:
