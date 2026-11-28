@@ -564,6 +564,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
     failure_feedback = ""
     failure_kind = None
     continuing = False
+    continuation_baseline = None
     evidence_limit = _cycle_workspace.context_evidence_bytes(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", ""))
     plan_path = ROOT / ".agent-progress.json"
     trusted_head = base_sha
@@ -600,7 +601,8 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             )
         attempt += 1
         active_prompt = Path(args.prompt)
-        report_only_retry = failure_kind in {
+        continuation_repair = failure_kind == _cycle_workspace.TaskReportFailureKind.CONTINUATION_PLAN_NOT_ADVANCED
+        bounded_repair = continuation_repair or failure_kind in {
             _cycle_workspace.TaskReportFailureKind.MISSING_TERMINAL_MARKER,
             _cycle_workspace.TaskReportFailureKind.MARKER_NOT_FINAL_LINE,
         }
@@ -620,9 +622,18 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             repair_instruction = (
                 "This is a report-finalization repair. Inspect the existing plan, diff, and report; do not repeat completed implementation or rerun broad tests. "
                 "If verification evidence already exists, write the concise final report and its single required marker.\n"
-                if report_only_retry
+                if bounded_repair
                 else "Fix the root cause, add or update regression tests, then report TASK_COMPLETE only after your own relevant tests pass.\n"
             )
+            if continuation_repair:
+                repair_instruction = (
+                    "Repair the saved .agent-progress.json for this SAME task. Keep existing step IDs in order and preserve all previously completed steps. "
+                    "If the file is unavailable, reconstruct the version-1 plan from the instructions and current evidence. "
+                    "Mark a step completed only if its work is verified. Finish one genuinely unfinished bounded step if needed. "
+                    "Use TASK_CONTINUE only after marking a new step completed and leaving at least one unfinished step. "
+                    "If you cannot make progress, report the concrete blocker and use TASK_BLOCKED. "
+                    "Use TASK_COMPLETE only when all task work and verification are complete."
+                )
             active_prompt.write_text(
                 original + "\n\n## Required repair after failed verification\n"
                 + "This is a fresh session for the SAME task. Do not select or start another task. "
@@ -651,7 +662,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
                 encoding="utf-8",
             )
             active_prompt = budgeted_prompt
-        plan_before = _cycle_workspace.checkpoint_plan(plan_path)
+        plan_before = continuation_baseline if continuation_repair else _cycle_workspace.checkpoint_plan(plan_path)
         report.unlink(missing_ok=True)
         attempt_status_path = report.with_suffix(report.suffix + ".status.json")
         attempt_status_path.unlink(missing_ok=True)
@@ -668,13 +679,13 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             remaining = min(task_remaining, codex_remaining)
             if remaining <= 0:
                 raise RuntimeError("Codex or task execution budget expired before Codex could start; preserving the current task state.")
-            attempt_timeout_seconds = min(600, int(remaining)) if report_only_retry else CODEX_TASK_TIMEOUT_SECONDS
+            attempt_timeout_seconds = min(600, int(remaining)) if bounded_repair else CODEX_TASK_TIMEOUT_SECONDS
             command = [
                 sys.executable, "scripts/autonomous_engineering_progress.py", "codex",
                 "--run-id", args.run_id, "--run-attempt", args.run_attempt,
                 "--model", args.model, "--prompt", str(active_prompt), "--report", str(report),
             ]
-            if report_only_retry:
+            if bounded_repair:
                 command.extend(["--timeout-seconds", str(max(1, attempt_timeout_seconds))])
             with timed_stage(f"codex_attempt_{attempt}"):
                 result = run(
@@ -795,11 +806,25 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             print("Engineering queue is empty.")
             return 0
         if marker == "TASK_CONTINUE":
-            if not _cycle_workspace.plan_advanced(plan_path, plan_before):
-                raise RuntimeError("Continuation did not advance a valid checkpointed plan; the task was preserved.")
             if checked(["git", "rev-parse", "HEAD"]) != trusted_head or checked(["git", "branch", "--show-current"]) != branch:
                 raise RuntimeError("Codex changed the trusted worktree identity during continuation; refusing further execution.")
             validate_paths(changed_paths())
+            problem = _cycle_workspace.continuation_problem(plan_path, plan_before)
+            if problem:
+                continuation_baseline = plan_before
+                failure_kind = _cycle_workspace.TaskReportFailureKind.CONTINUATION_PLAN_NOT_ADVANCED
+                failure_feedback = f"Attempt {attempt}: TASK_CONTINUE was rejected. {problem}"
+                print(failure_feedback, file=sys.stderr, flush=True)
+                persist_run_diagnostic(
+                    args.run_id, args.run_attempt, task=task, attempt=attempt,
+                    stage="report_validation", category=failure_kind.value, summary=problem,
+                )
+                record(
+                    args.run_id, args.run_attempt, "retry",
+                    f"اصلاح برنامهٔ وظیفهٔ {task}",
+                    "پیشرفت گام‌ها در checkpoint تأیید نشد؛ همان وظیفه برای اصلاح برنامه حفظ شد",
+                )
+                continue
             record(
                 args.run_id, args.run_attempt, "coding", f"ادامهٔ وظیفهٔ {task}",
                 "گام فعلی در checkpoint ثبت شد؛ گام‌های بعدی همان وظیفه در صف باقی ماندند",
