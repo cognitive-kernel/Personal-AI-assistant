@@ -7,6 +7,12 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def _isolate_runner_machine_state_policy(monkeypatch):
+    """The controller requires machine scope. Tests configure that policy explicitly."""
+    monkeypatch.delenv("AUTONOMOUS_ENGINEERING_REQUIRE_MACHINE_STATE_DIR", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _isolate_ai_learning_embedding_dependencies(monkeypatch):
     """Keep unit tests offline and deterministic; individual tests can override either stub."""
     from app.ai_learning import service
