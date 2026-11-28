@@ -110,6 +110,10 @@ jobs:
           PY
           )
           if [[ "$active_state" == "active" ]]; then
+            if [[ "$CLEAR_PENDING_TASKS" == "true" ]]; then
+              echo "The saved queue was not cleared because another Engineering run is active or queued." >&2
+              exit 1
+            fi
             if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
               echo "A manual task was not accepted because another run is active or queued; no durable state was changed. Retry after that run finishes." >&2
               exit 1
