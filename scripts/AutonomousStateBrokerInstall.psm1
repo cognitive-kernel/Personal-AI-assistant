@@ -209,7 +209,8 @@ function Install-AutonomousStateBrokerService {
             [TimeSpan]::FromSeconds(30)
         )
 
-        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1") -Force
+        # Reuse the client module so the caller retains its imported command.
+        Import-Module (Join-Path $PSScriptRoot "AutonomousStateBroker.psm1")
         $health = Invoke-AutonomousStateBroker -Method GET -Path "/v1/health/verify" -TimeoutMilliseconds 30000
         if ($null -eq $health -or $health.ready -ne $true -or
             $health.storage_ready -ne $true -or $health.acl_ready -ne $true -or
