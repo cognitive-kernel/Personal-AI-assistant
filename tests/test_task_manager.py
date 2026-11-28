@@ -388,6 +388,12 @@ def _crash_after_checkpoint(paths, task_id, worker_id):
 
     child_db.defaults.settings_db_path = paths[0]
     child_db.defaults.learning_db_path = paths[1]
+    # Keep the lease valid through checkpoint persistence regardless of host load.
+    # The parent advances its clock after the child exits.
+    from app import task_manager_core as child_core
+
+    claimed_at = child_core._now()
+    child_core._now = lambda: claimed_at
     claimed = child_task_manager.claim_next_task(worker_id, lease_seconds=1)
     if claimed is None or claimed["id"] != task_id:
         os._exit(71)
