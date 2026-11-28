@@ -25,6 +25,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 from .autonomous_engineering_contracts import (
     CancelRequest,
+    ClearEngineeringQueueRequest,
     CODEX_CONTEXT_VARIANT_PATTERN as _CODEX_CONTEXT_VARIANT_PATTERN,
     CORRELATION_ID_PATTERN as _CORRELATION_ID_PATTERN,
     EngineeringSettings,
@@ -415,6 +416,43 @@ def dispatch_autonomous_engineering(payload: ManualTaskRequest | None = None, re
     if not isinstance(correlation_id, str) or not _CORRELATION_ID_PATTERN.fullmatch(correlation_id):
         correlation_id = uuid.uuid4().hex
     return _dispatch_with_admission(payload, correlation_id=correlation_id)
+
+
+@router.post("/tasks/clear", status_code=202)
+def clear_autonomous_engineering_queue(payload: ClearEngineeringQueueRequest) -> dict[str, Any]:
+    if payload.confirm is not True:
+        raise HTTPException(status_code=422, detail="حذف کارهای قبلی از صف باید صریحاً تأیید شود.")
+    correlation_id = uuid.uuid4().hex
+
+    def dispatch_clear(_payload, *, correlation_id, resume_once):
+        gh = _authenticated_gh()
+        _github_adapter.require_all_remote_runs_idle(gh, github_api_json=_github_api_json)
+        if _has_open_autonomous_pr(gh):
+            raise HTTPException(status_code=409, detail="ابتدا PR باز مهندسی را تعیین‌تکلیف کنید.")
+        result = _run(
+            [gh, "workflow", "run", _WORKFLOW, "--repo", _repository(), "--ref", "main",
+             "--raw-field", "clear_pending_tasks=true", "--raw-field", f"correlation_id={correlation_id}"],
+            timeout=20,
+        )
+        if result is None:
+            raise HTTPException(
+                status_code=502,
+                detail="نتیجهٔ ارسال درخواست حذف از صف نامشخص است؛ سوابق اجرا را بازخوانی کنید.",
+                headers={"X-Correlation-ID": correlation_id, "X-Error-Code": "WORKFLOW_DISPATCH_OUTCOME_UNKNOWN", "X-Retryable": "false"},
+            )
+        if result.returncode != 0:
+            raise HTTPException(status_code=502, detail="GitHub درخواست حذف وظایف از صف را نپذیرفت.")
+        return {
+            "accepted": True,
+            "correlation_id": correlation_id,
+            "message": "درخواست حذف از صف ارسال شد. پس از موفقیت اجرای GitHub می‌توانید وظیفهٔ جدید ثبت کنید.",
+        }
+
+    return _control.dispatch_with_admission(
+        None, correlation_id=correlation_id,
+        _DISPATCH_REQUEST_LOCK=_DISPATCH_REQUEST_LOCK, dispatch_admission_lock=dispatch_admission_lock,
+        _dispatch_autonomous_engineering_locked=dispatch_clear,
+    )
 
 
 def _set_autonomous_engineering_pause(gh: str, paused: bool) -> bool:
