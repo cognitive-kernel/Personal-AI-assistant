@@ -1,10 +1,12 @@
-name: Prepare the Windows Engineering Runner Python package
+name: Prepare the Windows Engineering Runner packages
 
 on:
   workflow_call:
     outputs:
       available:
         value: ${{ jobs.package.outputs.available }}
+      gh-available:
+        value: ${{ jobs.package.outputs.gh-available }}
 
 permissions:
   contents: read
@@ -15,6 +17,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       available: ${{ steps.upload.outcome == 'success' }}
+      gh-available: ${{ steps.upload-gh.outcome == 'success' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -39,6 +42,29 @@ jobs:
         with:
           name: engineering-runner-python-windows-x64
           path: ${{ runner.temp }}/runner-python.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1
+      - name: Download and verify the pinned Windows GitHub CLI bundle
+        id: gh-package
+        continue-on-error: true
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          from scripts.autonomous_engineering_prerequisites import stage_gh_bundle
+
+          stage_gh_bundle(Path(os.environ["RUNNER_TEMP"]) / "engineering-runner-gh")
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        id: upload-gh
+        if: steps.gh-package.outcome == 'success'
+        continue-on-error: true
+        with:
+          name: engineering-runner-gh-windows-x64
+          path: ${{ runner.temp }}/engineering-runner-gh/
           compression-level: 0
           if-no-files-found: error
           overwrite: true
