@@ -10,6 +10,7 @@ data/
 .coverage
 dist/
 build/
+/personal_ai_assistant.egg-info/
 
 # Downloaded runtime prerequisites and local virtual environment
 prerequisites/
