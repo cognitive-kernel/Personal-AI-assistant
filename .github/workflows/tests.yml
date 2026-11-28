@@ -568,8 +568,19 @@ jobs:
       - uses: actions/checkout@v7
       - name: Bootstrap and validate managed Python on Windows
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: .\bootstrap.ps1 -RuntimeOnly
+        shell: powershell
+        run: |
+          & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE
+          if ($LASTEXITCODE -ne 0) { throw "Initial Runner Python bootstrap failed." }
+
+          # A fresh checkout removes the venv but leaves the Runner tool cache.
+          Remove-Item -LiteralPath ".venv" -Recurse -Force
+          $env:UV_OFFLINE = "1"
+          $result = & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE 6>&1
+          $result | Write-Output
+          if ($LASTEXITCODE -ne 0 -or ($result -join "`n") -notmatch "Reusing locally managed Python 3\.11") {
+            throw "Runner did not recreate the venv from its local Python cache."
+          }
       - name: Bootstrap and validate managed Python on POSIX
         if: runner.os != 'Windows'
         shell: bash

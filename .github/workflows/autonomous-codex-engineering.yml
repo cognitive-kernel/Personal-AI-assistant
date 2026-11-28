@@ -245,7 +245,7 @@ jobs:
           if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) {
             throw "Project Python runtime bootstrap script is missing."
           }
-          & $bootstrap -RuntimeOnly
+          & $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE
           if ($LASTEXITCODE -ne 0) {
             throw "Could not provision the project-local managed Python 3.11 runtime."
           }

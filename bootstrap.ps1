@@ -2,7 +2,8 @@
 param(
     [switch]$Dev,
     [switch]$CheckOnly,
-    [switch]$RuntimeOnly
+    [switch]$RuntimeOnly,
+    [string]$RunnerToolCache
 )
 
 $ErrorActionPreference = "Stop"
@@ -10,11 +11,7 @@ Set-StrictMode -Version Latest
 
 $Root = [System.IO.Path]::GetFullPath($PSScriptRoot)
 $RuntimeRoot = Join-Path $Root ".runtime"
-$ToolsRoot = Join-Path $RuntimeRoot "tools"
-$PythonInstallRoot = Join-Path $RuntimeRoot "python"
-$CacheRoot = Join-Path $RuntimeRoot "cache"
 $UvVersion = "0.13.9"
-$UvPath = Join-Path $ToolsRoot "uv.exe"
 
 $UvAssets = @{
     "x86_64-pc-windows-msvc" = @{
@@ -48,18 +45,38 @@ function Test-UsablePythonEnvironment([string]$EnvironmentPath) {
     return ($LASTEXITCODE -eq 0)
 }
 
+function Save-UvArchive([string]$Url, [string]$Archive) {
+    $curl = Join-Path $env:SystemRoot "System32\curl.exe"
+    if (Test-Path -LiteralPath $curl -PathType Leaf) {
+        & $curl --disable --fail --location --silent --show-error --proto "=https" --proto-redir "=https" `
+            --retry 2 --connect-timeout 15 --max-time 90 --output $Archive $Url
+        if ($LASTEXITCODE -eq 0) { return }
+        Write-Warning "Windows curl failed to download the verified uv release (exit $LASTEXITCODE); trying the PowerShell HTTP client."
+        Remove-Item -LiteralPath $Archive -Force -ErrorAction SilentlyContinue
+    }
+
+    $previousProtocol = [System.Net.ServicePointManager]::SecurityProtocol
+    try {
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        Invoke-WebRequest -Uri $Url -OutFile $Archive -UseBasicParsing -TimeoutSec 90
+    } catch {
+        throw "Could not download uv $UvVersion from $Url under this Windows account. Check HTTPS access to github.com and release-assets.githubusercontent.com. $($_.Exception.Message)"
+    } finally {
+        [System.Net.ServicePointManager]::SecurityProtocol = $previousProtocol
+    }
+}
+
 function Install-VerifiedUv([string]$Target) {
     $asset = $UvAssets[$Target]
     $downloadUrl = "https://github.com/astral-sh/uv/releases/download/$UvVersion/uv-$Target.zip"
-    $downloadRoot = Join-Path $RuntimeRoot ("download-" + [guid]::NewGuid().ToString("N"))
+    $downloadRoot = Join-Path $ManagedRuntimeRoot ("download-" + [guid]::NewGuid().ToString("N"))
     $archive = Join-Path $downloadRoot "uv.zip"
     $extractRoot = Join-Path $downloadRoot "extract"
     $stagedUv = Join-Path $downloadRoot "uv.exe"
 
     New-Item -ItemType Directory -Path $downloadRoot, $extractRoot, $ToolsRoot -Force | Out-Null
     try {
-        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $archive -UseBasicParsing -TimeoutSec 180
+        Save-UvArchive -Url $downloadUrl -Archive $archive
         $actualHash = (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
         if ($actualHash -ne $asset.Sha256) {
             throw "uv archive SHA-256 mismatch for $Target; refusing to execute the downloaded file."
@@ -76,23 +93,38 @@ function Install-VerifiedUv([string]$Target) {
     }
 }
 
-try {
-    New-Item -ItemType Directory -Path $RuntimeRoot, $ToolsRoot, $PythonInstallRoot, $CacheRoot -Force | Out-Null
-    $env:UV_PYTHON_INSTALL_DIR = $PythonInstallRoot
-    $env:UV_CACHE_DIR = $CacheRoot
-    $env:UV_PYTHON_PREFERENCE = "only-managed"
-    $env:UV_NO_PROGRESS = "1"
-
+function Initialize-VerifiedUv {
     $target = Get-UvTarget
-    $needsUv = $true
     if (Test-Path -LiteralPath $UvPath -PathType Leaf) {
         $version = (& $UvPath --version 2>$null | Out-String).Trim()
-        if ($version -match ('^uv\s+' + [regex]::Escape($UvVersion) + '(\s|$)')) { $needsUv = $false }
+        if ($version -match ('^uv\s+' + [regex]::Escape($UvVersion) + '(\s|$)')) { return }
     }
-    if ($needsUv) {
-        Write-Host "Installing verified uv $UvVersion for $target ..."
-        Install-VerifiedUv -Target $target
+    Write-Host "Installing verified uv $UvVersion for $target ..."
+    Install-VerifiedUv -Target $target
+}
+
+function Find-LocalManagedPython {
+    $ErrorActionPreference = "Continue"
+    $PSNativeCommandUseErrorActionPreference = $false
+    $python = & $UvPath python find --system --offline 3.11 2>$null
+    if ($LASTEXITCODE -eq 0 -and $python -and (Test-Path -LiteralPath $python -PathType Leaf)) {
+        return $python
     }
+}
+
+try {
+    $ManagedRuntimeRoot = $RuntimeRoot
+    if ($PSBoundParameters.ContainsKey("RunnerToolCache")) {
+        if (-not $RuntimeOnly -or [string]::IsNullOrWhiteSpace($RunnerToolCache) -or
+            -not [IO.Path]::IsPathRooted($RunnerToolCache)) {
+            throw "The Runner Python bootstrap requires an absolute RUNNER_TOOL_CACHE directory."
+        }
+        $ManagedRuntimeRoot = Join-Path ([IO.Path]::GetFullPath($RunnerToolCache)) "PersonalAIAssistant"
+    }
+    $ToolsRoot = Join-Path $ManagedRuntimeRoot "tools"
+    $PythonInstallRoot = Join-Path $ManagedRuntimeRoot "python"
+    $CacheRoot = Join-Path $ManagedRuntimeRoot "cache"
+    $UvPath = Join-Path $ToolsRoot "uv.exe"
 
     $selectedVenv = Join-Path $Root ".venv"
     if ((Test-Path -LiteralPath $selectedVenv) -and -not (Test-UsablePythonEnvironment $selectedVenv)) {
@@ -103,10 +135,26 @@ try {
     }
 
     if (-not (Test-UsablePythonEnvironment $selectedVenv)) {
+        New-Item -ItemType Directory -Path $ToolsRoot, $PythonInstallRoot, $CacheRoot -Force | Out-Null
+        $env:UV_PYTHON_INSTALL_DIR = $PythonInstallRoot
+        $env:UV_CACHE_DIR = $CacheRoot
+        $env:UV_PYTHON_PREFERENCE = "only-managed"
+        $env:UV_NO_PROGRESS = "1"
+        Initialize-VerifiedUv
+
         Write-Host "Preparing project-local managed Python 3.11 and virtual environment ..."
-        & $UvPath python install 3.11
-        if ($LASTEXITCODE -ne 0) { throw "Could not install the managed Python 3.11 runtime." }
-        & $UvPath venv --seed --python 3.11 $selectedVenv
+        $managedPython = Find-LocalManagedPython
+        if (-not $managedPython) {
+            & $UvPath python install --no-bin --no-registry 3.11
+            if ($LASTEXITCODE -ne 0) { throw "Could not install the managed Python 3.11 runtime." }
+            $managedPython = Find-LocalManagedPython
+        } else {
+            Write-Host "Reusing locally managed Python 3.11."
+        }
+        if (-not $managedPython) {
+            throw "Could not resolve the installed managed Python 3.11 executable."
+        }
+        & $managedPython -m venv $selectedVenv
         if ($LASTEXITCODE -ne 0) { throw "Could not create the project virtual environment." }
     }
 
@@ -130,6 +178,6 @@ try {
     & $python (Join-Path $Root "run.py") @applicationArguments
     exit $LASTEXITCODE
 } catch {
-    Write-Error $_
+    Write-Error $_ -ErrorAction Continue
     exit 2
 }
