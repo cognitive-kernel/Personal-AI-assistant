@@ -136,6 +136,12 @@ def codex_arguments(model: str, report: str) -> list[str]:
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     is_smoke = Path(report).name.startswith("codex-sandbox-")
+    model_family = model.rsplit("/", 1)[-1].partition(":")[0].casefold()
+    if is_smoke and not reasoning_effort and model_family == "qwen3":
+        # Qwen3 enables thinking when the Ollama Responses request omits effort.
+        # The short smoke checks one tool round trip, so send think=false via
+        # Responses' effort=none without changing the engineering task profile.
+        reasoning_effort = "none"
     arguments = [
         "exec", "-c", 'model_provider="ollama-local"',
         "-c", f'windows.sandbox="{backend}"',
@@ -161,6 +167,15 @@ def codex_arguments(model: str, report: str) -> list[str]:
         "model_providers.ollama-local.stream_max_retries=0",
         "model_providers.ollama-local.request_max_retries=0",
     ]
+    if is_smoke:
+        # The probe needs the workspace shell, not the large schemas for normal
+        # collaboration, goals, image viewing or web search.
+        config_overrides.extend([
+            "features.multi_agent=false",
+            "features.goals=false",
+            "features.view_image=false",
+            'web_search="disabled"',
+        ])
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
     arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]

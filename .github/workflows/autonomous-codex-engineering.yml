@@ -754,6 +754,9 @@ jobs:
               $selectedBackend = $backend
               break
             }
+            if ($smokeExitCode -eq 124 -and $smokeEvidence -and $smokeEvidence.command_started_count -eq 0) {
+              throw "Codex reached the smoke-test deadline before starting any workspace command. Inspect the Ollama/Codex inference path for the selected model."
+            }
             Write-Warning "Codex workspace-tool smoke test failed with '$backend'; trying the next supported sandbox backend."
           }
           if (-not $selectedBackend) {

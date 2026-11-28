@@ -321,6 +321,29 @@ def test_codex_runtime_profiles_bound_smoke_and_task_retries(monkeypatch):
     assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in task
     assert "model_providers.ollama-local.stream_max_retries=0" in task
     assert "model_providers.ollama-local.request_max_retries=0" in task
+    for probe_only in (
+        "features.multi_agent=false",
+        "features.goals=false",
+        "features.view_image=false",
+        'web_search="disabled"',
+    ):
+        assert probe_only in smoke
+        assert probe_only not in task
+
+
+def test_qwen3_smoke_disables_thinking_without_changing_the_task_or_other_models(monkeypatch):
+    from scripts import autonomous_engineering_codex_config as config
+
+    monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "46583")
+    monkeypatch.delenv("CODEX_MODEL_REASONING_EFFORT", raising=False)
+    model = "qwen3:4b-codex-ctx46583-paa-100-1-4155d060254b"
+    smoke_report = "codex-sandbox-mxc-report.md"
+    assert 'model_reasoning_effort="none"' in config.codex_arguments(model, smoke_report)
+    assert 'model_reasoning_effort="none"' not in config.codex_arguments(model, "codex-report-1.md")
+    assert 'model_reasoning_effort="none"' not in config.codex_arguments("gpt-oss:20b", smoke_report)
+
+    monkeypatch.setenv("CODEX_MODEL_REASONING_EFFORT", "low")
+    assert 'model_reasoning_effort="low"' in config.codex_arguments(model, smoke_report)
 
 
 def test_codex_command_uses_owner_aware_supervisor_and_distinct_budgets(monkeypatch):
