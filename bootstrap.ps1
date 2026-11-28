@@ -3,7 +3,9 @@ param(
     [switch]$Dev,
     [switch]$CheckOnly,
     [switch]$RuntimeOnly,
-    [string]$RunnerToolCache
+    [string]$RunnerToolCache,
+    [string]$RunnerPythonArchive,
+    [switch]$CheckRunnerRuntime
 )
 
 $ErrorActionPreference = "Stop"
@@ -112,6 +114,44 @@ function Find-LocalManagedPython {
     }
 }
 
+function Test-RunnerPython([string]$Executable) {
+    if (-not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $false }
+    try {
+        & $Executable -I -c "import ensurepip, sys, venv; raise SystemExit(sys.version.split()[0] != sys.argv[1])" $RunnerPackage.version *> $null
+        return ($LASTEXITCODE -eq 0)
+    } catch {
+        return $false
+    }
+}
+
+function Install-RunnerPython {
+    if (-not (Test-Path -LiteralPath $RunnerPythonArchive -PathType Leaf)) {
+        throw "The pinned Python archive is missing and this Runner has no usable cached copy. Check the Windows Python package job and artifact download."
+    }
+    if ((Get-FileHash -LiteralPath $RunnerPythonArchive -Algorithm SHA256).Hash -ne $RunnerPackage.sha256) {
+        throw "Runner Python archive SHA-256 mismatch. The archive will not be extracted."
+    }
+
+    $staging = Join-Path $ManagedRuntimeRoot ("python-stage-" + [guid]::NewGuid().ToString("N"))
+    New-Item -ItemType Directory -Path $staging -Force | Out-Null
+    try {
+        $tar = Join-Path $env:SystemRoot "System32\tar.exe"
+        & $tar -xf $RunnerPythonArchive -C $staging
+        if ($LASTEXITCODE -ne 0) { throw "Could not extract the verified Runner Python archive." }
+        $stagedPython = Join-Path $staging "python"
+        if (-not (Test-RunnerPython (Join-Path $stagedPython "python.exe"))) {
+            throw "The verified Runner Python archive did not produce usable Python with venv and ensurepip."
+        }
+        if (Test-Path -LiteralPath $RunnerPythonRoot) {
+            Remove-Item -LiteralPath $RunnerPythonRoot -Recurse -Force
+        }
+        Move-Item -LiteralPath $stagedPython -Destination $RunnerPythonRoot
+        Write-Host "Installed verified Python $($RunnerPackage.version) from the Workflow artifact."
+    } finally {
+        Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 try {
     $ManagedRuntimeRoot = $RuntimeRoot
     if ($PSBoundParameters.ContainsKey("RunnerToolCache")) {
@@ -126,6 +166,21 @@ try {
     $CacheRoot = Join-Path $ManagedRuntimeRoot "cache"
     $UvPath = Join-Path $ToolsRoot "uv.exe"
 
+    $useRunnerPackage = $CheckRunnerRuntime -or $PSBoundParameters.ContainsKey("RunnerPythonArchive")
+    if ($useRunnerPackage) {
+        if (-not $PSBoundParameters.ContainsKey("RunnerToolCache") -or (Get-UvTarget) -ne "x86_64-pc-windows-msvc") {
+            throw "The Engineering Runner Python package requires an x64 Windows Runner tool cache."
+        }
+        $RunnerPackage = Get-Content -LiteralPath (Join-Path $Root "scripts\engineering_runner_python.json") -Raw |
+            ConvertFrom-Json
+        $RunnerPythonRoot = Join-Path $ManagedRuntimeRoot ("runner-python-" + $RunnerPackage.sha256.Substring(0, 16))
+        $RunnerPython = Join-Path $RunnerPythonRoot "python.exe"
+        if ($CheckRunnerRuntime) {
+            if (Test-RunnerPython $RunnerPython) { exit 0 }
+            exit 3
+        }
+    }
+
     $selectedVenv = Join-Path $Root ".venv"
     if ((Test-Path -LiteralPath $selectedVenv) -and -not (Test-UsablePythonEnvironment $selectedVenv)) {
         $selectedVenv = Join-Path $RuntimeRoot "venvs\python-3.11"
@@ -135,24 +190,33 @@ try {
     }
 
     if (-not (Test-UsablePythonEnvironment $selectedVenv)) {
-        New-Item -ItemType Directory -Path $ToolsRoot, $PythonInstallRoot, $CacheRoot -Force | Out-Null
-        $env:UV_PYTHON_INSTALL_DIR = $PythonInstallRoot
-        $env:UV_CACHE_DIR = $CacheRoot
-        $env:UV_PYTHON_PREFERENCE = "only-managed"
-        $env:UV_NO_PROGRESS = "1"
-        Initialize-VerifiedUv
-
-        Write-Host "Preparing project-local managed Python 3.11 and virtual environment ..."
-        $managedPython = Find-LocalManagedPython
-        if (-not $managedPython) {
-            & $UvPath python install --no-bin --no-registry 3.11
-            if ($LASTEXITCODE -ne 0) { throw "Could not install the managed Python 3.11 runtime." }
-            $managedPython = Find-LocalManagedPython
+        if ($useRunnerPackage) {
+            if (Test-RunnerPython $RunnerPython) {
+                Write-Host "Reusing locally managed Python $($RunnerPackage.version)."
+            } else {
+                Install-RunnerPython
+            }
+            $managedPython = $RunnerPython
         } else {
-            Write-Host "Reusing locally managed Python 3.11."
-        }
-        if (-not $managedPython) {
-            throw "Could not resolve the installed managed Python 3.11 executable."
+            New-Item -ItemType Directory -Path $ToolsRoot, $PythonInstallRoot, $CacheRoot -Force | Out-Null
+            $env:UV_PYTHON_INSTALL_DIR = $PythonInstallRoot
+            $env:UV_CACHE_DIR = $CacheRoot
+            $env:UV_PYTHON_PREFERENCE = "only-managed"
+            $env:UV_NO_PROGRESS = "1"
+            Initialize-VerifiedUv
+
+            Write-Host "Preparing project-local managed Python 3.11 and virtual environment ..."
+            $managedPython = Find-LocalManagedPython
+            if (-not $managedPython) {
+                & $UvPath python install --no-bin --no-registry 3.11
+                if ($LASTEXITCODE -ne 0) { throw "Could not install the managed Python 3.11 runtime." }
+                $managedPython = Find-LocalManagedPython
+            } else {
+                Write-Host "Reusing locally managed Python 3.11."
+            }
+            if (-not $managedPython) {
+                throw "Could not resolve the installed managed Python 3.11 executable."
+            }
         }
         & $managedPython -m venv $selectedVenv
         if ($LASTEXITCODE -ne 0) { throw "Could not create the project virtual environment." }
