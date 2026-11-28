@@ -189,7 +189,7 @@
   async function refreshStatus() {
     $("refresh-agent").disabled = true;
     try {
-      const data = await request("status");
+      const data = await request("status", {cache: "no-store"});
       const checks = data.checks || {};
       const incomplete = incompleteProbes(data);
       const githubKnown = !incomplete.has("github");
@@ -421,7 +421,13 @@
     }
   }
 
-  $("refresh-agent").addEventListener("click", () => refresh());
+  $("refresh-agent").addEventListener("click", async () => {
+    const feedback = $("manual-refresh-feedback");
+    feedback.textContent = "در حال بازخوانی وضعیت…";
+    const refreshed = await refresh();
+    const time = new Date().toLocaleTimeString("fa-IR");
+    feedback.textContent = (refreshed ? "وضعیت بازخوانی شد" : "بازخوانی وضعیت کامل نشد") + " · " + time;
+  });
   function armDispatchUnlockTimer() {
     if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
     dispatchUnlockTimer = null;

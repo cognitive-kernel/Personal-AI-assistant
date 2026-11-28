@@ -3982,6 +3982,7 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
         state["active"] = True
         page.locator("#refresh-agent").click()
         page.get_by_text("Workflow در صف یا در حال اجرا", exact=True).wait_for()
+        page.locator("#manual-refresh-feedback").get_by_text("وضعیت بازخوانی شد", exact=False).wait_for()
         assert "987654" in page.locator("#agent-status-message").inner_text()
         assert dispatch.is_disabled()
         assert page.locator("#send-agent-task").is_disabled()
