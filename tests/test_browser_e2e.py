@@ -3979,6 +3979,12 @@ def test_autonomous_dashboard_keeps_dispatch_disabled_after_accepted_run():
                 break
             page.wait_for_timeout(50)
         assert state["status_reads"] >= 2
+        state["active"] = True
+        page.locator("#refresh-agent").click()
+        page.get_by_text("Workflow در صف یا در حال اجرا", exact=True).wait_for()
+        assert "987654" in page.locator("#agent-status-message").inner_text()
+        assert dispatch.is_disabled()
+        assert page.locator("#send-agent-task").is_disabled()
         assert not browser_errors, "Uncaught browser errors: " + "; ".join(browser_errors)
         browser.close()
 
@@ -5408,6 +5414,7 @@ def test_autonomous_dashboard_pause_and_resume_controls_follow_server_state():
             "model_tools_verification_method": "ollama_model_capabilities",
             "interval_hours": 24,
             "execution_mode": "continuous",
+            "pending_work": {"available": True, "blocked": False, "checkpoint": {"available": False}},
             "paused": state["paused"],
             "github": {
                 "recent_runs": [],
