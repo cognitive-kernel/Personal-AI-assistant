@@ -167,6 +167,15 @@ def codex_arguments(model: str, report: str) -> list[str]:
         "model_providers.ollama-local.stream_max_retries=0",
         "model_providers.ollama-local.request_max_retries=0",
     ]
+    if is_smoke:
+        # The probe needs the workspace shell, not the large schemas for normal
+        # collaboration, goals, image viewing or web search.
+        config_overrides.extend([
+            "features.multi_agent=false",
+            "features.goals=false",
+            "features.view_image=false",
+            'web_search="disabled"',
+        ])
     if reasoning_effort:
         config_overrides.insert(0, f'model_reasoning_effort="{reasoning_effort}"')
     arguments[5:5] = [part for override in config_overrides for part in ("-c", override)]
