@@ -79,6 +79,21 @@ def test_restore_preserves_checkpoint_when_watcher_ownership_cannot_be_verified(
     assert not paths["stop"].exists()
 
 
+def test_restore_plan_only_checkpoint_preserves_unfinished_queue(monkeypatch, tmp_path):
+    metadata, paths = _state(tmp_path)
+    metadata["patch_bytes"] = 0
+    paths["patch"].write_bytes(b"")
+    payload = b'{"schema_version":1,"plan":[{"id":"audit","status":"completed"}]}'
+    paths["plan"].write_bytes(payload)
+    monkeypatch.setattr(checkpoint, "ROOT", tmp_path)
+    monkeypatch.setattr(checkpoint, "_latest_checkpoint", lambda: (metadata, paths))
+    monkeypatch.setattr(checkpoint, "read_metadata", lambda *args, **kwargs: metadata)
+    monkeypatch.setattr(checkpoint, "stop_existing_watcher", lambda value: None)
+    monkeypatch.setattr(checkpoint, "git", lambda *args: type("GitResult", (), {"stdout": "a" * 40})())
+    assert checkpoint.restore("a" * 40) is True
+    assert (tmp_path / ".agent-progress.json").read_bytes() == payload
+
+
 def test_clear_preserves_all_checkpoint_files_when_watcher_stop_fails(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
 ):

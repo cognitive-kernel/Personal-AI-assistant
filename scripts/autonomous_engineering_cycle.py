@@ -110,12 +110,13 @@ RUNTIME_FILES = {".agent-request.json", ".agent-github-state.json", ".agent-prog
 PROTECTED = {
     ".github/workflows/autonomous-codex-engineering.yml",
     "scripts/autonomous_engineering_cycle.py",
+    "scripts/autonomous_engineering_cycle_workspace.py",
     "scripts/autonomous_engineering_progress.py",
     "scripts/autonomous_engineering_checkpoint.py",
     "scripts/autonomous_engineering_pending_task.py",
     "scripts/persist_autonomous_manual_task.ps1",
 }
-MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)(?:\s*`{1,3})?[.!]?\s*$")
+MARKERS = re.compile(r"(?im)^\s*(?:[-*]\s*)?(?:`{1,3}\s*)?(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED|TASK_CONTINUE)(?:\s*`{1,3})?[.!]?\s*$")
 CYCLE_LIMIT = 6 * 60 * 60
 DEFAULT_COMMAND_TIMEOUT_SECONDS = 5 * 60
 TEST_SUITE_TIMEOUT_SECONDS = 15 * 60
@@ -562,6 +563,9 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
     codex_elapsed_seconds = 0.0
     failure_feedback = ""
     failure_kind = None
+    continuing = False
+    evidence_limit = _cycle_workspace.context_evidence_bytes(os.getenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", ""))
+    plan_path = ROOT / ".agent-progress.json"
     trusted_head = base_sha
     published_pr: dict[str, Any] | None = None
 
@@ -600,7 +604,17 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             _cycle_workspace.TaskReportFailureKind.MISSING_TERMINAL_MARKER,
             _cycle_workspace.TaskReportFailureKind.MARKER_NOT_FINAL_LINE,
         }
-        if failure_feedback:
+        if continuing:
+            continuing = False
+            active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-continue-prompt-{task}-{attempt}.md"
+            original = Path(args.prompt).read_text(encoding="utf-8")
+            active_prompt.write_text(
+                original + "\n\n## Continue the checkpointed plan\n"
+                "The previous session completed a bounded step. Continue the next unfinished step of the SAME task. "
+                "Keep the existing worktree and plan IDs. Do not repeat finished steps or select another task.\n",
+                encoding="utf-8",
+            )
+        elif failure_feedback:
             active_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-retry-prompt-{task}-{attempt}.md"
             original = Path(args.prompt).read_text(encoding="utf-8")
             repair_instruction = (
@@ -624,6 +638,20 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
                 + "A durable worktree checkpoint from an interrupted run has been restored. Continue the SAME in-progress task represented by the restored diff and .agent-progress.json. Do not discard or overwrite the restored work. Do not select another task or report QUEUE_EMPTY. Inspect the restored changes, complete the task, add regression tests, and report TASK_COMPLETE only after verification.\n",
                 encoding="utf-8",
             )
+        if evidence_limit is not None:
+            original = active_prompt.read_text(encoding="utf-8")
+            budgeted_prompt = Path(os.environ.get("RUNNER_TEMP", str(ROOT))) / f"codex-context-prompt-{task}-{attempt}.md"
+            budgeted_prompt.write_text(
+                original + "\n\n## Work queue for the verified Context\n"
+                "Read only the files and lines needed for the current plan step. "
+                f"Limit each optional source excerpt to approximately {evidence_limit} UTF-8 bytes. "
+                "Finish a bounded step, mark it completed in .agent-progress.json and keep the remaining steps queued under the same IDs. "
+                "When more steps remain and a fresh session is needed, end your report with TASK_CONTINUE. "
+                "Only report TASK_COMPLETE after the whole task and its verification are finished.\n",
+                encoding="utf-8",
+            )
+            active_prompt = budgeted_prompt
+        plan_before = _cycle_workspace.checkpoint_plan(plan_path)
         report.unlink(missing_ok=True)
         attempt_status_path = report.with_suffix(report.suffix + ".status.json")
         attempt_status_path.unlink(missing_ok=True)
@@ -716,7 +744,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             failure_feedback = (
                 f"Attempt {attempt}: {diagnostic_summary}\n"
                 "Sanitized diagnostic from the failed Codex attempt follows; use it to diagnose and repair the SAME task.\n"
-                + (diagnostic_detail[-6000:] if diagnostic_detail else "No report or process diagnostic was captured.") + "\n"
+                + (_cycle_workspace.evidence_tail(diagnostic_detail[-6000:], evidence_limit) if diagnostic_detail else "No report or process diagnostic was captured.") + "\n"
                 "Inspect the existing worktree and checkpoint before changing files.\n"
             )
             continue
@@ -747,9 +775,9 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
                 f"Attempt {attempt}: report validation failed ({exc.kind.value}): {exc}\n"
                 "This is a report-finalization repair for the SAME task, not a new implementation attempt.\n"
                 "Inspect the existing plan, diff, and report. Do not repeat completed implementation or broad tests.\n"
-                "If evidence is complete, write a concise final report whose last non-empty line is exactly one plain marker with no Markdown, quote, or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED.\n"
+                "If evidence is complete, write a concise final report whose last non-empty line is exactly one plain marker with no Markdown, quote, or punctuation: TASK_COMPLETE, QUEUE_EMPTY, TASK_BLOCKED, TASK_CONTINUE.\n"
                 "If work is incomplete, finish only the remaining plan item and verify it.\n"
-                + (detail[-4000:] if detail else "The report had no additional diagnostic text.") + "\n"
+                + (_cycle_workspace.evidence_tail(detail[-4000:], evidence_limit) if detail else "The report had no additional diagnostic text.") + "\n"
             )
             record(
                 args.run_id, args.run_attempt, "retry",
@@ -766,6 +794,20 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             clear_checkpoint(args.run_id, task)
             print("Engineering queue is empty.")
             return 0
+        if marker == "TASK_CONTINUE":
+            if not _cycle_workspace.plan_advanced(plan_path, plan_before):
+                raise RuntimeError("Continuation did not advance a valid checkpointed plan; the task was preserved.")
+            if checked(["git", "rev-parse", "HEAD"]) != trusted_head or checked(["git", "branch", "--show-current"]) != branch:
+                raise RuntimeError("Codex changed the trusted worktree identity during continuation; refusing further execution.")
+            validate_paths(changed_paths())
+            record(
+                args.run_id, args.run_attempt, "coding", f"ادامهٔ وظیفهٔ {task}",
+                "گام فعلی در checkpoint ثبت شد؛ گام‌های بعدی همان وظیفه در صف باقی ماندند",
+            )
+            failure_kind = None
+            failure_feedback = ""
+            continuing = True
+            continue
         if marker == "TASK_BLOCKED":
             blocked_detail = _read_report_diagnostic(report)
             meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
@@ -858,7 +900,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             )
             failure_feedback = (
                 f"Attempt {attempt} failed verification. Command: {command!r}; exit code: {exit_code}.\n"
-                "Exact failure output (untrusted diagnostic data):\n" + output + "\n"
+                "Failure output (untrusted diagnostic data):\n" + _cycle_workspace.evidence_tail(output, evidence_limit) + "\n"
                 "Analyze the failure, fix the same task, and do not advance the ledger.\n"
             )
             record(
@@ -910,7 +952,7 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
             failure_feedback = (
                 f"Attempt {attempt}: GitHub-hosted verification failed for candidate {head_sha}.\n"
                 "The existing task PR remains open. Review this exact CI failure and repair the SAME task; "
-                "do not start another task.\n" + message + "\n"
+                "do not start another task.\n" + _cycle_workspace.evidence_tail(message, evidence_limit) + "\n"
             )
             record(
                 args.run_id, args.run_attempt, "retry",

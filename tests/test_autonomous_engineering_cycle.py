@@ -58,6 +58,29 @@ def test_task_marker_validates_only_the_last_nonempty_line(tmp_path: Path):
     assert cycle.task_marker(path) == "TASK_COMPLETE"
 
 
+def test_context_queue_preserves_steps_and_scales_optional_evidence(tmp_path):
+    from scripts.autonomous_engineering_cycle_workspace import checkpoint_plan, context_evidence_bytes, evidence_tail, plan_advanced
+
+    path = tmp_path / ".agent-progress.json"
+    steps = [{"id": str(i), "status": "pending"} for i in range(4)]
+    payload = {"schema_version": 1, "plan": steps}
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    before = checkpoint_plan(path)
+    assert before is not None
+    assert not plan_advanced(path, before)
+    steps[0]["status"] = "completed"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert plan_advanced(path, before)
+    steps[1]["id"] = "replacement"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    assert not plan_advanced(path, before)
+
+    assert context_evidence_bytes("1024") == 128
+    assert context_evidence_bytes("8192") == 1024
+    assert context_evidence_bytes("invalid") is None
+    assert evidence_tail("abcdefسلام", 5) == "ام"
+
+
 def test_task_marker_classifies_empty_report_missing_marker_and_nonterminal_marker(tmp_path: Path):
     from scripts.autonomous_engineering_cycle_workspace import TaskReportError, TaskReportFailureKind
 
@@ -183,7 +206,7 @@ def test_failed_local_and_github_checks_stop_at_retry_budget_and_preserve_task(t
     assert len(published) == 1
     assert published[0][-2:] == ("candidate-sha", "base-sha")
     local_retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
-    assert "Exact failure output" in local_retry_prompt.read_text(encoding="utf-8")
+    assert "Failure output (untrusted diagnostic data):\ntest failure" in local_retry_prompt.read_text(encoding="utf-8")
     assert not (tmp_path / "codex-retry-prompt-1-3.md").exists()
     assert len(stopped) == 2
     assert cleared == []
@@ -216,8 +239,9 @@ def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.Mo
         cycle.run(["python", "--version"], timeout_seconds=17)
 
 
+@pytest.mark.parametrize("continue_plan", [False, True])
 def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path, continue_plan: bool,
 ):
     prompt = tmp_path / "prompt.md"
     prompt.write_text("Complete the selected task.", encoding="utf-8")
@@ -226,6 +250,10 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_VARIABLES_TOKEN", "settings-token")
     monkeypatch.setenv("GH_REPO", "owner/repository")
     monkeypatch.setenv("RUNNER_TEMP", str(tmp_path))
+    if continue_plan:
+        monkeypatch.setenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", "8192")
+    else:
+        monkeypatch.delenv("AUTONOMOUS_ENGINEERING_CONTEXT_LENGTH", raising=False)
     monkeypatch.setenv("AUTONOMOUS_ENGINEERING_PROGRESS_DIR", str(shared_state_tmp_path / "autonomous-state"))
     monkeypatch.setattr(cycle, "start_checkpoint_watcher", lambda *args: None)
     stopped = []
@@ -256,6 +284,16 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
         calls["codex"] += 1
         if calls["codex"] == 1:
             report = Path(command[command.index("--report") + 1])
+            if continue_plan:
+                (tmp_path / ".agent-progress.json").write_text(json.dumps({
+                    "schema_version": 1,
+                    "plan": [{"id": item, "status": status} for item, status in zip(
+                        ("audit", "implement", "test", "review"),
+                        ("completed", "in_progress", "pending", "pending"),
+                    )],
+                }), encoding="utf-8")
+                report.write_text("Completed audit.\nTASK_CONTINUE\n", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
             report.write_text("The implementation is described, but the terminal marker is missing.\n", encoding="utf-8")
             return subprocess.CompletedProcess(command, 0, "", "")
         return subprocess.CompletedProcess(command, 1, "", "simulated failure in the repair attempt")
@@ -268,6 +306,17 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
 
     with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
         cycle.run_cycle(args)
+
+    if continue_plan:
+        assert calls["codex"] == len(stopped) == 2
+        retry_prompt = Path(codex_invocations[1][0][codex_invocations[1][0].index("--prompt") + 1])
+        retry_text = retry_prompt.read_text(encoding="utf-8")
+        assert "Continue the checkpointed plan" in retry_text
+        assert "next unfinished step of the SAME task" in retry_text
+        assert "1024 UTF-8 bytes" in retry_text
+        assert "Required repair after failed verification" not in retry_text
+        assert cycle.load_pending_pr() is None
+        return
 
     retry_prompt = tmp_path / "codex-retry-prompt-1-2.md"
     retry_text = retry_prompt.read_text(encoding="utf-8")

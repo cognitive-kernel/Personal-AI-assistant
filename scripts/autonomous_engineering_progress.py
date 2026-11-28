@@ -253,7 +253,7 @@ def codex_heartbeat_console_line(elapsed_seconds: float, event_count: int) -> st
         f"jsonl_events={max(0, int(event_count))} state={state}"
     )
 
-_CODEX_TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED)", re.IGNORECASE)
+_CODEX_TERMINAL_MARKER = re.compile(r"(TASK_COMPLETE|QUEUE_EMPTY|TASK_BLOCKED|TASK_CONTINUE)", re.IGNORECASE)
 
 
 def _has_terminal_completion_marker(value: str) -> bool:

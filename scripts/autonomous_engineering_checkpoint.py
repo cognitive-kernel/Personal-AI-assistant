@@ -602,6 +602,7 @@ def restore(base_sha: str) -> bool:
         if not patch.strip():
             if state["plan"].is_file():
                 (ROOT / ".agent-progress.json").write_bytes(state["plan"].read_bytes())
+                return True
             return False
         check = run_command(
             ["git", "apply", "--check", "--binary"],
