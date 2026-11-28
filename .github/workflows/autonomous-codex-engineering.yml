@@ -120,6 +120,7 @@ jobs:
             fi
             echo "run_now=false" >> "$GITHUB_OUTPUT"
             echo "Another autonomous run is already active or queued; suppressing this duplicate trigger."
+            echo "Engineering cycle skipped because another run was active or queued. This run did not execute Codex or project tests." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
@@ -880,7 +881,9 @@ jobs:
           At the end of this single task, the final report MUST end with exactly one machine-readable marker:
           TASK_COMPLETE when the selected task and its required tests/documentation are complete;
           QUEUE_EMPTY when no independently actionable task remains in the engineering ledger;
-          TASK_BLOCKED when the task cannot safely be completed;
+          TASK_BLOCKED when the task cannot safely be completed. Before the marker, use five lines
+          labeled Attempted action:, Evidence:, Concrete blocker:, Safe alternative:, and Required to unblock:.
+          In Evidence, quote the actual tool error for the exact command attempted;
           TASK_CONTINUE when a bounded plan step is completed and the same task has unfinished steps.
           Do not claim completion without evidence.
           Each workflow run handles one bounded task and publishes one PR after the full Windows

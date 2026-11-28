@@ -1916,7 +1916,7 @@ def test_persist_run_diagnostic_rejects_non_numeric_run_identifiers(
     )
     assert not (tmp_path / "run-diagnostics").exists()
 
-def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanation(
+def test_unsupported_task_blocked_retries_same_task_and_persists_real_explanation(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path,
 ):
     prompt = tmp_path / "prompt.md"
@@ -1954,7 +1954,11 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
         report = Path(command[command.index("--report") + 1])
         calls.append(command)
         if len(calls) == 1:
-            report.write_text("TASK_BLOCKED\n", encoding="utf-8")
+            report.write_text(
+                "The shell repeatedly gives an error. The system is not configured correctly "
+                "and this prevents any work on the selected task from continuing safely.\nTASK_BLOCKED\n",
+                encoding="utf-8",
+            )
         else:
             report.write_text(
                 "Attempted action: inspected the checkpoint reader and ran the focused broker regression test.\n"
@@ -1983,7 +1987,7 @@ def test_marker_only_task_blocked_retries_same_task_and_persists_real_explanatio
     assert "TASK_BLOCKED is not accepted without a substantive explanation" in retry_text
     assert "SAME task" in retry_text
     assert "Do not select or start another task" in retry_text
-    assert "concrete evidence" in retry_text
+    assert "include the exact command and error" in retry_text
     diagnostic_path = state_root / "run-diagnostics" / "123.json"
     saved = json.loads(diagnostic_path.read_text(encoding="utf-8"))
     entries = saved["diagnostics"]

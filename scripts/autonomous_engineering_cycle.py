@@ -836,7 +836,14 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
         if marker == "TASK_BLOCKED":
             blocked_detail = _read_report_diagnostic(report)
             meaningful_detail = "".join(ch for ch in blocked_detail if ch.isalnum())
-            if len(meaningful_detail) < 80:
+            required_evidence = (
+                "Attempted action", "Evidence", "Concrete blocker",
+                "Safe alternative", "Required to unblock",
+            )
+            if len(meaningful_detail) < 80 or any(
+                not re.search(rf"(?im)^\s*{label}:[ \t]*\S", blocked_detail)
+                for label in required_evidence
+            ):
                 persist_run_diagnostic(
                     args.run_id, args.run_attempt, task=task, attempt=attempt,
                     stage="report_validation", category="invalid_blocked_report",
@@ -849,7 +856,9 @@ def run_cycle(args: argparse.Namespace, settings_token: str | None = None) -> in
                     "Either complete the task, or if it truly cannot be completed safely, explain: "
                     "the exact action attempted, the file/command/evidence involved, the concrete blocker, "
                     "why no safe alternative exists, and what is needed to unblock it. "
-                    "The explanation must identify the attempted action, concrete evidence, blocker, safe alternatives, and required unblocker.\n"
+                    "Use five labeled lines: Attempted action:, Evidence:, Concrete blocker:, "
+                    "Safe alternative:, Required to unblock:. For a shell failure, retry the read-only "
+                    "probe from the original instructions and include the exact command and error.\n"
                 )
                 record(
                     args.run_id, args.run_attempt, "retry",
