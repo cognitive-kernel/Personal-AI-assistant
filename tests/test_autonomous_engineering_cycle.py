@@ -59,7 +59,7 @@ def test_task_marker_validates_only_the_last_nonempty_line(tmp_path: Path):
 
 
 def test_context_queue_preserves_steps_and_scales_optional_evidence(tmp_path):
-    from scripts.autonomous_engineering_cycle_workspace import checkpoint_plan, context_evidence_bytes, evidence_tail, plan_advanced
+    from scripts.autonomous_engineering_cycle_workspace import checkpoint_plan, context_evidence_bytes, evidence_tail, continuation_problem
 
     path = tmp_path / ".agent-progress.json"
     steps = [{"id": str(i), "status": "pending"} for i in range(4)]
@@ -67,13 +67,13 @@ def test_context_queue_preserves_steps_and_scales_optional_evidence(tmp_path):
     path.write_text(json.dumps(payload), encoding="utf-8")
     before = checkpoint_plan(path)
     assert before is not None
-    assert not plan_advanced(path, before)
+    assert continuation_problem(path, before) is not None
     steps[0]["status"] = "completed"
     path.write_text(json.dumps(payload), encoding="utf-8")
-    assert plan_advanced(path, before)
+    assert continuation_problem(path, before) is None
     steps[1]["id"] = "replacement"
     path.write_text(json.dumps(payload), encoding="utf-8")
-    assert not plan_advanced(path, before)
+    assert continuation_problem(path, before) is not None
 
     assert context_evidence_bytes("1024") == 128
     assert context_evidence_bytes("8192") == 1024
@@ -239,7 +239,7 @@ def test_cycle_run_converts_timeout_to_a_diagnostic_error(monkeypatch: pytest.Mo
         cycle.run(["python", "--version"], timeout_seconds=17)
 
 
-@pytest.mark.parametrize("continue_plan", [False, True])
+@pytest.mark.parametrize("continue_plan", [False, True, "invalid"])
 def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, shared_state_tmp_path: Path, continue_plan: bool,
 ):
@@ -284,6 +284,9 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
         calls["codex"] += 1
         if calls["codex"] == 1:
             report = Path(command[command.index("--report") + 1])
+            if continue_plan == "invalid":
+                report.write_text("Still working.\nTASK_CONTINUE\n", encoding="utf-8")
+                return subprocess.CompletedProcess(command, 0, "", "")
             if continue_plan:
                 (tmp_path / ".agent-progress.json").write_text(json.dumps({
                     "schema_version": 1,
@@ -306,6 +309,15 @@ def test_run_cycle_retries_same_task_when_codex_report_omits_completion_marker(
 
     with pytest.raises(RuntimeError, match=r"attempt limit reached \(2\)"):
         cycle.run_cycle(args)
+
+    if continue_plan == "invalid":
+        assert calls["codex"] == len(stopped) == 2
+        command, _, timeout = codex_invocations[1]
+        assert "--timeout-seconds" in command and timeout <= 630
+        retry = Path(command[command.index("--prompt") + 1]).read_text(encoding="utf-8")
+        assert "TASK_CONTINUE was rejected" in retry
+        assert "Repair the saved .agent-progress.json for this SAME task." in retry
+        return
 
     if continue_plan:
         assert calls["codex"] == len(stopped) == 2
