@@ -1,4 +1,5 @@
 from pathlib import Path
+import json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -96,13 +97,32 @@ def test_windows_runner_preserves_managed_python_across_checkout_cleanup():
     windows = _read("bootstrap.ps1")
     workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
 
-    assert '& $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE' in workflow
+    assert '& $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -RunnerPythonArchive $archive' in workflow
     assert 'Join-Path ([IO.Path]::GetFullPath($RunnerToolCache)) "PersonalAIAssistant"' in windows
     assert '$PythonInstallRoot = Join-Path $ManagedRuntimeRoot "python"' in windows
     assert '$selectedVenv = Join-Path $Root ".venv"' in windows
     assert windows.index("python find --system --offline 3.11") < windows.index(
         "python install --no-bin --no-registry 3.11"
     )
+
+
+def test_runner_python_delivery_verifies_the_package_on_both_sides():
+    windows = _read("bootstrap.ps1")
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+    package_workflow = _read(".github/workflows/engineering-runner-python-package.yml")
+    manifest = json.loads(_read("scripts/engineering_runner_python.json"))
+
+    assert manifest["version"] in manifest["url"]
+    assert len(bytes.fromhex(manifest["sha256"])) == 32
+    assert "runs-on: ubuntu-latest" in package_workflow
+    assert "sha256sum --check" in package_workflow
+    assert "steps.archive.outcome == 'success'" in package_workflow
+    assert "steps.runner-python.outputs.cached == 'false'" in workflow
+    assert "needs.prepare-python.outputs.available == 'true'" in workflow
+    assert windows.index("Get-FileHash -LiteralPath $RunnerPythonArchive") < windows.index(
+        '& $tar -xf $RunnerPythonArchive'
+    )
+    assert '$managedPython = $RunnerPython' in windows
 
 
 def test_windows_bootstrap_retries_uv_download_and_verifies_before_extracting():

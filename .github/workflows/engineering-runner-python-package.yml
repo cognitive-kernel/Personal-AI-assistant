@@ -1,0 +1,45 @@
+name: Prepare the Windows Engineering Runner Python package
+
+on:
+  workflow_call:
+    outputs:
+      available:
+        value: ${{ jobs.package.outputs.available }}
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      available: ${{ steps.upload.outcome == 'success' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Download and verify the pinned Windows Python archive
+        id: archive
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=scripts/engineering_runner_python.json
+          url=$(jq -er '.url' "$manifest")
+          digest=$(jq -er '.sha256' "$manifest")
+          archive="$RUNNER_TEMP/runner-python.tar.gz"
+          curl --disable --fail --location --silent --show-error --proto '=https' --proto-redir '=https' \
+            --retry 2 --connect-timeout 15 --max-time 90 --output "$archive" "$url"
+          printf '%s  %s\n' "$digest" "$archive" | sha256sum --check
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        id: upload
+        if: steps.archive.outcome == 'success'
+        continue-on-error: true
+        with:
+          name: engineering-runner-python-windows-x64
+          path: ${{ runner.temp }}/runner-python.tar.gz
+          compression-level: 0
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 1

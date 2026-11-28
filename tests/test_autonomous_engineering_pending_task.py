@@ -119,7 +119,7 @@ def test_manual_task_persistence_is_inside_the_single_owned_runner_job():
     gate_job = workflow[gate_start:codex_start]
     codex_job = workflow[codex_start:]
 
-    assert "needs: schedule-gate" in codex_job
+    assert "needs: [schedule-gate, prepare-python]" in codex_job
     assert "concurrency:" in codex_job
     assert "group: autonomous-local-engineering-${{ github.repository }}" in codex_job
     assert "runs-on: [self-hosted, Windows, X64, ollama, autonomous-state-owner]" in codex_job

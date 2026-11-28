@@ -142,9 +142,14 @@ jobs:
             echo "Skipping this hourly tick; configured interval is every $INTERVAL_HOURS hour(s) UTC."
           fi
 
-  codex:
+  prepare-python:
     needs: schedule-gate
     if: needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/engineering-runner-python-package.yml
+
+  codex:
+    needs: [schedule-gate, prepare-python]
+    if: ${{ !cancelled() && needs.schedule-gate.result == 'success' && needs.schedule-gate.outputs.run_now == 'true' && github.ref == 'refs/heads/main' }}
     concurrency:
       group: autonomous-local-engineering-${{ github.repository }}
       cancel-in-progress: false
@@ -168,7 +173,7 @@ jobs:
       - name: Check out trusted main branch
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          ref: main
+          ref: ${{ github.sha }}
           persist-credentials: false
 
       - name: Initialize and publish the run correlation ID
@@ -237,6 +242,25 @@ jobs:
             "- Step ID: correlation"
           ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
 
+      - name: Check the Runner's local Python cache
+        id: runner-python
+        shell: powershell
+        run: |
+          & (Join-Path $env:GITHUB_WORKSPACE "bootstrap.ps1") -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -CheckRunnerRuntime
+          switch ($LASTEXITCODE) {
+            0 { "cached=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }
+            3 { "cached=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8 }
+            default { throw "Could not check the local Runner Python cache." }
+          }
+          exit 0
+
+      - name: Download the pinned Python archive from this Workflow
+        if: steps.runner-python.outputs.cached == 'false' && needs.prepare-python.outputs.available == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: engineering-runner-python-windows-x64
+          path: ${{ runner.temp }}/engineering-runner-python
+
       - name: Bootstrap project-local managed Python runtime for this Runner job
         shell: powershell
         run: |
@@ -245,7 +269,8 @@ jobs:
           if (-not (Test-Path -LiteralPath $bootstrap -PathType Leaf)) {
             throw "Project Python runtime bootstrap script is missing."
           }
-          & $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE
+          $archive = Join-Path $env:RUNNER_TEMP "engineering-runner-python\runner-python.tar.gz"
+          & $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -RunnerPythonArchive $archive
           if ($LASTEXITCODE -ne 0) {
             throw "Could not provision the project-local managed Python 3.11 runtime."
           }
