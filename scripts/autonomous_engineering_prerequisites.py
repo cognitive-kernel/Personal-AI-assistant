@@ -17,14 +17,16 @@ import tempfile
 import urllib.parse
 import urllib.request
 import zipfile
+from functools import partial
 from pathlib import Path
 
 # Same reviewed version previously used by the workflow.
 GH_VERSION = "2.104.0"
 GH_ARCHIVE = f"gh_{GH_VERSION}_windows_amd64.zip"
+GH_ARCHIVE_SHA256 = "08c06d10482f12c478018cd259f64acbd5f625712cadf331aad19ba973c879e5"
 GH_CHECKSUMS = f"gh_{GH_VERSION}_checksums.txt"
 RELEASE_BASE = f"https://github.com/cli/cli/releases/download/v{GH_VERSION}"
-GH_MEMBER = f"gh_{GH_VERSION}_windows_amd64/bin/gh.exe"
+GH_MEMBER = "bin/gh.exe"
 _MAX_ARCHIVE = 128 * 1024 * 1024
 _MAX_BINARY = 128 * 1024 * 1024
 _MAX_CHECKSUMS = 1024 * 1024
@@ -118,6 +120,30 @@ def verified_extract(archive: Path, checksums: Path, destination: Path) -> str:
     return _digest(destination, _MAX_BINARY)
 
 
+def stage_gh_bundle(directory: Path) -> None:
+    """Download the pinned release on a GitHub-hosted worker."""
+    directory.mkdir(parents=True, exist_ok=True)
+    download_release(GH_CHECKSUMS, directory / GH_CHECKSUMS, _MAX_CHECKSUMS)
+    download_release(GH_ARCHIVE, directory / GH_ARCHIVE, _MAX_ARCHIVE)
+    if expected_digest(directory / GH_CHECKSUMS) != GH_ARCHIVE_SHA256:
+        raise RuntimeError("GitHub CLI release did not match the pinned SHA-256.")
+    with tempfile.TemporaryDirectory(prefix="gh-bundle-check-") as scratch:
+        verified_extract(directory / GH_ARCHIVE, directory / GH_CHECKSUMS, Path(scratch) / "gh.exe")
+
+
+def copy_staged_gh(directory: Path, name: str, target: Path, limit: int) -> None:
+    if name not in {GH_ARCHIVE, GH_CHECKSUMS}:
+        raise ValueError("Unapproved GitHub CLI artifact member.")
+    source = directory / name
+    if not source.is_file():
+        raise RuntimeError("The pinned GitHub CLI bundle is missing. Check the Windows runtime package job and artifact download.")
+    if name == GH_ARCHIVE and _digest(source, limit) != GH_ARCHIVE_SHA256:
+        raise RuntimeError("GitHub CLI artifact did not match the pinned SHA-256.")
+    if name == GH_CHECKSUMS and expected_digest(source) != GH_ARCHIVE_SHA256:
+        raise RuntimeError("GitHub CLI checksum manifest did not match the pinned SHA-256.")
+    shutil.copyfile(source, target)
+
+
 def probe_gh(executable: Path, *, run=subprocess.run) -> bool:
     try:
         if not executable.is_absolute() or not executable.is_file():
@@ -139,7 +165,7 @@ def probe_gh(executable: Path, *, run=subprocess.run) -> bool:
         return False
 
 
-def ensure_gh(cache_root: Path, *, allow_install: bool, download=download_release, probe=probe_gh) -> Path:
+def find_gh(cache_root: Path, *, probe=probe_gh) -> Path | None:
     found = shutil.which("gh")
     if found and probe(Path(found).absolute()):
         return Path(found).absolute()
@@ -157,10 +183,17 @@ def ensure_gh(cache_root: Path, *, allow_install: bool, download=download_releas
                     return binary.absolute()
         except (OSError, RuntimeError, ValueError, zipfile.BadZipFile):
             pass
+    return None
+
+
+def ensure_gh(cache_root: Path, *, allow_install: bool, download=download_release, probe=probe_gh) -> Path:
+    if existing := find_gh(cache_root, probe=probe):
+        return existing
     if not allow_install:
         raise RuntimeError("Compatible GitHub CLI missing; scoped installation was not authorized.")
     if platform.system() != "Windows" or platform.machine().casefold() not in {"amd64", "x86_64"}:
         raise RuntimeError("Automatic GitHub CLI installation is not approved for this platform.")
+    cache = cache_root / f"gh-{GH_VERSION}-windows-amd64"
     cache_root.mkdir(parents=True, exist_ok=True, mode=0o700)
     if cache_root.is_symlink() or cache.is_symlink():
         raise RuntimeError("Prerequisite cache cannot be a symbolic link.")
@@ -178,20 +211,32 @@ def ensure_gh(cache_root: Path, *, allow_install: bool, download=download_releas
         if cache.exists():
             raise RuntimeError("Existing GitHub CLI cache needs explicit safe repair.")
         os.replace(stage_path, cache)
-    return binary.absolute()
+    return (cache / "gh.exe").absolute()
+
+
+def runner_path(name: str) -> Path:
+    path = Path(os.getenv(name, ""))
+    if os.getenv("GITHUB_ACTIONS") != "true" or not path.is_absolute():
+        raise RuntimeError(f"Prerequisite setup requires an absolute {name} in the authorized Runner job.")
+    return path
+
+
+def runner_gh_cache() -> Path:
+    return runner_path("RUNNER_TOOL_CACHE") / "PersonalAIAssistant" / "prerequisites"
+
+
+def report_gh_cache() -> None:
+    output = runner_path("GITHUB_OUTPUT")
+    cached = find_gh(runner_gh_cache()) is not None
+    with output.open("a", encoding="utf-8") as stream:
+        stream.write(f"cached={str(cached).lower()}\n")
 
 
 def main() -> None:
-    # The workflow's explicit provisioning step is the installation authority;
-    # ad-hoc invocations outside a Runner job do not install anything.
-    runner_temp, github_path = os.getenv("RUNNER_TEMP"), os.getenv("GITHUB_PATH")
-    if os.getenv("GITHUB_ACTIONS") != "true" or not runner_temp or not github_path:
-        raise RuntimeError("Prerequisite installation requires the authorized Runner job.")
-    root = Path(runner_temp)
-    if not root.is_absolute():
-        raise RuntimeError("Runner temporary directory must be absolute.")
-    executable = ensure_gh(root / "paa-prerequisites", allow_install=True)
-    with Path(github_path).open("a", encoding="utf-8") as stream:
+    github_path = runner_path("GITHUB_PATH")
+    bundle = runner_path("RUNNER_TEMP") / "engineering-runner-gh"
+    executable = ensure_gh(runner_gh_cache(), allow_install=True, download=partial(copy_staged_gh, bundle))
+    with github_path.open("a", encoding="utf-8") as stream:
         stream.write(str(executable.parent) + "\n")
     print("GitHub CLI version and required capabilities verified.")
 

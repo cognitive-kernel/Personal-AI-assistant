@@ -596,6 +596,23 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or ($result -join "`n") -notmatch "Reusing locally managed Python 3\.11") {
             throw "Runner did not recreate the venv from its local Python cache."
           }
+      - name: Download the pinned GitHub CLI bundle from this Workflow
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: engineering-runner-gh-windows-x64
+          path: ${{ runner.temp }}/engineering-runner-gh
+      - name: Validate GitHub CLI installation from the artifact and reuse from the cache
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $env:PATH = Join-Path $env:SystemRoot "System32"
+          $python = Join-Path $env:GITHUB_WORKSPACE ".venv\Scripts\python.exe"
+          & $python scripts/autonomous_engineering_prerequisites.py
+          if ($LASTEXITCODE -ne 0) { throw "GitHub CLI artifact installation failed." }
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP "engineering-runner-gh") -Recurse -Force
+          & $python scripts/autonomous_engineering_prerequisites.py
+          if ($LASTEXITCODE -ne 0) { throw "Could not reuse the verified GitHub CLI cache." }
       - name: Bootstrap and validate managed Python on POSIX
         if: runner.os != 'Windows'
         shell: bash
