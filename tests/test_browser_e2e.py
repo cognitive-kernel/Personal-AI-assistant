@@ -3694,6 +3694,49 @@ def test_autonomous_engineering_manual_task_form_dispatches_bounded_input():
         browser.close()
 
 
+def test_autonomous_engineering_clears_saved_queue_before_sending_new_task():
+    base_url = os.environ["E2E_BASE_URL"]
+    status = {
+        "ready": True, "can_dispatch": True,
+        "checks": {
+            "runner_running": True, "github_cli_authenticated": True,
+            "github_runs_available": True, "progress_storage_accessible": True,
+        },
+        "models": [], "github": {"recent_runs": []},
+        "pending_work": {
+            "available": True, "blocked": True,
+            "checkpoint": {"available": True, "verified": True, "run_id": "12", "task": 1},
+        },
+    }
+
+    def clear(route):
+        assert route.request.post_data_json == {"confirm": True}
+        status["github"]["recent_runs"] = [{"id": 1234, "status": "in_progress"}]
+        route.fulfill(status=202, json={"accepted": True, "message": "درخواست حذف از صف ارسال شد."})
+
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_page()
+        page.on("dialog", lambda dialog: dialog.accept())
+        page.route("**/api/autonomous-engineering/status", lambda route: route.fulfill(json=status))
+        page.route("**/api/autonomous-engineering/tasks/clear", clear)
+        page.route("**/api/autonomous-engineering/dispatch", lambda route: route.fulfill(status=202, json={"accepted": True}))
+        page.goto(base_url.rstrip("/") + "/autonomous-engineering", wait_until="domcontentloaded")
+        send_task = page.locator("#send-agent-task")
+        assert send_task.is_disabled()
+        page.locator("#clear-agent-queue").click()
+        page.wait_for_function("() => document.querySelector('#agent-message').textContent.includes('درخواست حذف از صف ارسال شد')")
+        assert send_task.is_disabled()
+        status["github"]["recent_runs"] = []
+        status["pending_work"] = {"available": True, "blocked": False}
+        page.locator("#refresh-agent").click()
+        page.locator("#manual-task").fill("وظیفهٔ جدید")
+        with page.expect_request("**/api/autonomous-engineering/dispatch") as new_task:
+            send_task.click()
+        assert new_task.value.post_data_json == {"task": "وظیفهٔ جدید"}
+        browser.close()
+
+
 
 def test_chat_message_timestamps_are_rendered_in_browser_local_timezone():
     base_url = os.environ.get("E2E_BASE_URL")
