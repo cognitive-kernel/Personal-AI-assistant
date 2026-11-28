@@ -209,7 +209,7 @@ are not bypassed by dashboard preflight.
 
 ## Runtime prerequisite bootstrap
 
-The autonomous workflow provisions its job-local Python 3.11 and Node.js 22 runtimes with pinned actions/setup-python and actions/setup-node action commits before invoking either runtime. These tools are downloaded into the GitHub Actions job environment; the host does not need a preinstalled system Python or Node.js, and the workflow does not modify another user's global runtime installation. The Codex CLI remains pinned to the repository's required version and is installed into the Runner service account's npm prefix.
+The autonomous workflow keeps verified uv and managed Python 3.11 in the local GitHub Runner tool cache, outside the checkout. The first setup or a cleared cache requires HTTPS access to the official release downloads. Later jobs reuse the cached Python and create their checkout-local virtual environment and pip without downloading Python or uv again. The pinned setup-node action manages Node.js 22 in the Runner tool cache. The Codex CLI remains pinned to the repository's required version and is installed into the Runner service account's npm prefix.
 
 This bootstrap does not install or authenticate GitHub CLI, install/start Ollama, download the selected model, register the self-hosted Runner, or provision service-account permissions. Those are host/service prerequisites and must remain visible as separate UI preflight items; missing authentication or privileged service setup cannot be fabricated by a package installer. The current coding job is still Windows-specific and this change does not claim Linux/macOS workflow support.
 ### Download the selected Ollama model from the dashboard
