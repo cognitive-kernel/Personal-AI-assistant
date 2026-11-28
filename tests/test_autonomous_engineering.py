@@ -65,6 +65,44 @@ def test_dispatch_admission_context_uses_broker_reservation_and_commits_acceptan
     assert all(call[2] == 3500 for call in calls)
 
 
+def test_queue_clear_requires_confirmation_and_inactive_workflow(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "total_count": 1, "workflow_runs": [{"id": 101}],
+    })
+    monkeypatch.setattr(agent, "_run", lambda *args, **kwargs: pytest.fail("Unexpected dispatch"))
+
+    with pytest.raises(HTTPException) as unconfirmed:
+        agent.clear_autonomous_engineering_queue(agent.ClearEngineeringQueueRequest(confirm=False))
+    assert unconfirmed.value.status_code == 422
+    with pytest.raises(HTTPException) as active:
+        agent.clear_autonomous_engineering_queue(agent.ClearEngineeringQueueRequest(confirm=True))
+    assert active.value.status_code == 409
+
+
+def test_queue_clear_dispatches_only_the_maintenance_input(monkeypatch):
+    monkeypatch.setattr(agent, "_authenticated_gh", lambda: "gh")
+    monkeypatch.setattr(agent, "_github_api_json", lambda *args, **kwargs: {
+        "total_count": 0, "workflow_runs": [],
+    })
+    monkeypatch.setattr(agent, "_has_open_autonomous_pr", lambda gh: False)
+    calls = []
+
+    def dispatch(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(agent, "_run", dispatch)
+    result = agent.clear_autonomous_engineering_queue(agent.ClearEngineeringQueueRequest(confirm=True))
+    assert result["accepted"] is True
+    assert len(calls) == 1
+    assert calls[0][-4:] == [
+        "--raw-field", "clear_pending_tasks=true",
+        "--raw-field", f"correlation_id={result['correlation_id']}",
+    ]
+    assert "manual_task" not in " ".join(calls[0])
+
+
 def test_dispatch_admission_context_releases_unaccepted_reservation(monkeypatch):
     from app import autonomous_engineering_dispatch_lock as dispatch_lock
 
@@ -3242,7 +3280,6 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
 
     gated_steps = (
         "Persist manual task under the controller's runner and concurrency ownership",
-        "Prepare Runner virtual environment and install runtime dependencies",
         "Initialize live progress before prerequisite checks",
         "Snapshot accepted scorecard from trusted main",
         "Capture live GitHub state with the read-only workflow token",
@@ -3260,6 +3297,7 @@ def test_autonomous_workflow_rechecks_live_pause_variable_after_concurrency_admi
         step_body = workflow[step_start:next_step if next_step >= 0 else len(workflow)]
         assert "if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'" in step_body
 
+    assert "if: steps.pause.outcome == 'success' && (steps.pause.outputs.skip != 'true' || inputs.clear_pending_tasks)" in workflow
     verify_start = workflow.index("- name: Verify persistent Ollama context after autonomous Codex task", end)
     verify_end = workflow.index("- name: Unload and remove this run's temporary Ollama context model", verify_start)
     verify_step = workflow[verify_start:verify_end]
@@ -3292,7 +3330,7 @@ def test_one_shot_resume_bypasses_only_stale_pause_snapshot_before_live_gate():
     schedule_gate = workflow[gate_start:gate_end]
 
     assert "RESUME_ONCE: ${{ inputs.resume_once || false }}" in schedule_gate
-    assert 'if [[ "$PAUSED" == "true" ]]; then' in schedule_gate
+    assert 'if [[ "$PAUSED" == "true" && "$CLEAR_PENDING_TASKS" != "true" ]]; then' in schedule_gate
     assert 'if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then' in schedule_gate
     assert "bypasses only the stale workflow-context Pause snapshot" in schedule_gate
     assert "live gate after concurrency admission remains authoritative" in schedule_gate
