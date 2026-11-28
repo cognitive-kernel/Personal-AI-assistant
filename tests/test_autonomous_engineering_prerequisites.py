@@ -14,7 +14,7 @@ def _fixture(root, content=b"approved binary"):
     archive = root / prereq.GH_ARCHIVE
     manifest = root / prereq.GH_CHECKSUMS
     with zipfile.ZipFile(archive, "w") as zipped:
-        zipped.writestr(prereq.GH_MEMBER, content)
+        zipped.writestr("bin/gh.exe", content)
         zipped.writestr("../outside", b"must never extract")
     manifest.write_text(hashlib.sha256(archive.read_bytes()).hexdigest() + "  " + prereq.GH_ARCHIVE)
     return archive, manifest
