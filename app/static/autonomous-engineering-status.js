@@ -201,6 +201,17 @@
       labels.model.textContent = stateText(modelReady);
       const contextLength = Number(data.model_context_length);
       const recommendedContext = Number(data.model_recommended_context_length);
+      const contextBlockers = {
+        kv_metadata: "Ollama ابعاد لازم برای محاسبهٔ حافظهٔ KV را گزارش نکرد.",
+        weight_metadata: "اندازهٔ معتبر وزن مدل از Ollama دریافت نشد.",
+        resident_context: "Ollama اندازهٔ Context مدلِ در حال اجرا را گزارش نکرد. پس از پایان استفادهٔ فعلی مدل، وضعیت را بازخوانی کنید.",
+        memory_budget: "با اطلاعات فعلی، ظرفیت امن Context تأیید نشد. حافظهٔ آزاد و سقف حافظهٔ تنظیم‌شده را بررسی کنید.",
+        probe_failed: "بررسی اطلاعات حافظه یا مدل کامل نشد. وضعیت را بازخوانی کنید."
+      };
+      const contextBlocker = data.model_context_blocker;
+      const contextDiagnosis = typeof contextBlocker === "string" && Object.hasOwn(contextBlockers, contextBlocker)
+        ? "؛ " + contextBlockers[contextBlocker]
+        : "";
       const contextText = Number.isSafeInteger(contextLength) && contextLength > 0
         ? "؛ حداکثر Context مدل: " + contextLength.toLocaleString() + " توکن" +
           (Number.isSafeInteger(recommendedContext) && recommendedContext > 0
@@ -224,7 +235,7 @@
       const installationText = data.model && checks.model_is_codex_context_variant
         ? "؛ این نسخهٔ داخلی Context است؛ مدل اصلی را انتخاب و ذخیره کنید"
         : data.model && !checks.model_installed ? "؛ مدل ذخیره‌شده روی این سیستم نصب نیست" : "";
-      $("model-detail").textContent = modelLabel + installationText + contextText + toolsText;
+      $("model-detail").textContent = modelLabel + installationText + contextText + contextDiagnosis + toolsText;
       if (modelsKnown) {
         renderModels(data.selectable_models || data.models, data.model, checks.model_is_codex_context_variant);
       } else {

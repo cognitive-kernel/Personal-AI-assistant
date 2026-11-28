@@ -643,14 +643,9 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     monkeypatch.setenv("HTTP_PROXY", "http://proxy.example:8080")
     monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example:8080")
     monkeypatch.setattr(agent.urllib.request, "build_opener", fake_build_opener)
-    from app import hardware, ollama
+    from app import ollama
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
-    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
-        "weights_gib": 1.0, "overhead_gib": 0.5,
-        "kv_cache_bytes_per_token_upper_bound": 1024,
-    })
-    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
-    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
+    monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: SimpleNamespace(available=16 * 1024**3))
 
     result = agent._ollama_status("gpt-oss:20b")
 
@@ -666,9 +661,19 @@ def test_ollama_status_bypasses_environment_proxies(monkeypatch):
     assert result["online"] is True
     assert result["model_installed"] is True
     assert result["model_context_length"] == 65536
-    assert result["model_recommended_context_length"] == 32768
+    assert result["model_recommended_context_length"] == 33177
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
+
+
+    monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: SimpleNamespace(available=8 * 1024**3))
+    reduced = agent._ollama_status("gpt-oss:20b")
+    assert reduced["model_recommended_context_length"] == 5324
+
+    monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: SimpleNamespace(available=4 * 1024**3))
+    unavailable = agent._ollama_status("gpt-oss:20b")
+    assert unavailable["model_context_supported"] is False
+    assert unavailable["model_context_blocker"] == "memory_budget"
 
 
 def test_standalone_ollama_tool_probe_uses_local_endpoint_and_structured_tool_call(monkeypatch):
@@ -730,13 +735,9 @@ def test_ollama_status_probes_tool_calling_when_capabilities_metadata_is_missing
 
     agent._services._TOOL_PROBE_CACHE.clear()
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *args: FakeOpener())
-    from app import hardware
-    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
-        "weights_gib": 1.0, "overhead_gib": 0.5,
-        "kv_cache_bytes_per_token_upper_bound": 1024,
-    })
-    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
-    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
+    from app import ollama_context
+    monkeypatch.setattr(ollama_context, "select_context_window", lambda **kwargs: {"selected_context_tokens": 32768})
+    monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: SimpleNamespace(available=16 * 1024**3))
     probe_calls = []
     def fake_probe_request(path, payload=None, timeout=None):
         probe_calls.append((path, payload, timeout))
@@ -1959,18 +1960,15 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
     class FakeOpener:
         def open(self, request, timeout):
             if request.full_url.endswith("/api/tags"):
-                return io.BytesIO(b'{"models":[{"name":"large-model:latest"}]}')
+                return io.BytesIO(b'{"models":[{"name":"large-model:latest","size":5368709120}]}')
             return io.BytesIO(show_body)
 
     monkeypatch.setattr(agent.urllib.request, "build_opener", lambda *handlers: FakeOpener())
     from app import hardware
     monkeypatch.setattr(ollama, "_request", lambda path, payload=None, timeout=None: {"models": []})
-    monkeypatch.setattr(ollama, "_model_memory_estimate", lambda *args: {
-        "weights_gib": 1.0, "overhead_gib": 0.5,
-        "kv_cache_bytes_per_token_upper_bound": 1024,
-    })
-    monkeypatch.setattr(ollama, "_recommended_context_tokens", lambda *args, **kwargs: 32768)
-    monkeypatch.setattr(hardware, "detect_hardware", lambda: {})
+    from app import ollama_context
+    monkeypatch.setattr(ollama_context, "select_context_window", lambda **kwargs: {"selected_context_tokens": 32768})
+    monkeypatch.setattr(agent.psutil, "virtual_memory", lambda: SimpleNamespace(available=16 * 1024**3))
 
     result = agent._ollama_status("large-model:latest")
 
@@ -1983,6 +1981,14 @@ def test_ollama_status_accepts_large_valid_show_metadata_response(monkeypatch):
     assert result["model_supports_tools"] is True
     assert result["model_context_supported"] is True
     assert result["model_recommended_context_length"] == 32768
+    assert result["model_context_blocker"] is None
+
+    monkeypatch.setattr(ollama, "_request", lambda *args, **kwargs: {"models": [{"name": "large-model:latest"}]})
+    resident = agent._ollama_status("large-model:latest")
+    assert resident["model_context_blocker"] == "resident_context"
+    assert resident["model_context_supported"] is False
+    assert resident["model_recommended_context_length"] is None
+
 
 
 def test_save_settings_rejects_model_without_explicit_tool_calling_support(monkeypatch):

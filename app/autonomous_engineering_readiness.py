@@ -76,6 +76,7 @@ def build_status_payload(
         "model_context_length": ollama.get("model_context_length"),
         "model_recommended_context_length": ollama.get("model_recommended_context_length"),
         "model_context_supported": ollama.get("model_context_supported", False),
+        "model_context_blocker": ollama.get("model_context_blocker"),
         "model_context_error": ollama.get("model_context_error"),
         "model_capabilities": ollama.get("model_capabilities", []),
         "model_tools_metadata_available": ollama.get("model_tools_metadata_available", False),

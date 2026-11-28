@@ -106,6 +106,9 @@ def select_context_window(
     dimensions: dict[str, int] = {}
     for name, key in required.items():
         value = model_info.get(key)
+        if name == "kv_heads" and (type(value) is not int or value <= 0):
+            # Full heads are a conservative upper bound when grouped KV heads are absent.
+            value = model_info.get(f"{prefix}attention.head_count")
         if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
             raise OllamaModelMetadataError(f"Required KV-cache metadata '{key}' is unavailable.")
         dimensions[name] = value
