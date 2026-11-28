@@ -19,6 +19,7 @@ class TaskReportFailureKind(str, Enum):
     NO_LAST_AGENT_MESSAGE = "no_last_agent_message"
     MISSING_TERMINAL_MARKER = "missing_terminal_marker"
     MARKER_NOT_FINAL_LINE = "marker_not_final_line"
+    CONTINUATION_PLAN_NOT_ADVANCED = "continuation_plan_not_advanced"
 
 
 class TaskReportError(RuntimeError):
@@ -90,14 +91,20 @@ def checkpoint_plan(path: Path) -> tuple[tuple[str, ...], frozenset[str]] | None
     return tuple(ids), frozenset(complete)
 
 
-def plan_advanced(path: Path, before: tuple[tuple[str, ...], frozenset[str]] | None) -> bool:
+def continuation_problem(path: Path, before: tuple[tuple[str, ...], frozenset[str]] | None) -> str | None:
     after = checkpoint_plan(path)
     if after is None:
-        return False
+        return "The progress file is missing or does not contain a valid version-1 plan."
     ids, done = after
-    if not done or len(done) == len(ids):
-        return False
-    return before is None or (ids == before[0] and before[1] < done)
+    if before is not None and ids != before[0]:
+        return "The ordered IDs of the saved plan changed."
+    if before is not None and not before[1].issubset(done):
+        return "A previously completed step was reopened."
+    if len(done) == len(ids):
+        return "All plan steps are complete, so a continuation marker is inappropriate."
+    if not done or (before is not None and done == before[1]):
+        return "The plan has no newly completed step."
+    return None
 
 
 def context_evidence_bytes(context: str) -> int | None:
