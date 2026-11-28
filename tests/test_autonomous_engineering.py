@@ -2405,7 +2405,7 @@ def test_dashboard_script_bounds_and_coalesces_status_refreshes():
     assert 'try { payload = await response.json(); } catch (_) {}' not in core
     assert 'setStatusMessage(paused ?' in status
     assert 'setMessage(data.paused ?' not in status
-    assert 'addEventListener("click", () => refresh())' in status
+    assert 'const refreshed = await refresh();' in status
     assert "cancelButton.disabled = true" not in status
     assert 'getActiveRunId: () => lastActiveRunId' in status
     assert 'JSON.stringify({run_id: runId})' in controls

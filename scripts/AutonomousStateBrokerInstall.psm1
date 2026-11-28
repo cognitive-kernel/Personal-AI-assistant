@@ -34,6 +34,20 @@ function Test-AutonomousDotNetFramework48 {
     return (Get-AutonomousDotNetFrameworkRelease) -ge 528040
 }
 
+function Test-AutonomousBrokerServicePath {
+    param([string]$RegisteredPath, [string]$ExecutablePath)
+
+    if ([string]::IsNullOrWhiteSpace($ExecutablePath)) { return $false }
+    $quotedPath = '"' + $ExecutablePath + '"'
+    if ([string]::Equals($RegisteredPath, $quotedPath, [StringComparison]::OrdinalIgnoreCase)) {
+        return $true
+    }
+    # Windows can persist a bare executable path when it contains no whitespace.
+    # Exact equality is required so that arguments and other command lines are rejected.
+    return $ExecutablePath -notmatch '\s' -and
+        [string]::Equals($RegisteredPath, $ExecutablePath, [StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-AutonomousStateBrokerPackage {
     $programData = [string]$env:ProgramData
     if ([string]::IsNullOrWhiteSpace($programData) -or
@@ -184,7 +198,7 @@ function Install-AutonomousStateBrokerService {
         if ($service.StartName -ne "NT AUTHORITY\LocalService") {
             throw "The state broker must run under NT AUTHORITY\LocalService."
         }
-        if ([string]$service.PathName -notlike ('"' + $serviceExe + '"*')) {
+        if (-not (Test-AutonomousBrokerServicePath -RegisteredPath $service.PathName -ExecutablePath $serviceExe)) {
             throw "The state broker service executable path was not persisted exactly."
         }
 
@@ -219,7 +233,9 @@ function Install-AutonomousStateBrokerService {
 
         if ($backupExe -and (Test-Path -LiteralPath $backupExe)) {
             try {
-                [System.IO.File]::Replace($backupExe, $serviceExe, $null, $true)
+                # Use an explicit rollback destination on both PowerShell editions.
+                $failedExe = Join-Path $serviceRoot ("broker-failed-" + [guid]::NewGuid().ToString("N") + ".exe")
+                [System.IO.File]::Replace($backupExe, $serviceExe, $failedExe, $true)
             } catch {
                 Write-Warning "The previous state-broker binary backup remains at $backupExe; do not delete it until the service is restored."
             }

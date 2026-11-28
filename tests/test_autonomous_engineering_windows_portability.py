@@ -715,3 +715,27 @@ def test_windows_identity_module_reuses_preloaded_security_module():
 
     assert result.returncode == 0, result.stdout + "\n" + result.stderr
     assert "PAA_PRELOADED_SECURITY_REUSE_OK" in result.stdout
+
+
+def test_broker_service_path_accepts_exact_bare_path_and_rejects_arguments():
+    powershell = shutil.which("powershell") or shutil.which("pwsh")
+    if not powershell:
+        pytest.skip("PowerShell is unavailable.")
+    script = r"""
+$module = Import-Module ./scripts/AutonomousStateBrokerInstall.psm1 -Force -PassThru
+& $module {
+    $bare = 'C:\ProgramData\PersonalAIAssistant\StateBroker\PersonalAIAssistant.StateBroker.exe'
+    $space = 'C:\Program Data\Broker.exe'
+    if (-not (Test-AutonomousBrokerServicePath $bare $bare)) { throw 'Rejected exact bare path' }
+    if (-not (Test-AutonomousBrokerServicePath ('"' + $space + '"') $space)) { throw 'Rejected exact quoted path' }
+    if (Test-AutonomousBrokerServicePath $space $space) { throw 'Accepted ambiguous unquoted path' }
+    if (Test-AutonomousBrokerServicePath ('"' + $bare + '" --argument') $bare) { throw 'Accepted arguments' }
+    if (Test-AutonomousBrokerServicePath ($bare + '.bak') $bare) { throw 'Accepted another executable' }
+}
+"""
+    encoded = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+    result = subprocess.run(
+        [powershell, "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded],
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=20,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

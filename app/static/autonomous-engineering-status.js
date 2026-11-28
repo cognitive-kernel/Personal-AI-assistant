@@ -189,7 +189,7 @@
   async function refreshStatus() {
     $("refresh-agent").disabled = true;
     try {
-      const data = await request("status");
+      const data = await request("status", {cache: "no-store"});
       const checks = data.checks || {};
       const incomplete = incompleteProbes(data);
       const githubKnown = !incomplete.has("github");
@@ -368,9 +368,6 @@
       const ready = !nativeWorkflowBlocked && requiredProbesKnown && data.ready === true;
       const paused = githubKnown && data.paused === true;
       const canDispatch = data.can_dispatch === undefined ? (ready && !paused) : data.can_dispatch === true;
-      const pill = $("agent-readiness");
-      pill.textContent = !requiredProbesKnown ? "آمادگی اجرا تأیید نشده" : paused ? "توقف ایمن فعال است" : (ready ? "آمادهٔ ارسال Workflow" : "راه‌اندازی ناقص");
-      pill.className = "status-pill " + (paused ? "status-blocked" : (ready ? "status-ready" : "status-blocked"));
       const activeRun = (data.github && data.github.recent_runs || []).find(run =>
         ["queued", "in_progress", "waiting", "requested", "pending", "suspended"].includes(run.status));
       const active = Boolean(activeRun);
@@ -387,6 +384,15 @@
       lastCanDispatch = !nativeWorkflowBlocked && requiredProbesKnown && canDispatch;
       statusKnown = true;
       syncDispatchControls();
+      const pill = $("agent-readiness");
+      const readyToDispatch = ready && lastCanDispatch && !lastActiveRun && !(checkpoint?.available === true && checkpoint.verified !== true);
+      pill.textContent = !requiredProbesKnown ? "آمادگی اجرا تأیید نشده"
+        : paused ? "توقف ایمن فعال است"
+        : lastActiveRun ? "Workflow در صف یا در حال اجرا"
+        : readyToDispatch ? "آمادهٔ ارسال Workflow"
+        : ready ? "ارسال Workflow فعلاً مسدود است"
+        : "راه‌اندازی ناقص";
+      pill.className = "status-pill " + (readyToDispatch ? "status-ready" : "status-blocked");
       // Run history refreshes independently and after committed mutations.
       // Rendering this status snapshot here bypasses its request sequence and
       // can overwrite a newer, explicitly refreshed run list with stale data.
@@ -394,6 +400,9 @@
       if (incomplete.size) {
         setStatusMessage("بخشی از وضعیت تأیید نشد؛ برای بررسی دوباره، تازه‌سازی کنید." +
           (data.correlation_id ? " · شناسهٔ پیگیری: " + data.correlation_id : ""), "error");
+      } else if (lastActiveRun && !paused) {
+        const runLabel = lastActiveRunId === null ? "" : " (" + lastActiveRunId + ")";
+        setStatusMessage("Workflow" + runLabel + " در صف یا در حال اجراست؛ ارسال و ادامهٔ دوباره پس از پایان آن ممکن است.");
       } else {
         setStatusMessage(paused ? "صف مهندسی متوقف است؛ برای ادامه از آخرین وضعیت، دکمهٔ ادامه را بزنید." : (ready ? "پیش‌نیازهای حساب برنامه آماده‌اند؛ Workflow پیش‌نیازهای حساب Runner را جداگانه بررسی می‌کند." : "برای فعال‌شدن اجرا، موارد ناقص را در راهنمای راه‌اندازی تکمیل کنید."), paused || ready ? "success" : "");
       }
@@ -412,7 +421,13 @@
     }
   }
 
-  $("refresh-agent").addEventListener("click", () => refresh());
+  $("refresh-agent").addEventListener("click", async () => {
+    const feedback = $("manual-refresh-feedback");
+    feedback.textContent = "در حال بازخوانی وضعیت…";
+    const refreshed = await refresh();
+    const time = new Date().toLocaleTimeString("fa-IR");
+    feedback.textContent = (refreshed ? "وضعیت بازخوانی شد" : "بازخوانی وضعیت کامل نشد") + " · " + time;
+  });
   function armDispatchUnlockTimer() {
     if (dispatchUnlockTimer !== null) window.clearTimeout(dispatchUnlockTimer);
     dispatchUnlockTimer = null;
