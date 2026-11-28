@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-from pydantic import BaseModel, Field, StrictInt, StrictStr
+from pydantic import BaseModel, Field, StrictBool, StrictInt, StrictStr
 
 
 HTTP_ERROR_CODES = {
@@ -42,6 +42,10 @@ class EngineeringSettings(BaseModel):
 
 class ManualTaskRequest(BaseModel):
     task: StrictStr = Field(default="", max_length=2000)
+
+
+class ClearEngineeringQueueRequest(BaseModel):
+    confirm: StrictBool
 
 
 class ModelPullRequest(BaseModel):
