@@ -301,7 +301,7 @@ def run_codex(args: argparse.Namespace) -> int:
         parent_group_managed=os.name != "nt",
     )
     try:
-        prompt = Path(args.prompt).read_text(encoding="utf-8")
+        prompt = Path(args.prompt).read_text(encoding="utf-8-sig")
     except OSError as exc:
         print(f"Cannot read Codex prompt: {exc}", file=sys.stderr)
         return 2
@@ -483,6 +483,7 @@ def run_codex(args: argparse.Namespace) -> int:
                 expected_message or "",
                 getattr(args, "require_command_fragment", None),
             )
+            evidence["jsonl_event_count"] = event_count
             if evidence_path:
                 write_smoke_evidence(evidence_path, evidence)
             print(
