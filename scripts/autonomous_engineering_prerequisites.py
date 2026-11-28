@@ -14,6 +14,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import time
 import urllib.parse
 import urllib.request
 import zipfile
@@ -208,9 +209,17 @@ def ensure_gh(cache_root: Path, *, allow_install: bool, download=download_releas
             raise RuntimeError("Downloaded GitHub CLI version or capability verification failed.")
         # Publish a complete verified directory atomically; never overwrite
         # another run's cache. A racing caller can revalidate the winning copy.
-        if cache.exists():
-            raise RuntimeError("Existing GitHub CLI cache needs explicit safe repair.")
-        os.replace(stage_path, cache)
+        for delay in (0.1, 0.25, 0.5, 1.0, None):
+            if cache.exists() or cache.is_symlink():
+                raise RuntimeError("Existing GitHub CLI cache needs explicit safe repair.")
+            try:
+                os.replace(stage_path, cache)
+                break
+            except OSError as exc:
+                # Windows scanners can hold the verified executable briefly after probing it.
+                if delay is None or getattr(exc, "winerror", None) not in {5, 32, 33}:
+                    raise
+                time.sleep(delay)
     return (cache / "gh.exe").absolute()
 
 
