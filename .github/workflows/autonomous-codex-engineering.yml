@@ -596,6 +596,21 @@ jobs:
           )
 
 
+      - name: Check the Runner's local GitHub CLI
+        id: runner-gh
+        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
+        shell: python {0}
+        run: |
+          import runpy
+          runpy.run_path("scripts/autonomous_engineering_prerequisites.py")["report_gh_cache"]()
+
+      - name: Download the pinned GitHub CLI bundle from this Workflow
+        if: steps.runner-gh.outputs.cached == 'false' && needs.prepare-python.outputs.gh-available == 'true'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: engineering-runner-gh-windows-x64
+          path: ${{ runner.temp }}/engineering-runner-gh
+
       - name: Provision verified GitHub CLI for this Runner job
         if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
         shell: python {0}
