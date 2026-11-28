@@ -136,6 +136,12 @@ def codex_arguments(model: str, report: str) -> list[str]:
     catalog_path = write_codex_model_catalog(model, context_window=context_window)
     print(f"Codex model catalog metadata: model={model}, context_window={context_window}")
     is_smoke = Path(report).name.startswith("codex-sandbox-")
+    model_family = model.rsplit("/", 1)[-1].partition(":")[0].casefold()
+    if is_smoke and not reasoning_effort and model_family == "qwen3":
+        # Qwen3 enables thinking when the Ollama Responses request omits effort.
+        # The short smoke checks one tool round trip, so send think=false via
+        # Responses' effort=none without changing the engineering task profile.
+        reasoning_effort = "none"
     arguments = [
         "exec", "-c", 'model_provider="ollama-local"',
         "-c", f'windows.sandbox="{backend}"',
