@@ -2034,6 +2034,18 @@ def test_cycle_repository_404_cannot_be_mistaken_for_missing_pause_variable(monk
         cycle._live_pause_enabled("test-token", "owner/repository")
     assert calls == [""]
 
+def test_github_repository_metadata_uses_the_canonical_url(monkeypatch):
+    import io
+    from scripts import autonomous_engineering_github as github
+
+    def urlopen(request, *, timeout):
+        assert request.full_url == "https://api.github.com/repos/owner/repository"
+        return io.BytesIO(b'{"full_name":"owner/repository"}')
+
+    monkeypatch.setattr(github.urllib.request, "urlopen", urlopen)
+    assert github.api("token", "owner/repository", "GET", "") == {"full_name": "owner/repository"}
+
+
 def test_cycle_live_pause_missing_variable_defaults_false(monkeypatch):
     def missing_variable(token, repo, method, path):
         if path == "":

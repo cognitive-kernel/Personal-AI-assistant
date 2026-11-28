@@ -1,6 +1,6 @@
 name: Autonomous local Ollama engineering
 
-run-name: Autonomous local Ollama engineering${{ inputs.recovery_attempt > 0 && format(' [recovery:{0}]', inputs.recovery_attempt) || '' }}${{ inputs.correlation_id && format(' [correlation:{0}]', inputs.correlation_id) || '' }}
+run-name: Autonomous local Ollama engineering${{ inputs.clear_pending_tasks && ' [clear-queue]' || '' }}${{ inputs.recovery_attempt > 0 && format(' [recovery:{0}]', inputs.recovery_attempt) || '' }}${{ inputs.correlation_id && format(' [correlation:{0}]', inputs.correlation_id) || '' }}
 
 on:
   push:
@@ -21,6 +21,11 @@ on:
         default: ""
       replace_pending_task:
         description: "Explicitly quarantine and replace an older pending task when no autonomous PR is open"
+        required: false
+        type: boolean
+        default: false
+      clear_pending_tasks:
+        description: "Remove saved tasks and checkpoints from the active Engineering queue"
         required: false
         type: boolean
         default: false
@@ -63,10 +68,15 @@ jobs:
           CURRENT_RUN_ID: ${{ github.run_id }}
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           RESUME_ONCE: ${{ inputs.resume_once || false }}
+          CLEAR_PENDING_TASKS: ${{ inputs.clear_pending_tasks || false }}
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$PAUSED" == "true" ]]; then
+          if [[ "$CLEAR_PENDING_TASKS" == "true" && ( "$EVENT_NAME" != "workflow_dispatch" || -n "$MANUAL_TASK" || "$RESUME_ONCE" == "true" ) ]]; then
+            echo "Queue cleanup must be requested separately from a task or resume." >&2
+            exit 1
+          fi
+          if [[ "$PAUSED" == "true" && "$CLEAR_PENDING_TASKS" != "true" ]]; then
             if [[ "$EVENT_NAME" == "workflow_dispatch" && "$RESUME_ONCE" == "true" ]]; then
               echo "Explicit one-shot Resume bypasses only the stale workflow-context Pause snapshot; the live gate after concurrency admission remains authoritative."
             else
@@ -100,6 +110,10 @@ jobs:
           PY
           )
           if [[ "$active_state" == "active" ]]; then
+            if [[ "$CLEAR_PENDING_TASKS" == "true" ]]; then
+              echo "The saved queue was not cleared because another Engineering run is active or queued." >&2
+              exit 1
+            fi
             if [[ "$EVENT_NAME" == "workflow_dispatch" && -n "$MANUAL_TASK" ]]; then
               echo "A manual task was not accepted because another run is active or queued; no durable state was changed. Retry after that run finishes." >&2
               exit 1
@@ -330,6 +344,7 @@ jobs:
           MANUAL_TASK: ${{ inputs.manual_task || '' }}
           RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt || 0 }}
           RESUME_ONCE: ${{ inputs.resume_once || false }}
+          CLEAR_PENDING_TASKS: ${{ inputs.clear_pending_tasks || false }}
         shell: python {0}
         run: |
           import runpy
@@ -347,7 +362,7 @@ jobs:
           & "$env:GITHUB_WORKSPACE\scripts\persist_autonomous_manual_task.ps1"
 
       - name: Prepare Runner virtual environment and install runtime dependencies
-        if: steps.pause.outcome == 'success' && steps.pause.outputs.skip != 'true'
+        if: steps.pause.outcome == 'success' && (steps.pause.outputs.skip != 'true' || inputs.clear_pending_tasks)
         env:
           PIP_TIMEOUT: "120"
           PIP_RETRIES: "10"
@@ -368,6 +383,14 @@ jobs:
           $venvScripts = Split-Path -Parent $venvPython
           $env:PATH = "$venvScripts;$env:PATH"
           & $venvPython -c "import sys, psutil; print(sys.executable); print('psutil', psutil.__version__)"
+
+      - name: Clear saved Engineering tasks from the active queue
+        if: steps.pause.outcome == 'success' && inputs.clear_pending_tasks
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: powershell
+        run: python -m scripts.autonomous_engineering_clear_queue
           if ($LASTEXITCODE -ne 0) { throw "The Runner managed virtual environment is not active." }
 
       - name: Recover only the latest owned checkpoint through the run-scoped controller

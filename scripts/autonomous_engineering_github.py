@@ -17,8 +17,12 @@ def api(
     payload: dict[str, Any] | None = None,
 ) -> Any:
     body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    endpoint = path.lstrip("/")
+    url = f"https://api.github.com/repos/{repo}"
+    if endpoint:
+        url += "/" + endpoint
     request = urllib.request.Request(
-        f"https://api.github.com/repos/{repo}/{path.lstrip('/')}",
+        url,
         data=body, method=method,
         headers={
             "Accept": "application/vnd.github+json",

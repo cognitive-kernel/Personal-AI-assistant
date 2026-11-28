@@ -207,6 +207,13 @@ refuses to remove progress data while a checkpoint is active or unverified. The
 workflow's own serialized persistence and capture checks remain authoritative and
 are not bypassed by dashboard preflight.
 
+The dashboard's **حذف همهٔ کارهای قبلی از صف** requests a dedicated main-branch run.
+The Runner checks that no Engineering PR is open and takes the repository, durable
+state, and checkpoint locks before removing the old queue entries. Task and
+checkpoint files move to a protected local archive. Completed run history stays
+available in GitHub. After the cleanup run succeeds, the dashboard can accept a
+new task as soon as the normal dispatch prerequisites are ready.
+
 ## Runtime prerequisite bootstrap
 
 The workflow stages pinned Windows x64 packages for Python 3.11 and GitHub CLI on a GitHub-hosted job. The self-hosted Windows Runner downloads each same-run Actions artifact only when the corresponding local tool is unavailable. It verifies the archive SHA-256 before extraction and creates the checkout-local virtual environment and pip from the cached Python. The Runner needs access to Actions artifacts for initial setup. The hosted job handles access to GitHub Releases. The pinned setup-node action manages Node.js 22 in the Runner tool cache. The Codex CLI remains pinned to the repository's required version and is installed into the Runner service account's npm prefix.

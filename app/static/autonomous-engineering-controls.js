@@ -8,6 +8,7 @@
   const settingsForm = $("agent-settings-form");
   const taskForm = $("agent-task-form");
   const taskButton = $("send-agent-task");
+  const clearQueueButton = $("clear-agent-queue");
   const dispatchButton = $("dispatch-agent");
   const cancelButton = $("cancel-agent");
   const pauseButton = $("pause-agent");
@@ -223,6 +224,26 @@
     } finally {
       status.setDispatchSubmitting(false);
       status.syncDispatchControls();
+    }
+  });
+  clearQueueButton.addEventListener("click", async () => {
+    if (clearQueueButton.disabled) return;
+    if (!window.confirm("همهٔ کارهای ذخیره‌شده و checkpointهای قبلی از صف حذف شوند؟ نسخهٔ آن‌ها در آرشیو محلی Runner می‌ماند. پس از پایان موفق درخواست، می‌توانید کار جدید ثبت کنید.")) return;
+    status.setDispatchSubmitting(true);
+    try {
+      const result = await request("tasks/clear", {
+        method: "POST",
+        body: JSON.stringify({confirm: true})
+      });
+      status.lockDispatchVisibilityWindow();
+      await status.refresh(true);
+      setMessage(result.message, "success");
+    } catch (error) {
+      if (error.ambiguous || (error.status >= 500 && !error.retryable)) status.lockDispatchVisibilityWindow();
+      await status.refresh(true);
+      setMessage(error.message || "حذف کارها از صف ناموفق بود.", "error");
+    } finally {
+      status.setDispatchSubmitting(false);
     }
   });
   dispatchButton.addEventListener("click", async () => {

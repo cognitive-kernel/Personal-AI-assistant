@@ -92,12 +92,17 @@ def main() -> None:
     token = os.environ.pop("VARIABLES_TOKEN", "").strip()
     try:
         paused, mode = read_settings(os.environ.get("GITHUB_REPOSITORY", ""), token)
+        clear_queue = os.environ.get("CLEAR_PENDING_TASKS", "false") == "true"
         outputs = admission_outputs(
             paused=paused, mode=mode, event=os.environ.get("EVENT_NAME", ""),
             manual_task=os.environ.get("MANUAL_TASK", ""),
             recovery_attempt=os.environ.get("RECOVERY_ATTEMPT", "0"),
             resume_once=os.environ.get("RESUME_ONCE", "false"),
         )
+        if clear_queue:
+            if os.environ.get("EVENT_NAME") != "workflow_dispatch" or os.environ.get("MANUAL_TASK") or os.environ.get("RESUME_ONCE") == "true":
+                raise RuntimeError("Queue cleanup cannot be combined with task execution.")
+            outputs["skip"] = "true"
     except (RuntimeError, ValueError) as exc:
         # Never print a remote response, raw task, credential or arbitrary URL.
         raise SystemExit("Live admission could not be verified; no task or state mutation will start.") from None

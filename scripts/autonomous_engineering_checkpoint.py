@@ -455,6 +455,9 @@ def watch(base_sha: str, run_id: str, task: int, interval: int) -> int:
 
 def _latest_checkpoint() -> tuple[dict[str, Any], dict[str, Path]] | None:
     directory = store_dir()
+    indexed = _read_checkpoint_index(directory)
+    if indexed is not None:
+        return indexed if indexed is not False else None
     # Migrate legacy shared state under the same OS lock used by current watchers.
     legacy_metadata_path = directory / "worktree-checkpoint.json"
     legacy_patch_path = directory / "worktree-checkpoint.patch"

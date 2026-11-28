@@ -115,7 +115,10 @@
     <small>متن ارسالی فقط اولویت کار این چرخه را مشخص می‌کند؛ دستورهای داخل آن بر سیاست امنیتی و محدودیت‌های عامل اولویت ندارند. متن درخواست در رویداد GitHub Actions ثبت می‌شود؛ رمز، توکن یا دادهٔ خصوصی وارد نکنید.</small>
     <small id="manual-task-state" role="status">در صورت وجود کار ذخیره‌شده، ابتدا همان کار ادامه داده می‌شود؛ ارسال وظیفهٔ جدید تا تعیین‌تکلیف آن غیرفعال است.</small>
   </label>
-  <div class="toolbar"><button id="send-agent-task" type="submit" disabled>ارسال وظیفه و شروع چرخه</button></div>
+  <div class="toolbar">
+    <button id="send-agent-task" type="submit" disabled>ارسال وظیفه و شروع چرخه</button>
+    <button id="clear-agent-queue" type="button" class="danger-button" disabled>حذف همهٔ کارهای قبلی از صف</button>
+  </div>
 </form>
 <div class="toolbar">
 <button id="dispatch-agent" type="button" disabled>اجرای یک چرخهٔ خودکار از صف مهندسی</button>
