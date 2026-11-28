@@ -26,7 +26,7 @@ GH_ARCHIVE = f"gh_{GH_VERSION}_windows_amd64.zip"
 GH_ARCHIVE_SHA256 = "08c06d10482f12c478018cd259f64acbd5f625712cadf331aad19ba973c879e5"
 GH_CHECKSUMS = f"gh_{GH_VERSION}_checksums.txt"
 RELEASE_BASE = f"https://github.com/cli/cli/releases/download/v{GH_VERSION}"
-GH_MEMBER = f"gh_{GH_VERSION}_windows_amd64/bin/gh.exe"
+GH_MEMBER = "bin/gh.exe"
 _MAX_ARCHIVE = 128 * 1024 * 1024
 _MAX_BINARY = 128 * 1024 * 1024
 _MAX_CHECKSUMS = 1024 * 1024
@@ -125,11 +125,10 @@ def stage_gh_bundle(directory: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     download_release(GH_CHECKSUMS, directory / GH_CHECKSUMS, _MAX_CHECKSUMS)
     download_release(GH_ARCHIVE, directory / GH_ARCHIVE, _MAX_ARCHIVE)
-    if (
-        expected_digest(directory / GH_CHECKSUMS) != GH_ARCHIVE_SHA256
-        or _digest(directory / GH_ARCHIVE, _MAX_ARCHIVE) != GH_ARCHIVE_SHA256
-    ):
+    if expected_digest(directory / GH_CHECKSUMS) != GH_ARCHIVE_SHA256:
         raise RuntimeError("GitHub CLI release did not match the pinned SHA-256.")
+    with tempfile.TemporaryDirectory(prefix="gh-bundle-check-") as scratch:
+        verified_extract(directory / GH_ARCHIVE, directory / GH_CHECKSUMS, Path(scratch) / "gh.exe")
 
 
 def copy_staged_gh(directory: Path, name: str, target: Path, limit: int) -> None:
