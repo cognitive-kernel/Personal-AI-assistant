@@ -12,6 +12,31 @@ from scripts.autonomous_engineering_checkpoint_process import process_start_time
 from scripts.autonomous_engineering_state_paths import execution_state_directory
 
 
+def test_clear_queue_retires_prior_checkpoints_and_preserves_history(monkeypatch, tmp_path):
+    from scripts.autonomous_engineering_clear_queue import clear_queue
+
+    saved = {
+        "pending-manual-task.txt": "previous task",
+        "pending-manual-task-owner.json": "{}",
+        "worktree-checkpoint-old-1.patch": "",
+        "worktree-plan-old-1.json": "{}",
+        "worktree-checkpoint.json": "{}",
+        "worktree-checkpoint.patch": "",
+        "pending-autonomous-pr.json": "{}",
+    }
+    for name, contents in saved.items():
+        (tmp_path / name).write_text(contents, encoding="utf-8")
+    (tmp_path / "history.jsonl").write_text("history\n", encoding="utf-8")
+    monkeypatch.setattr(checkpoint, "store_dir", lambda: tmp_path)
+
+    assert clear_queue(tmp_path) == len(saved)
+    archive, = tmp_path.glob("retired-engineering-queue-*")
+    assert {file.name: file.read_text(encoding="utf-8") for file in archive.iterdir()} == saved
+    assert all(not (tmp_path / name).exists() for name in saved)
+    assert (tmp_path / "history.jsonl").read_text(encoding="utf-8") == "history\n"
+    assert checkpoint._latest_checkpoint() is None
+
+
 def test_checkpoint_git_uses_bounded_process_tree_runner(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     calls: list[tuple[list[str], dict[str, object]]] = []
 
