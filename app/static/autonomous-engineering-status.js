@@ -8,6 +8,7 @@
   const pauseButton = $("pause-agent");
   const resumeButton = $("resume-agent");
   const taskButton = $("send-agent-task");
+  const clearQueueButton = $("clear-agent-queue");
   const editedSettings = new Map();
   for (const id of ["ollama-model", "execution-mode", "interval-hours", "custom-model"]) {
     $(id).addEventListener("input", () => {
@@ -105,6 +106,7 @@
   let lastActiveRun = false;
   let lastActiveRunId = null;
   let statusKnown = false;
+  let queueClearAvailable = false;
   function canStartDispatch() {
     return statusKnown && lastCanDispatch && !lastActiveRun && !dispatchSubmitting && Date.now() >= dispatchPendingUntil;
   }
@@ -129,6 +131,9 @@
     );
     dispatchButton.disabled = !allowed || checkpointNeedsReview;
     taskButton.disabled = !canStartManualTask() || checkpointNeedsReview;
+    clearQueueButton.disabled = !(statusKnown && queueClearAvailable && !lastActiveRun &&
+      !dispatchSubmitting && Date.now() >= dispatchPendingUntil &&
+      pending?.available === true && pending.blocked === true);
   }
   function lockDispatchVisibilityWindow() {
     dispatchPendingUntil = Date.now() + 30000;
@@ -382,6 +387,8 @@
         resumeButton.disabled = !paused || nativeWorkflowBlocked;
       }
       lastCanDispatch = !nativeWorkflowBlocked && requiredProbesKnown && canDispatch;
+      queueClearAvailable = githubKnown && githubReady && storageKnown &&
+        checks.runner_running === true && !nativeWorkflowBlocked;
       statusKnown = true;
       syncDispatchControls();
       const pill = $("agent-readiness");
