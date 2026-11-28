@@ -321,6 +321,14 @@ def test_codex_runtime_profiles_bound_smoke_and_task_retries(monkeypatch):
     assert "model_providers.ollama-local.stream_idle_timeout_ms=900000" in task
     assert "model_providers.ollama-local.stream_max_retries=0" in task
     assert "model_providers.ollama-local.request_max_retries=0" in task
+    for probe_only in (
+        "features.multi_agent=false",
+        "features.goals=false",
+        "features.view_image=false",
+        'web_search="disabled"',
+    ):
+        assert probe_only in smoke
+        assert probe_only not in task
 
 
 def test_qwen3_smoke_disables_thinking_without_changing_the_task_or_other_models(monkeypatch):
