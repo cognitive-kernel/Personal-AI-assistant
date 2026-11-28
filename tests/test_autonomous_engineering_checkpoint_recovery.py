@@ -23,6 +23,7 @@ def test_clear_queue_retires_prior_checkpoints_and_preserves_history(monkeypatch
         "worktree-checkpoint.json": "{}",
         "worktree-checkpoint.patch": "",
         "pending-autonomous-pr.json": "{}",
+        "pending-state-cleanup.json": "{}",
     }
     for name, contents in saved.items():
         (tmp_path / name).write_text(contents, encoding="utf-8")
