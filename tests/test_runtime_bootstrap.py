@@ -1,5 +1,4 @@
 from pathlib import Path
-import re
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,7 +41,7 @@ def test_runtime_bootstrap_pins_verified_uv_assets_for_supported_platforms():
         assert unsupported not in unix
 
 
-def test_runtime_bootstrap_uses_only_project_relative_runtime_and_preserves_invalid_venv():
+def test_runtime_bootstrap_keeps_venvs_project_local_and_preserves_invalid_venv():
     windows = _read("bootstrap.ps1")
     unix = _read("bootstrap.sh")
     command = _read("bootstrap.cmd")
@@ -52,14 +51,16 @@ def test_runtime_bootstrap_uses_only_project_relative_runtime_and_preserves_inva
         assert "UV_PYTHON_INSTALL_DIR" in source
         assert "UV_CACHE_DIR" in source
         assert "UV_PYTHON_PREFERENCE" in source
-        assert "python install 3.11" in source
-        assert "venv --seed --python 3.11" in source
         assert "PAA_VENV_DIR" in source
         assert "run.py" in source
 
     assert "Test-UsablePythonEnvironment" in windows
+    assert "python install --no-bin --no-registry 3.11" in windows
+    assert "& $managedPython -m venv $selectedVenv" in windows
     assert "The existing project and managed virtual environments are not usable" in windows
     assert "test_python_environment" in unix
+    assert "python install 3.11" in unix
+    assert "venv --seed --python 3.11" in unix
     assert "The existing project and managed virtual environments are not usable" in unix
     assert "Move-Item -LiteralPath $stagedUv -Destination $UvPath -Force" in windows
     assert "[switch]$Dev" in windows
@@ -89,6 +90,30 @@ def test_windows_bootstrap_recognizes_uv_build_metadata_without_reinstalling():
 
     assert "if ($version -match ('^uv\\s+' + [regex]::Escape($UvVersion) + '(\\s|$)'))" in windows
     assert 'if ($version -eq "uv $UvVersion")' not in windows
+
+
+def test_windows_runner_preserves_managed_python_across_checkout_cleanup():
+    windows = _read("bootstrap.ps1")
+    workflow = _read(".github/workflows/autonomous-codex-engineering.yml")
+
+    assert '& $bootstrap -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE' in workflow
+    assert 'Join-Path ([IO.Path]::GetFullPath($RunnerToolCache)) "PersonalAIAssistant"' in windows
+    assert '$PythonInstallRoot = Join-Path $ManagedRuntimeRoot "python"' in windows
+    assert '$selectedVenv = Join-Path $Root ".venv"' in windows
+    assert windows.index("python find --system --offline 3.11") < windows.index(
+        "python install --no-bin --no-registry 3.11"
+    )
+
+
+def test_windows_bootstrap_retries_uv_download_and_verifies_before_extracting():
+    windows = _read("bootstrap.ps1")
+
+    assert 'System32\\curl.exe' in windows
+    assert '--retry 2 --connect-timeout 15 --max-time 90' in windows
+    assert 'Invoke-WebRequest -Uri $Url -OutFile $Archive' in windows
+    assert windows.index("Save-UvArchive -Url $downloadUrl") < windows.index(
+        "Get-FileHash -LiteralPath $archive"
+    ) < windows.index("Expand-Archive -LiteralPath $archive")
 
 
 def test_autonomous_runner_uses_managed_python_instead_of_setup_python():
