@@ -19,16 +19,16 @@ from scripts.autonomous_engineering_github import api
 from scripts.autonomous_engineering_pull_requests import find_open_autonomous_pr
 
 _LEGACY = {"worktree-checkpoint.json", "worktree-checkpoint.patch", "worktree-checkpoint.stop", "worktree-plan.json"}
-_MARKERS = ("pending-manual-task.txt", "pending-manual-task-owner.json", "pending-autonomous-pr.json")
+_MARKERS = (
+    "pending-manual-task.txt", "pending-manual-task-owner.json",
+    "pending-autonomous-pr.json", "pending-state-cleanup.json",
+)
 _SAVED = re.compile(r"(?:worktree-checkpoint-[A-Za-z0-9_-]{1,100}-[1-9]\d*\.(?:patch|json|stop|ready|error)|worktree-plan-[A-Za-z0-9_-]{1,100}-[1-9]\d*\.json)")
 
 
 def clear_queue(state: Path) -> int:
     """Retire the entire runnable queue. An interrupted move can be retried."""
     with durable_state_lock(state, timeout_seconds=2), checkpoint_store_lock(state, timeout_seconds=2):
-        cleanup = state / "pending-state-cleanup.json"
-        if cleanup.exists() or cleanup.is_symlink():
-            raise RuntimeError("A verified post-merge cleanup must finish before the queue can be cleared.")
         saved = sorted(path for path in state.iterdir() if path.name in _LEGACY or _SAVED.fullmatch(path.name))
         for marker in _MARKERS:
             path = state / marker
