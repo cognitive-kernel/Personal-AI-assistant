@@ -556,8 +556,12 @@ jobs:
           git commit -m "Add reproducible Windows state broker package"
           git push origin "HEAD:refs/heads/$PR_HEAD_REF"
 
+  runner-python-package:
+    uses: ./.github/workflows/engineering-runner-python-package.yml
+
   runtime-bootstrap:
     name: Managed Python bootstrap (${{ matrix.os }})
+    needs: runner-python-package
     strategy:
       fail-fast: false
       matrix:
@@ -566,17 +570,28 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
+      - name: Download the pinned Python archive from this Workflow
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: engineering-runner-python-windows-x64
+          path: ${{ runner.temp }}/engineering-runner-python
       - name: Bootstrap and validate managed Python on Windows
         if: runner.os == 'Windows'
         shell: powershell
         run: |
-          & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE
+          $archive = Join-Path $env:RUNNER_TEMP "engineering-runner-python\runner-python.tar.gz"
+          & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -CheckRunnerRuntime
+          if ($LASTEXITCODE -ne 3) { throw "This test needs an empty Runner Python cache." }
+          & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -RunnerPythonArchive $archive
           if ($LASTEXITCODE -ne 0) { throw "Initial Runner Python bootstrap failed." }
 
           # A fresh checkout removes the venv but leaves the Runner tool cache.
           Remove-Item -LiteralPath ".venv" -Recurse -Force
-          $env:UV_OFFLINE = "1"
-          $result = & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE 6>&1
+          Remove-Item -LiteralPath $archive -Force
+          & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -CheckRunnerRuntime
+          if ($LASTEXITCODE -ne 0) { throw "Could not detect the cached Runner Python." }
+          $result = & .\bootstrap.ps1 -RuntimeOnly -RunnerToolCache $env:RUNNER_TOOL_CACHE -RunnerPythonArchive $archive 6>&1
           $result | Write-Output
           if ($LASTEXITCODE -ne 0 -or ($result -join "`n") -notmatch "Reusing locally managed Python 3\.11") {
             throw "Runner did not recreate the venv from its local Python cache."
