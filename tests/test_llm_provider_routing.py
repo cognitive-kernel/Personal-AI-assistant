@@ -63,6 +63,7 @@ def test_openai_compatible_chat_uses_selected_model_and_environment_api_key(monk
 
 
 def test_openai_compatible_chat_supports_local_endpoint_without_api_key(monkeypatch):
+    monkeypatch.setattr(ollama, "_ensure_resource_headroom", lambda: None)
     captured = {}
     monkeypatch.setattr(
         ollama, "get_settings",
@@ -156,6 +157,7 @@ def test_chat_routes_to_selected_openai_compatible_provider(monkeypatch):
 
 
 def test_openai_compatible_embeddings_preserve_input_order(monkeypatch):
+    monkeypatch.setattr(ollama, "_ensure_resource_headroom", lambda: None)
     captured = {}
     monkeypatch.setattr(
         ollama, "get_settings",

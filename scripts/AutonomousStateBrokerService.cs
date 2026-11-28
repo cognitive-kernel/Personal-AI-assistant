@@ -904,6 +904,15 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
 
             _lastStorageHealth = VerifyStorageAccess();
             _lastAclHealth = _lastStorageHealth && VerifyStateAclIntegrity();
+            if (_lastStorageHealth && !_lastAclHealth && (_lastAclFailureReason == "state_entry_acl_unreadable" ||
+                                    _lastAclFailureReason == "state_acl_scan_failed"))
+            {
+                // Writers atomically replace state files. An entry can disappear
+                // after enumeration or be briefly locked during the ACL read.
+                // Repeat the whole scan so persistent failures still fail closed.
+                Thread.Sleep(100);
+                _lastAclHealth = VerifyStateAclIntegrity();
+            }
             _lastHealth = _lastStorageHealth && _lastAclHealth;
             _lastHealthAt = DateTime.UtcNow;
             return _lastHealth;
@@ -1043,8 +1052,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             }
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            LogWorkerException(exception);
             _lastAclFailureReason = "state_entry_acl_unreadable";
             return false;
         }
@@ -1108,8 +1118,9 @@ internal sealed class AutonomousStateBrokerService : ServiceBase
             }
             return true;
         }
-        catch
+        catch (Exception exception)
         {
+            LogWorkerException(exception);
             _lastAclFailureReason = "state_acl_scan_failed";
             return false;
         }

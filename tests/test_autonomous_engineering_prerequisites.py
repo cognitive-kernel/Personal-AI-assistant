@@ -55,7 +55,21 @@ def test_installs_from_pinned_bundle_and_reuses_cache_without_the_bundle(monkeyp
     monkeypatch.setattr(prereq.platform, "machine", lambda: "AMD64")
     fetch = partial(prereq.copy_staged_gh, bundle)
 
+    replace = prereq.os.replace
+    publish_attempts = []
+
+    def replace_after_transient_lock(source, destination):
+        publish_attempts.append(source)
+        if len(publish_attempts) == 1:
+            error = PermissionError("simulated Windows file lock")
+            error.winerror = 5
+            raise error
+        return replace(source, destination)
+
+    monkeypatch.setattr(prereq.os, "replace", replace_after_transient_lock)
+    monkeypatch.setattr(prereq.time, "sleep", lambda _: None)
     binary = prereq.ensure_gh(tmp_path / "cache", allow_install=True, download=fetch, probe=lambda _: True)
+    assert len(publish_attempts) == 2
     assert binary.read_bytes() == b"approved binary"
     archive.unlink()
     manifest.unlink()

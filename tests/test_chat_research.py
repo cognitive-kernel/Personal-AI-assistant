@@ -7,8 +7,15 @@ from app import chat_research, main, ollama, web_sources
 
 
 @pytest.fixture(autouse=True)
-def _avoid_chat_audit_side_effects(monkeypatch):
+def _isolate_chat_research_side_effects(monkeypatch):
     monkeypatch.setattr(chat_research.chat_audit, "record_research_run", lambda **_kwargs: 1)
+
+    def offline_claim_review(*_args, **_kwargs):
+        raise ConnectionError("Claim review model unavailable in chat research unit tests.")
+
+    # Ollama chat and claim review use separate calls. Stub the reviewer transport
+    # so a live model on a self-hosted Runner cannot change these unit tests.
+    monkeypatch.setattr(chat_research.claim_review, "_request", offline_claim_review)
 
 
 def _source():

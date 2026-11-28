@@ -276,6 +276,9 @@ def test_ram_safety_reserve_is_applied_during_context_selection(monkeypatch):
 
 def test_detect_gpu_uses_generic_windows_telemetry_for_single_adapter(monkeypatch):
     import json
+    monkeypatch.setattr(hardware, "psutil", SimpleNamespace(
+        virtual_memory=lambda: SimpleNamespace(available=8 * 1024**3),
+    ))
     monkeypatch.setattr(hardware.os, "name", "nt")
     payload = {
         "Adapters": [{"Name": "Intel(R) UHD Graphics 730", "PNPDeviceID": "PCI\\VEN_8086&DEV_4692", "AdapterRAM": 2147483648}],

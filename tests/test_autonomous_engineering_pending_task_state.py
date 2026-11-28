@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from app.windows_powershell import windows_powershell_candidates
+
 from scripts.autonomous_engineering_pending_task_state import (
     claim_pending_task_owner_unlocked,
     reconcile_pending_task_owner_unlocked,
@@ -148,7 +150,7 @@ def test_powershell_and_python_compute_identical_task_digest(task: str):
         "Get-AutonomousTaskDigest -Task $task"
     )
     result = subprocess.run(
-        ["pwsh", "-NoProfile", "-Command", script],
+        [windows_powershell_candidates()[0], "-NoProfile", "-Command", script],
         capture_output=True,
         text=True,
         check=True,

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from app.windows_powershell import windows_powershell_candidates
+
 from scripts.autonomous_engineering_state_lock import durable_state_lock
 
 
@@ -89,7 +91,7 @@ def test_python_and_powershell_share_the_same_durable_state_file_lock(tmp_path: 
         "$stream.Unlock(0, 1); $stream.Dispose()"
     )
     child = subprocess.Popen(
-        ["pwsh", "-NoProfile", "-Command", script],
+        [windows_powershell_candidates()[0], "-NoProfile", "-Command", script],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
