@@ -40,8 +40,6 @@ function Get-AutonomousTaskOwnerRecord {
     $ownerAttempt = 0
     $submittedAttempt = 0
     $claimCount = 0
-    $createdAt = 0.0
-    $claimedAt = 0.0
     if (
         $record.schema_version -is [bool] -or
         -not ($record.schema_version -is [int] -or $record.schema_version -is [long]) -or
@@ -62,11 +60,9 @@ function Get-AutonomousTaskOwnerRecord {
         -not [int]::TryParse([string]$record.claim_count, [ref]$claimCount) -or
         $claimCount -lt 1 -or
         -not ($record.created_at -is [double] -or $record.created_at -is [int] -or $record.created_at -is [long]) -or
-        -not [double]::TryParse([string]$record.created_at, [ref]$createdAt) -or
-        [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
+        [double]::IsNaN(($createdAt = [double]$record.created_at)) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0 -or
         -not ($record.claimed_at -is [double] -or $record.claimed_at -is [int] -or $record.claimed_at -is [long]) -or
-        -not [double]::TryParse([string]$record.claimed_at, [ref]$claimedAt) -or
-        [double]::IsNaN($claimedAt) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
+        [double]::IsNaN(($claimedAt = [double]$record.claimed_at)) -or [double]::IsInfinity($claimedAt) -or $claimedAt -le 0 -or
         -not ($record.source -is [string]) -or
         [string]$record.source -notin @("manual_dispatch", "recovery", "legacy_migration")
     ) {
@@ -142,7 +138,6 @@ function Repair-AutonomousPendingStateCleanup {
     } catch {
         throw "Pending-state cleanup marker is malformed; preserving all durable state."
     }
-    $createdAt = 0.0
     if (
         $marker.schema_version -is [bool] -or
         -not ($marker.schema_version -is [int] -or $marker.schema_version -is [long]) -or
@@ -151,8 +146,7 @@ function Repair-AutonomousPendingStateCleanup {
         -not ($marker.run_id -is [string]) -or
         [string]::IsNullOrWhiteSpace([string]$marker.run_id) -or
         -not ($marker.created_at -is [double] -or $marker.created_at -is [int] -or $marker.created_at -is [long]) -or
-        -not [double]::TryParse([string]$marker.created_at, [ref]$createdAt) -or
-        [double]::IsNaN($createdAt) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0
+        [double]::IsNaN(($createdAt = [double]$marker.created_at)) -or [double]::IsInfinity($createdAt) -or $createdAt -le 0
     ) {
         throw "Pending-state cleanup marker violates schema v1; preserving all durable state."
     }
